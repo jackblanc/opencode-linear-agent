@@ -15,10 +15,14 @@ export default {
     // Get or create a sandbox instance
     const sandbox = getSandbox(env.Sandbox, "linear-opencode-agent");
 
+    // Ensure the project directory exists
+    const projectDir = "/home/user/project";
+    await sandbox.exec(`mkdir -p ${projectDir}`);
+
     // OpenCode Web UI - proxy all requests to the OpenCode server
     if (url.pathname.startsWith("/opencode") || url.pathname === "/") {
       const server = await createOpencodeServer(sandbox, {
-        directory: "/home/user/project",
+        directory: projectDir,
         config: {
           provider: {
             anthropic: {
@@ -35,7 +39,7 @@ export default {
     // Programmatic SDK access example
     if (url.pathname === "/api/session") {
       const { client } = await createOpencode<OpencodeClient>(sandbox, {
-        directory: "/home/user/project",
+        directory: projectDir,
         config: {
           provider: {
             anthropic: {
