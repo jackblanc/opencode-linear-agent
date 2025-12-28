@@ -69,11 +69,11 @@ bun run cf-typegen
 
 The Docker image version should match your SDK version:
 
-| SDK Version | Docker Image |
-|-------------|--------------|
-| 0.6.7 | `cloudflare/sandbox:0.6.7-opencode` |
-| 0.6.8 | `cloudflare/sandbox:0.6.8-opencode` |
-| 0.7.0 | `cloudflare/sandbox:0.7.0-opencode` |
+| SDK Version | Docker Image                        |
+| ----------- | ----------------------------------- |
+| 0.6.7       | `cloudflare/sandbox:0.6.7-opencode` |
+| 0.6.8       | `cloudflare/sandbox:0.6.8-opencode` |
+| 0.7.0       | `cloudflare/sandbox:0.7.0-opencode` |
 
 ### Checking Installed Versions
 
@@ -88,23 +88,27 @@ bun pm ls @cloudflare/sandbox
 ## After Updating
 
 1. **Reinstall dependencies**:
+
    ```bash
    bun install
    ```
 
 2. **Rebuild types**:
+
    ```bash
    bun run cf-typegen
    ```
 
 3. **Test locally**:
+
    ```bash
    bun run dev
    ```
-   
+
    Note: First run after Dockerfile changes will rebuild the container (2-3 minutes)
 
 4. **Run type check**:
+
    ```bash
    bun run typecheck
    ```
@@ -139,11 +143,13 @@ If you get an error about the Docker image not being found:
 ### Type errors after updating
 
 1. Delete generated types:
+
    ```bash
    rm worker-configuration.d.ts
    ```
 
 2. Regenerate types:
+
    ```bash
    bun run cf-typegen
    ```
@@ -161,6 +167,7 @@ If you get an error about the Docker image not being found:
 ### Automated Updates
 
 Consider using tools like:
+
 - [Dependabot](https://github.com/dependabot) (if using GitHub)
 - [Renovate](https://www.mend.io/renovate/)
 - Manual weekly/monthly checks

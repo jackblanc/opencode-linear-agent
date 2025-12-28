@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "typescript": "all",
+    "correctness": "all",
+    "suspicious": "all",
+    "perf": "all"
+  }
+}

@@ -55,7 +55,7 @@ export default {
       if (!session.data) {
         return Response.json(
           { error: "Failed to create session" },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -86,7 +86,7 @@ export default {
     }
 
     return new Response(
-      "OpenCode Agent for Linear\n\nAvailable endpoints:\n- / (OpenCode Web UI)\n- /api/session (Create session)\n- /run (Execute command)\n- /file (File operations)"
+      "OpenCode Agent for Linear\n\nAvailable endpoints:\n- / (OpenCode Web UI)\n- /api/session (Create session)\n- /run (Execute command)\n- /file (File operations)",
     );
   },
 };

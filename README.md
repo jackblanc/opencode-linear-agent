@@ -145,6 +145,7 @@ See [Cloudflare Sandbox OpenCode docs](https://github.com/cloudflare/sandbox-sdk
 To update dependencies and Docker images, see [UPDATING.md](./UPDATING.md) for detailed instructions.
 
 Quick update:
+
 ```bash
 # Update all dependencies
 bun update
