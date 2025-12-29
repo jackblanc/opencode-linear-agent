@@ -21,8 +21,8 @@ export default {
     const projectDir = "/home/user/project";
     await sandbox.exec(`mkdir -p ${projectDir}`);
 
-    // OpenCode Web UI - proxy all requests to the OpenCode server
-    if (url.pathname.startsWith("/opencode") || url.pathname === "/") {
+    // OpenCode Web UI - proxy only /opencode requests
+    if (url.pathname.startsWith("/opencode")) {
       const server = await createOpencodeServer(sandbox, {
         directory: projectDir,
         config: {

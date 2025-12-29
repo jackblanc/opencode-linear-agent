@@ -7,7 +7,7 @@ import { LinearClient } from "@linear/sdk";
 
 export async function handleWebhook(
   request: Request,
-  env: Env
+  env: Env,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -29,7 +29,7 @@ export async function handleWebhook(
   const payload = webhookClient.parseData(
     Buffer.from(body),
     signature,
-    JSON.parse(body)[LINEAR_WEBHOOK_TS_FIELD]
+    JSON.parse(body)[LINEAR_WEBHOOK_TS_FIELD],
   );
 
   console.info("Webhook received", {
@@ -53,7 +53,7 @@ export async function handleWebhook(
   // Get access token from KV
   const tokenData = await env.LINEAR_TOKENS.get(
     `org:${organizationId}`,
-    "json"
+    "json",
   );
   if (!tokenData) {
     console.error("No access token found for organization", { organizationId });
