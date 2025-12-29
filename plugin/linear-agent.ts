@@ -52,6 +52,11 @@ async function sendLinearActivity(
   },
   ephemeral = false,
 ): Promise<void> {
+  console.log("[LINEAR PLUGIN] sendLinearActivity called");
+  console.log("[LINEAR PLUGIN]   sessionId:", sessionId);
+  console.log("[LINEAR PLUGIN]   content:", JSON.stringify(content));
+  console.log("[LINEAR PLUGIN]   ephemeral:", ephemeral);
+
   const mutation = `
     mutation AgentActivityCreate($input: AgentActivityCreateInput!) {
       agentActivityCreate(input: $input) {
@@ -63,6 +68,19 @@ async function sendLinearActivity(
     }
   `;
 
+  const requestBody = {
+    query: mutation,
+    variables: {
+      input: {
+        agentSessionId: sessionId,
+        content,
+        ephemeral,
+      },
+    },
+  };
+
+  console.log("[LINEAR PLUGIN] Request body:", JSON.stringify(requestBody, null, 2));
+
   try {
     const response = await fetch(LINEAR_API, {
       method: "POST",
@@ -70,23 +88,23 @@ async function sendLinearActivity(
         "Content-Type": "application/json",
         Authorization: accessToken,
       },
-      body: JSON.stringify({
-        query: mutation,
-        variables: {
-          input: {
-            agentSessionId: sessionId,
-            content,
-            ephemeral,
-          },
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    const responseText = await response.text();
+    console.log("[LINEAR PLUGIN] Response status:", response.status);
+    console.log("[LINEAR PLUGIN] Response body:", responseText);
+
     if (!response.ok) {
-      console.error("Failed to send Linear activity:", await response.text());
+      console.error(
+        "[LINEAR PLUGIN] ERROR: Failed to send activity:",
+        responseText,
+      );
+    } else {
+      console.log("[LINEAR PLUGIN] Activity sent successfully!");
     }
   } catch (error) {
-    console.error("Error sending Linear activity:", error);
+    console.error("[LINEAR PLUGIN] ERROR: Exception sending activity:", error);
   }
 }
 
@@ -194,16 +212,32 @@ function mapTodoStatus(
  * Linear Agent Plugin
  */
 export const LinearAgentPlugin: Plugin = async ({ client }) => {
-  console.log("Linear plugin: Initializing...");
+  console.log("[LINEAR PLUGIN] ========================================");
+  console.log("[LINEAR PLUGIN] Plugin initializing...");
+  console.log("[LINEAR PLUGIN] Timestamp:", new Date().toISOString());
 
   const accessToken = process.env.LINEAR_ACCESS_TOKEN;
 
   if (!accessToken) {
-    console.log("Linear plugin: No LINEAR_ACCESS_TOKEN, skipping");
+    console.log("[LINEAR PLUGIN] ERROR: No LINEAR_ACCESS_TOKEN env var found!");
+    console.log(
+      "[LINEAR PLUGIN] Available env vars:",
+      Object.keys(process.env).filter(
+        (k) => !k.includes("KEY") && !k.includes("SECRET"),
+      ),
+    );
     return {};
   }
 
-  console.log("Linear plugin: Initialized with access token");
+  console.log(
+    "[LINEAR PLUGIN] Access token found, length:",
+    accessToken.length,
+  );
+  console.log(
+    "[LINEAR PLUGIN] Access token prefix:",
+    accessToken.substring(0, 10) + "...",
+  );
+  console.log("[LINEAR PLUGIN] ========================================");
 
   /**
    * Get Linear session ID for an OpenCode session (with caching)
@@ -211,11 +245,18 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
   async function getLinearSessionId(
     opencodeSessionId: string,
   ): Promise<string | null> {
+    console.log(
+      "[LINEAR PLUGIN] getLinearSessionId called for:",
+      opencodeSessionId,
+    );
+
     // Check cache first
     const cached = sessionCache.get(opencodeSessionId);
     if (cached) {
+      console.log("[LINEAR PLUGIN] Found in cache:", cached);
       return cached;
     }
+    console.log("[LINEAR PLUGIN] Not in cache, fetching from OpenCode API...");
 
     try {
       // Fetch session from OpenCode API
@@ -223,15 +264,30 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         path: { id: opencodeSessionId },
       });
 
+      console.log(
+        "[LINEAR PLUGIN] Session API response:",
+        JSON.stringify(session, null, 2),
+      );
+
       if (session.data?.title?.startsWith(LINEAR_SESSION_PREFIX)) {
         const linearSessionId = session.data.title.slice(
           LINEAR_SESSION_PREFIX.length,
         );
+        console.log(
+          "[LINEAR PLUGIN] Extracted Linear session ID from title:",
+          linearSessionId,
+        );
         sessionCache.set(opencodeSessionId, linearSessionId);
         return linearSessionId;
+      } else {
+        console.log(
+          "[LINEAR PLUGIN] Session title does not start with prefix:",
+          session.data?.title,
+        );
+        console.log("[LINEAR PLUGIN] Expected prefix:", LINEAR_SESSION_PREFIX);
       }
     } catch (error) {
-      console.error("Failed to fetch session:", error);
+      console.error("[LINEAR PLUGIN] ERROR fetching session:", error);
     }
 
     return null;
@@ -243,19 +299,55 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
   return {
     event: async ({ event }) => {
       try {
+        console.log("[LINEAR PLUGIN] ----------------------------------------");
+        console.log("[LINEAR PLUGIN] Event received!");
+        console.log("[LINEAR PLUGIN] Event type:", event.type);
+        console.log("[LINEAR PLUGIN] Full event:", JSON.stringify(event, null, 2));
+
         // Get the OpenCode session ID from the event
         const properties = event.properties as Record<string, unknown>;
+        console.log(
+          "[LINEAR PLUGIN] Event properties:",
+          JSON.stringify(properties, null, 2),
+        );
+
         const opencodeSessionId = properties?.sessionId as string | undefined;
+        console.log("[LINEAR PLUGIN] Extracted sessionId:", opencodeSessionId);
+
         if (!opencodeSessionId) {
+          console.log(
+            "[LINEAR PLUGIN] WARNING: No sessionId in event properties!",
+          );
+          console.log(
+            "[LINEAR PLUGIN] Available property keys:",
+            properties ? Object.keys(properties) : "no properties",
+          );
           return;
         }
 
         // Look up the corresponding Linear session ID
+        console.log(
+          "[LINEAR PLUGIN] Looking up Linear session for OpenCode session:",
+          opencodeSessionId,
+        );
         const linearSessionId = await getLinearSessionId(opencodeSessionId);
+        console.log("[LINEAR PLUGIN] Linear session ID result:", linearSessionId);
+
         if (!linearSessionId) {
           // No mapping found - this session isn't linked to Linear
+          console.log(
+            "[LINEAR PLUGIN] WARNING: No Linear session mapping found for:",
+            opencodeSessionId,
+          );
           return;
         }
+
+        console.log(
+          "[LINEAR PLUGIN] Found mapping:",
+          opencodeSessionId,
+          "->",
+          linearSessionId,
+        );
 
         // Handle message part updates (tool calls, text, etc.)
         if (event.type === "message.part.updated") {
