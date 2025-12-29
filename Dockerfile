@@ -1,4 +1,20 @@
-FROM docker.io/cloudflare/sandbox:0.6.7-opencode
+FROM docker.io/cloudflare/sandbox:0.6.7
 
-# Required during local development to access exposed ports
-EXPOSE 8080
+# Add opencode install location to PATH before installation
+ENV PATH="/root/.opencode/bin:${PATH}"
+
+# Install OpenCode CLI
+RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
+    && bash /tmp/install-opencode.sh \
+    && rm /tmp/install-opencode.sh \
+    && opencode --version
+
+# Set higher command timeout for long-running AI operations (10 minutes)
+ENV COMMAND_TIMEOUT_MS=600000
+
+# Copy the Linear agent plugin into the global OpenCode plugin directory
+# This plugin streams events to Linear's API
+COPY plugin/linear-agent.ts /home/user/.config/opencode/plugin/linear-agent.ts
+
+# Expose OpenCode server port
+EXPOSE 4096

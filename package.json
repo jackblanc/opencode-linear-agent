@@ -19,12 +19,13 @@
     "fix": "bun run lint:fix && bun run format:fix"
   },
   "dependencies": {
-    "@cloudflare/sandbox": "^0.6.7",
     "@linear/sdk": "^68.1.0",
-    "@opencode-ai/sdk": "latest"
+    "@opencode-ai/sdk": "^1.0.137"
   },
   "devDependencies": {
+    "@cloudflare/sandbox": "^0.6.7",
     "@cloudflare/workers-types": "^4.20241127.0",
+    "@opencode-ai/plugin": "^1.0.207",
     "@types/node": "^25.0.3",
     "knip": "^5.78.0",
     "oxlint": "^1.35.0",

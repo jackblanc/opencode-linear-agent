@@ -15,8 +15,9 @@
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
-      "instance_type": "lite",
-      "max_instances": 1,
+      // Use "basic" for more memory (1 GiB vs 256 MiB) - needed for OpenCode + AI operations
+      "instance_type": "basic",
+      "max_instances": 3,
     },
   ],
   "durable_objects": {
