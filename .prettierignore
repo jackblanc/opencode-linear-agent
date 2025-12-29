@@ -4,3 +4,4 @@ build
 .wrangler
 *.lock
 bun.lock
+worker-configuration.d.ts

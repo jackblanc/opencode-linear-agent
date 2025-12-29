@@ -1,10 +1,12 @@
 import { getSandbox } from "@cloudflare/sandbox";
+import { handleAuthorize, handleCallback } from "./oauth";
+import { handleWebhook } from "./webhook";
 import {
+  createOpencode,
   createOpencodeServer,
   proxyToOpencode,
-  createOpencode,
 } from "@cloudflare/sandbox/opencode";
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import { OpencodeClient } from "@opencode-ai/sdk";
 
 export { Sandbox } from "@cloudflare/sandbox";
 
@@ -69,28 +71,55 @@ export default {
       });
     }
 
-    // Execute a shell command (example)
-    if (url.pathname === "/run") {
-      const result = await sandbox.exec('echo "2 + 2 = $((2 + 2))"');
+    console.debug("Request received", {
+      method: request.method,
+      pathname: url.pathname,
+    });
+
+    // OAuth endpoints
+    if (url.pathname === "/oauth/authorize") {
+      return handleAuthorize(request, env);
+    }
+
+    if (url.pathname === "/oauth/callback") {
+      return handleCallback(request, env);
+    }
+
+    // Webhook endpoint
+    if (url.pathname === "/webhook/linear") {
+      return handleWebhook(request, env);
+    }
+
+    // Health check
+    if (url.pathname === "/health") {
       return Response.json({
-        output: result.stdout,
-        error: result.stderr,
-        exitCode: result.exitCode,
-        success: result.success,
+        status: "ok",
+        timestamp: new Date().toISOString(),
       });
     }
 
-    // Work with files (example)
-    if (url.pathname === "/file") {
-      await sandbox.writeFile("/workspace/hello.txt", "Hello, Sandbox!");
-      const file = await sandbox.readFile("/workspace/hello.txt");
-      return Response.json({
-        content: file.content,
-      });
-    }
-
+    // Default response
     return new Response(
-      "OpenCode Agent for Linear\n\nAvailable endpoints:\n- / (OpenCode Web UI)\n- /api/session (Create session)\n- /run (Execute command)\n- /file (File operations)",
+      `
+Linear OpenCode Agent
+
+Available endpoints:
+- GET  /oauth/authorize  - Start OAuth flow
+- POST /webhook/linear   - Linear webhook receiver
+- GET  /health          - Health check
+
+Setup Instructions:
+1. Visit /oauth/authorize to connect your Linear workspace
+2. Configure webhook URL in Linear app settings
+3. Delegate issues to the agent or @mention it
+
+Status: Ready
+      `.trim(),
+      {
+        headers: {
+          "Content-Type": "text/plain",
+        },
+      },
     );
   },
 };
