@@ -10,10 +10,7 @@ export async function handleWebhook(
 
   // Handle agent session events
   handler.on("AgentSessionEvent", async (payload) => {
-    console.info("Agent session event received", {
-      type: payload.type,
-      action: payload.action,
-    });
+    console.info("Agent session event received", payload);
 
     // Get organization ID from webhook
     const organizationId = payload.organizationId;
