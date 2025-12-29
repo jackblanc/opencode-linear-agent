@@ -79,7 +79,10 @@ async function sendLinearActivity(
     },
   };
 
-  console.log("[LINEAR PLUGIN] Request body:", JSON.stringify(requestBody, null, 2));
+  console.log(
+    "[LINEAR PLUGIN] Request body:",
+    JSON.stringify(requestBody, null, 2),
+  );
 
   try {
     const response = await fetch(LINEAR_API, {
@@ -302,7 +305,10 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         console.log("[LINEAR PLUGIN] ----------------------------------------");
         console.log("[LINEAR PLUGIN] Event received!");
         console.log("[LINEAR PLUGIN] Event type:", event.type);
-        console.log("[LINEAR PLUGIN] Full event:", JSON.stringify(event, null, 2));
+        console.log(
+          "[LINEAR PLUGIN] Full event:",
+          JSON.stringify(event, null, 2),
+        );
 
         // Get the OpenCode session ID from the event
         const properties = event.properties as Record<string, unknown>;
@@ -331,7 +337,10 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           opencodeSessionId,
         );
         const linearSessionId = await getLinearSessionId(opencodeSessionId);
-        console.log("[LINEAR PLUGIN] Linear session ID result:", linearSessionId);
+        console.log(
+          "[LINEAR PLUGIN] Linear session ID result:",
+          linearSessionId,
+        );
 
         if (!linearSessionId) {
           // No mapping found - this session isn't linked to Linear
