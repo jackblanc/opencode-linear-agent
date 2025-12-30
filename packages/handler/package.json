@@ -1,0 +1,24 @@
+{
+  "name": "@linear-opencode/handler",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "copy-plugin": "rm -rf plugin-dist && cp -r ../linear-opencode-plugin/dist plugin-dist",
+    "dev": "bun run copy-plugin && wrangler dev",
+    "predeploy": "bun run copy-plugin",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@linear/sdk": "^68.1.0",
+    "@opencode-ai/sdk": "^1.0.137"
+  },
+  "devDependencies": {
+    "@cloudflare/sandbox": "^0.6.7",
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/node": "^25.0.3",
+    "wrangler": "^4.54.0"
+  }
+}

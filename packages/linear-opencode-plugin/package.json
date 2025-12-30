@@ -1,0 +1,37 @@
+{
+  "name": "@linear-opencode/plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@linear/sdk": "^68.1.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.0.207"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.0.207",
+    "@opencode-ai/sdk": "^1.0.137",
+    "tsup": "^8.0.0"
+  },
+  "keywords": ["opencode", "linear", "plugin", "agent"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jackblanc/linear-opencode-agent"
+  },
+  "license": "MIT",
+  "description": "OpenCode plugin for Linear agent integration - streams activities and plans to Linear"
+}

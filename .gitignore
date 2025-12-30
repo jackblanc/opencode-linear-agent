@@ -197,3 +197,7 @@ dist
 !.env.example
 .dev.vars*
 !.dev.vars.example
+
+### Build artifacts ###
+# Plugin build copied to handler for Docker
+packages/handler/plugin-dist/
