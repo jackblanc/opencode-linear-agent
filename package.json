@@ -4,13 +4,14 @@
   "type": "module",
   "private": true,
   "description": "Self-hosted Linear agent powered by OpenCode and Cloudflare Workers",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
-    "tail": "wrangler tail",
-    "cf-typegen": "wrangler types",
-    "typecheck": "tsc --noEmit",
+    "build": "bun run --filter opencode-linear-agent build",
+    "dev": "bun run --filter @linear-opencode-agent/worker dev",
+    "deploy": "bun run build && bun run --filter @linear-opencode-agent/worker deploy",
+    "typecheck": "bun run --filter '*' typecheck",
     "lint:check": "oxlint",
     "lint:fix": "oxlint --fix",
     "format:check": "prettier --check .",
@@ -18,15 +19,8 @@
     "check": "bun run typecheck && bun run lint:check && bun run format:check",
     "fix": "bun run lint:fix && bun run format:fix"
   },
-  "dependencies": {
-    "@linear/sdk": "^68.1.0",
-    "@opencode-ai/sdk": "^1.0.137"
-  },
   "devDependencies": {
-    "@cloudflare/sandbox": "^0.6.7",
     "@cloudflare/workers-types": "^4.20241127.0",
-    "@opencode-ai/plugin": "^1.0.207",
-    "@types/node": "^25.0.3",
     "knip": "^5.78.0",
     "oxlint": "^1.35.0",
     "prettier": "^3.7.4",

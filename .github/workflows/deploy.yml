@@ -63,7 +63,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build plugin
+        run: bun run build
+
       - name: Deploy to Cloudflare
-        run: bun run deploy
+        run: bun run --filter @linear-opencode-agent/worker deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

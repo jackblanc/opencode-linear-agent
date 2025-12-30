@@ -1,0 +1,19 @@
+{
+  "name": "opencode-linear-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "typecheck": "tsc --noEmit",
+    "dev": "bun build src/index.ts --outdir dist --target node --watch"
+  },
+  "dependencies": {
+    "@linear/sdk": "^68.1.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.0.207",
+    "@types/node": "^25.0.3"
+  }
+}

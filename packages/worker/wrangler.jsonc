@@ -67,9 +67,13 @@
    *
    * For local development, create a .dev.vars file with:
    * ANTHROPIC_API_KEY=your_api_key_here
+   * ADMIN_API_KEY=your_admin_key_here
+   * REPO_URL=https://github.com/owner/repo
    *
    * For production, set secrets via:
    * wrangler secret put ANTHROPIC_API_KEY
+   * wrangler secret put ADMIN_API_KEY
+   * wrangler secret put REPO_URL
    */
   // "vars": {  "MY_VARIABLE": "production_value" }
   /**
