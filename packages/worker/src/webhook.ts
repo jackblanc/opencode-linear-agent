@@ -4,11 +4,8 @@ import { LinearClient } from "@linear/sdk";
 import { getSandbox } from "@cloudflare/sandbox";
 import { createOpencode } from "@cloudflare/sandbox/opencode";
 import type { OpencodeClient } from "@opencode-ai/sdk";
-import type { SessionState } from "./types";
 import { getConfig } from "./config";
 
-// Hardcoded repo for now - will be made dynamic later
-const REPO_URL = "https://github.com/sst/opencode";
 const PROJECT_DIR = "/home/user/project";
 
 // Port used by OpenCode server (default)
@@ -16,6 +13,15 @@ const OPENCODE_PORT = 4096;
 
 // Prefix used in OpenCode session titles to identify Linear sessions
 const LINEAR_SESSION_PREFIX = "linear:";
+
+/**
+ * Session state stored in KV
+ */
+interface SessionState {
+  opencodeSessionId: string;
+  linearSessionId: string;
+  lastActivityTime: number;
+}
 
 /**
  * Get or create the OpenCode client for an organization.
@@ -97,7 +103,6 @@ async function getOrCreateSession(
   const newState: SessionState = {
     opencodeSessionId: session.data.id,
     linearSessionId,
-    repoCloned: false,
     lastActivityTime: Date.now(),
   };
 
@@ -107,7 +112,10 @@ async function getOrCreateSession(
 }
 
 /**
- * Clone repository into sandbox (if not already cloned for this org)
+ * Clone repository into sandbox (checks filesystem, not KV)
+ *
+ * Fixed: No longer stores state in KV. After container restart,
+ * the check will correctly see the repo is missing and re-clone.
  */
 async function ensureRepoCloned(
   env: Env,
@@ -115,12 +123,28 @@ async function ensureRepoCloned(
   linearSessionId: string,
   linearClient: LinearClient,
 ): Promise<void> {
-  // Track repo cloning at org level since we have one sandbox per org
-  const orgRepoKey = `org-repo:${organizationId}`;
-  const isCloned = await env.LINEAR_TOKENS.get(orgRepoKey);
+  const sandbox = getSandbox(env.Sandbox, `org-${organizationId}`);
 
-  if (isCloned) {
-    return;
+  // Check if repo already exists in the container filesystem
+  try {
+    const result = await sandbox.exec(
+      `test -d ${PROJECT_DIR}/.git && echo "exists"`,
+      {
+        timeout: 10000,
+      },
+    );
+    if (result.stdout?.includes("exists")) {
+      console.info("Repository already cloned");
+      return;
+    }
+  } catch {
+    // Directory doesn't exist, proceed to clone
+  }
+
+  // Validate REPO_URL is configured
+  const repoUrl = env.REPO_URL;
+  if (!repoUrl) {
+    throw new Error("REPO_URL environment variable is not configured");
   }
 
   await linearClient.createAgentActivity({
@@ -132,19 +156,23 @@ async function ensureRepoCloned(
     ephemeral: true,
   });
 
-  const sandbox = getSandbox(env.Sandbox, `org-${organizationId}`);
-  const authenticatedUrl = REPO_URL.replace(
-    "https://",
-    `https://x-access-token:${env.GITHUB_TOKEN}@`,
+  // Validate GITHUB_TOKEN is configured
+  if (!env.GITHUB_TOKEN) {
+    throw new Error("GITHUB_TOKEN environment variable is not configured");
+  }
+
+  // Clone with authentication
+  // Note: We use git credential helper to avoid token appearing in command logs
+  await sandbox.exec(
+    `git config --global credential.helper '!f() { echo "password=${env.GITHUB_TOKEN}"; }; f'`,
+    { timeout: 10000 },
   );
 
-  // Use SDK's gitCheckout for better container lifecycle handling
-  await sandbox.gitCheckout(authenticatedUrl, { targetDir: PROJECT_DIR });
+  await sandbox.exec(`git clone ${repoUrl} ${PROJECT_DIR}`, {
+    timeout: 120000,
+  });
 
   console.info("Repository cloned successfully");
-
-  // Mark as cloned for this org
-  await env.LINEAR_TOKENS.put(orgRepoKey, "true");
 }
 
 /**

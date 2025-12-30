@@ -5,8 +5,15 @@ ANTHROPIC_API_KEY=sk-ant-...
 LINEAR_CLIENT_ID=lin_api_...
 LINEAR_CLIENT_SECRET=lin_api_...
 
-# Linear webhook secret (get from Linear app settings)
+# Linear webhook secret (from Linear app settings)
 LINEAR_WEBHOOK_SECRET=...
 
-# Optional: GitHub token for private repos
+# GitHub token for cloning repositories (required)
 GITHUB_TOKEN=ghp_...
+
+# Admin API key for accessing OpenCode UI (required)
+# Generate a secure random string for this value
+ADMIN_API_KEY=generate-a-secure-random-string
+
+# Repository URL for the agent to work on (required)
+REPO_URL=https://github.com/owner/repo

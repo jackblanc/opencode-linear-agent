@@ -6,12 +6,49 @@ This document provides coding agents with essential information for working on t
 
 This is a Cloudflare Worker that integrates OpenCode (AI coding agent) with Cloudflare's Sandbox SDK, providing:
 
-- OpenCode Web UI for interactive AI-powered coding
+- OpenCode Web UI for interactive AI-powered coding (protected by API key)
 - Programmatic API for session management
 - Secure, isolated code execution environment via Cloudflare Sandbox containers
-- Linear integration capabilities (planned)
+- Linear integration via webhook handling and plugin
 
-**Stack**: TypeScript, Cloudflare Workers, Durable Objects, Sandbox containers, Bun runtime
+**Stack**: TypeScript, Cloudflare Workers, Durable Objects, Sandbox containers, Bun workspaces
+
+---
+
+## Project Structure
+
+```
+linear-opencode-agent/
+├── packages/
+│   ├── worker/                              # Cloudflare Worker
+│   │   ├── src/
+│   │   │   ├── index.ts                    # Request routing, auth checks
+│   │   │   ├── auth.ts                     # API key validation helper
+│   │   │   ├── oauth.ts                    # Linear OAuth flow
+│   │   │   ├── webhook.ts                  # Linear webhook handler
+│   │   │   └── config.ts                   # OpenCode configuration
+│   │   ├── Dockerfile                      # Sandbox container with plugin
+│   │   ├── wrangler.jsonc                  # Cloudflare Workers config
+│   │   ├── package.json                    # Worker dependencies
+│   │   ├── tsconfig.json                   # Extends root config
+│   │   └── worker-configuration.d.ts       # Generated Cloudflare types
+│   │
+│   └── opencode-linear-agent/              # Plugin package
+│       ├── src/
+│       │   └── index.ts                    # Plugin using @linear/sdk
+│       ├── dist/                           # Build output (gitignored)
+│       ├── package.json                    # Plugin dependencies
+│       └── tsconfig.json                   # Extends root config
+│
+├── package.json                            # Root workspace configuration
+├── tsconfig.json                           # Base TypeScript configuration
+├── bun.lock
+├── .gitignore
+├── .dev.vars.example                       # Environment variable template
+├── AGENTS.md                               # This file
+├── PLAN.md                                 # Implementation plan
+└── README.md
+```
 
 ---
 
@@ -20,52 +57,86 @@ This is a Cloudflare Worker that integrates OpenCode (AI coding agent) with Clou
 ### Development
 
 ```bash
-bun run dev           # Start local dev server (builds Docker on first run)
-bun run start         # Alias for dev
+bun install            # Install all workspace dependencies
+bun run dev            # Start local dev server (builds Docker on first run)
+```
+
+### Building
+
+```bash
+bun run build          # Build the plugin package
 ```
 
 ### Type Checking
 
 ```bash
-bun run typecheck     # Run TypeScript type checking
-bun run cf-typegen    # Generate Cloudflare types from wrangler config
+bun run typecheck      # Run TypeScript type checking across all packages
 ```
 
 ### Linting
 
 ```bash
-bun run lint:check    # Check for lint errors (oxlint)
-bun run lint:fix      # Auto-fix lint errors
+bun run lint:check     # Check for lint errors (oxlint)
+bun run lint:fix       # Auto-fix lint errors
 ```
 
 ### Formatting
 
 ```bash
-bun run format:check  # Check code formatting (prettier)
-bun run format:fix    # Auto-fix formatting issues
+bun run format:check   # Check code formatting (prettier)
+bun run format:fix     # Auto-fix formatting issues
 ```
 
 ### Combined Commands
 
 ```bash
-bun run check         # Run typecheck + lint:check + format:check
-bun run fix           # Run lint:fix + format:fix
+bun run check          # Run typecheck + lint:check + format:check
+bun run fix            # Run lint:fix + format:fix
 ```
 
 ### Deployment
 
 ```bash
-bun run deploy        # Deploy to Cloudflare Workers
+bun run deploy         # Build plugin and deploy to Cloudflare Workers
 ```
 
-### Testing
-
-**Note**: This project currently has no test suite configured. Tests should be added using a framework compatible with Bun (e.g., Bun's built-in test runner).
-
-To run a single test (when implemented):
+### Package-specific commands
 
 ```bash
-bun test path/to/test.test.ts
+bun run --filter @linear-opencode-agent/worker dev       # Run worker dev server
+bun run --filter @linear-opencode-agent/worker deploy    # Deploy worker only
+bun run --filter opencode-linear-agent build             # Build plugin only
+```
+
+---
+
+## Environment Variables
+
+### Required Variables
+
+| Variable                | Purpose                                  | Example                         |
+| ----------------------- | ---------------------------------------- | ------------------------------- |
+| `ANTHROPIC_API_KEY`     | API key for OpenCode AI operations       | `sk-ant-...`                    |
+| `LINEAR_CLIENT_ID`      | Linear OAuth app client ID               | `lin_api_...`                   |
+| `LINEAR_CLIENT_SECRET`  | Linear OAuth app client secret           | `lin_api_...`                   |
+| `LINEAR_WEBHOOK_SECRET` | Webhook signing secret from Linear       | `...`                           |
+| `GITHUB_TOKEN`          | Token for cloning repositories           | `ghp_...`                       |
+| `ADMIN_API_KEY`         | Protects OpenCode UI and admin endpoints | `sk-admin-xxxxxxxxxxxx`         |
+| `REPO_URL`              | Repository the agent works on            | `https://github.com/owner/repo` |
+
+### Local Development
+
+Create a `.dev.vars` file in the `packages/worker/` directory (or root) with your secrets.
+
+### Production
+
+Set secrets via wrangler:
+
+```bash
+wrangler secret put ANTHROPIC_API_KEY
+wrangler secret put ADMIN_API_KEY
+wrangler secret put REPO_URL
+# ... etc
 ```
 
 ---
@@ -77,7 +148,7 @@ bun test path/to/test.test.ts
 - **Target**: ESNext
 - **Module**: ESNext with bundler resolution
 - **Strict mode**: Enabled
-- **No emit**: True (type checking only)
+- **No emit**: True (base config, packages override)
 
 ### Linting Rules (oxlint)
 
@@ -88,16 +159,9 @@ The project uses oxlint with aggressive rules:
 - `suspicious: all` - Suspicious code patterns
 - `perf: all` - Performance rules
 
-**Key implications**:
-
-- No unused variables
-- Strict null checks
-- No type assertions without justification
-- Prefer const over let where possible
-
 ### Imports & Module Organization
 
-**Import order** (follow existing patterns in `src/index.ts`):
+**Import order** (follow existing patterns):
 
 1. External packages (e.g., `@cloudflare/sandbox`)
 2. Specific named imports grouped logically
@@ -111,197 +175,46 @@ import { getSandbox } from "@cloudflare/sandbox";
 import {
   createOpencodeServer,
   proxyToOpencode,
-  createOpencode,
 } from "@cloudflare/sandbox/opencode";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 
 export { Sandbox } from "@cloudflare/sandbox";
 ```
 
-### Formatting (Prettier)
-
-- Managed by `.prettierignore` (excludes node_modules, dist, build, .wrangler, lock files)
-- Always run `bun run format:fix` before committing
-
 ### Naming Conventions
 
-**Variables & Functions**: camelCase
-
-```typescript
-const sandboxInstance = getSandbox(env.Sandbox, "linear-opencode-agent");
-async function createSession() { ... }
-```
-
-**Types & Interfaces**: PascalCase
-
-```typescript
-interface OpencodeClient { ... }
-type ExportedHandlerFetchHandler<Env = unknown> = ...
-```
-
-**Constants**: UPPER_SNAKE_CASE (for true constants)
-
-```typescript
-const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-```
-
-**Files**: kebab-case for new files
-
-```typescript
-// Good: opencode-agent.ts, linear-client.ts
-// Avoid: OpencodeAgent.ts, opencode_agent.ts
-```
-
-### Type Annotations
-
-**Explicit return types** on exported functions:
-
-```typescript
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // ...
-  },
-};
-```
-
-**Use type imports** where possible:
-
-```typescript
-import type { OpencodeClient } from "@opencode-ai/sdk";
-```
-
-**Avoid `any`** - use `unknown` or proper typing:
-
-```typescript
-// Bad
-function process(data: any) { ... }
-
-// Good
-function process(data: unknown) { ... }
-function process<T>(data: T) { ... }
-```
+- **Variables & Functions**: camelCase
+- **Types & Interfaces**: PascalCase
+- **Constants**: UPPER_SNAKE_CASE (for true constants)
+- **Files**: kebab-case for new files
 
 ### Error Handling
 
-**Always handle errors in async operations**:
-
-```typescript
-if (!session.data) {
-  return Response.json({ error: "Failed to create session" }, { status: 500 });
-}
-```
-
-**Use structured error responses**:
-
-```typescript
-return Response.json({ error: "Descriptive error message" }, { status: 400 });
-```
-
-**Avoid throwing unhandled errors** in Worker fetch handlers - return error responses instead.
-
-### Environment Variables
-
-**Access via typed `Env` interface**:
-
-```typescript
-interface Env {
-  Sandbox: DurableObjectNamespace<import("./src/index").Sandbox>;
-  ANTHROPIC_API_KEY: string;
-}
-
-// Usage
-const apiKey = env.ANTHROPIC_API_KEY;
-```
-
-**Local development**: Use `.dev.vars` (never commit secrets)
-**Production**: Set via `wrangler secret put VARIABLE_NAME`
-
-### Response Patterns
-
-**JSON responses**:
-
-```typescript
-return Response.json({ key: "value" });
-```
-
-**Text responses**:
-
-```typescript
-return new Response("Plain text content");
-```
-
-**With status codes**:
-
-```typescript
-return Response.json({ error: "Not found" }, { status: 404 });
-```
-
-### Async/Await
-
-- Prefer `async/await` over raw Promises
-- Always await async operations in Workers (no fire-and-forget)
-- Use `ctx.waitUntil()` for background operations
-
-### Comments
-
-- Use JSDoc for exported functions/types
-- Inline comments for complex logic only
-- Avoid obvious comments - code should be self-documenting
+- Always handle errors in async operations
+- Use structured error responses: `Response.json({ error: "..." }, { status: 400 })`
+- Avoid throwing unhandled errors in Worker fetch handlers
 
 ---
 
-## Project-Specific Patterns
+## API Endpoints
 
-### Cloudflare Workers Handler
+### Public Endpoints
 
-The main export is a `fetch` handler:
+| Endpoint           | Method | Description                         |
+| ------------------ | ------ | ----------------------------------- |
+| `/health`          | GET    | Health check                        |
+| `/oauth/authorize` | GET    | Start Linear OAuth flow             |
+| `/oauth/callback`  | GET    | OAuth redirect (CSRF protected)     |
+| `/webhook/linear`  | POST   | Linear webhook (signature verified) |
 
-```typescript
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    // Route handling logic
-  },
-};
-```
+### Protected Endpoints (require `?key=ADMIN_API_KEY`)
 
-### Sandbox Usage
-
-```typescript
-const sandbox = getSandbox(env.Sandbox, "unique-sandbox-id");
-await sandbox.exec("command");
-await sandbox.writeFile("/path", "content");
-const file = await sandbox.readFile("/path");
-```
-
-### OpenCode Integration
-
-```typescript
-// Web UI (proxy approach)
-const server = await createOpencodeServer(sandbox, { ... });
-return proxyToOpencode(request, sandbox, server);
-
-// Programmatic SDK
-const { client } = await createOpencode<OpencodeClient>(sandbox, { ... });
-const session = await client.session.create({ body: { title: "..." } });
-```
-
----
-
-## File Structure
-
-```
-.
-├── src/
-│   └── index.ts              # Main Worker with OpenCode integration
-├── Dockerfile                # OpenCode-enabled Sandbox container
-├── wrangler.jsonc            # Cloudflare Workers config
-├── tsconfig.json             # TypeScript configuration
-├── oxlintrc.json             # Linting rules
-├── package.json              # Dependencies & scripts
-├── .dev.vars.example         # Environment variable template
-└── worker-configuration.d.ts # Generated Cloudflare types
-```
+| Endpoint     | Method | Description        |
+| ------------ | ------ | ------------------ |
+| `/`          | GET    | Info page          |
+| `/opencode`  | GET    | OpenCode Web UI    |
+| `/session/*` | \*     | Session management |
+| `/event/*`   | \*     | Event streaming    |
 
 ---
 
@@ -309,22 +222,22 @@ const session = await client.session.create({ body: { title: "..." } });
 
 ### Adding a new endpoint
 
-1. Add route logic in `src/index.ts` fetch handler
+1. Add route logic in `packages/worker/src/index.ts` fetch handler
 2. Parse URL pathname: `const url = new URL(request.url)`
-3. Return appropriate Response object
-4. Run `bun run check` before committing
+3. Add auth check if needed: `if (!validateApiKey(request, env)) return unauthorizedResponse()`
+4. Return appropriate Response object
+5. Run `bun run check` before committing
 
-### Updating dependencies
+### Updating the plugin
+
+1. Edit `packages/opencode-linear-agent/src/index.ts`
+2. Run `bun run build` to rebuild
+3. Test locally with `bun run dev`
+
+### Regenerating Cloudflare types
 
 ```bash
-bun update
-# Update Dockerfile to match sandbox version if needed
-```
-
-### Regenerating types
-
-```bash
-bun run cf-typegen  # Updates worker-configuration.d.ts
+cd packages/worker && bun run cf-typegen
 ```
 
 ---
@@ -333,11 +246,11 @@ bun run cf-typegen  # Updates worker-configuration.d.ts
 
 Before committing changes, ensure:
 
-1. ✅ `bun run typecheck` passes
-2. ✅ `bun run lint:check` passes
-3. ✅ `bun run format:check` passes
-4. ✅ No secrets in `.dev.vars` (should be gitignored)
-5. ✅ Update Dockerfile version if dependencies changed
+1. `bun run typecheck` passes
+2. `bun run lint:check` passes
+3. `bun run format:check` passes
+4. No secrets in `.dev.vars` (should be gitignored)
+5. Plugin is built if changed: `bun run build`
 
 Or simply run:
 
@@ -349,11 +262,12 @@ bun run check  # Runs all three checks
 
 ## Troubleshooting
 
-**Type errors**: Run `bun run cf-typegen` to regenerate types
+**Type errors**: Run `cd packages/worker && bun run cf-typegen` to regenerate types
 **Lint errors**: Run `bun run lint:fix` to auto-fix
 **Format errors**: Run `bun run format:fix` to auto-format
 **Container build slow**: First run builds Docker image (2-3 min), subsequent runs are fast
-**Dev server issues**: Check `.dev.vars` exists with valid `ANTHROPIC_API_KEY`
+**Dev server issues**: Check `.dev.vars` exists with all required variables
+**Plugin not updating**: Ensure you run `bun run build` after plugin changes
 
 ---
 
@@ -362,4 +276,5 @@ bun run check  # Runs all three checks
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
 - [Sandbox SDK](https://developers.cloudflare.com/sandbox/)
 - [OpenCode Documentation](https://opencode.ai/docs)
+- [Linear SDK](https://developers.linear.app/docs/sdk/getting-started)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)

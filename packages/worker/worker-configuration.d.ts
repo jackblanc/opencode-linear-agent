@@ -14,6 +14,8 @@ declare namespace Cloudflare {
 		LINEAR_CLIENT_SECRET: string;
 		LINEAR_WEBHOOK_SECRET: string;
 		GITHUB_TOKEN: string;
+		ADMIN_API_KEY: string;
+		REPO_URL: string;
 		Sandbox: DurableObjectNamespace<import("./src/index").Sandbox>;
 	}
 }
@@ -22,7 +24,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ANTHROPIC_API_KEY" | "LINEAR_CLIENT_ID" | "LINEAR_CLIENT_SECRET" | "LINEAR_WEBHOOK_SECRET" | "GITHUB_TOKEN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "ANTHROPIC_API_KEY" | "LINEAR_CLIENT_ID" | "LINEAR_CLIENT_SECRET" | "LINEAR_WEBHOOK_SECRET" | "GITHUB_TOKEN" | "ADMIN_API_KEY" | "REPO_URL">> {}
 }
 
 // Begin runtime types
