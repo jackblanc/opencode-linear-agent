@@ -5,6 +5,7 @@ import { getSandbox } from "@cloudflare/sandbox";
 import { createOpencode } from "@cloudflare/sandbox/opencode";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { getConfig } from "./config";
+import { refreshAccessToken } from "./oauth";
 
 // Shared sandbox ID for all OpenCode access (web UI and Linear webhooks)
 const SANDBOX_ID = "opencode-instance";
@@ -187,16 +188,21 @@ async function processAgentSessionEvent(
     return;
   }
 
-  const tokenData = await env.LINEAR_TOKENS.get(
-    `org:${organizationId}`,
-    "json",
-  );
-  if (!tokenData) {
-    console.error("No access token found for organization", { organizationId });
-    return;
+  // Try to get access token, refresh if expired (missing due to TTL)
+  let accessToken = await env.KV.get(`token:access:${organizationId}`);
+  if (!accessToken) {
+    console.info("Access token expired, refreshing...", { organizationId });
+    try {
+      accessToken = await refreshAccessToken(env, organizationId);
+    } catch (error) {
+      console.error("Failed to refresh access token", {
+        error,
+        organizationId,
+      });
+      return;
+    }
   }
 
-  const accessToken = (tokenData as { accessToken: string }).accessToken;
   const linearClient = new LinearClient({ accessToken });
   const linearSessionId = payload.agentSession.id;
 
@@ -221,7 +227,7 @@ async function processAgentSessionEvent(
     // Get or create OpenCode session for this Linear session
     const opencodeSessionId = await getOrCreateSession(
       client,
-      env.LINEAR_TOKENS,
+      env.KV,
       linearSessionId,
     );
 

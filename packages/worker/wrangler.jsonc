@@ -37,14 +37,9 @@
   ],
   "kv_namespaces": [
     {
-      "binding": "LINEAR_TOKENS",
+      "binding": "KV",
       "id": "142a97b9627c4842b05cf881a3826ba3",
       "preview_id": "1a426ee934dd4a64bc32487dfa2ca203",
-    },
-    {
-      "binding": "OAUTH_STATES",
-      "id": "196337b4c1244746ae38c2cee40f0fd3",
-      "preview_id": "6255109a65794b8297e98743651dcaa9",
     },
   ],
 
