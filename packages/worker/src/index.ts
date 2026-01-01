@@ -12,7 +12,8 @@ export { Sandbox } from "@cloudflare/sandbox";
 
 // Default sandbox ID for web UI
 const DEFAULT_SANDBOX_ID = "opencode-dev";
-const PROJECT_DIR = "/home/user/project";
+// Default working directory in Cloudflare Sandbox (matches gitCheckout default)
+const PROJECT_DIR = "/workspace";
 
 export default {
   async fetch(
@@ -60,10 +61,6 @@ export default {
       }
 
       const sandbox = getSandbox(env.Sandbox, DEFAULT_SANDBOX_ID);
-
-      // Ensure project directory exists
-      await sandbox.exec(`mkdir -p ${PROJECT_DIR}`, { timeout: 10000 });
-
       const server = await createOpencodeServer(sandbox, {
         directory: PROJECT_DIR,
         config: getConfig(env),
