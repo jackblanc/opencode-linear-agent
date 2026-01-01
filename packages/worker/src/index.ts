@@ -60,6 +60,10 @@ export default {
       }
 
       const sandbox = getSandbox(env.Sandbox, DEFAULT_SANDBOX_ID);
+
+      // Ensure project directory exists
+      await sandbox.exec(`mkdir -p ${PROJECT_DIR}`, { timeout: 10000 });
+
       const server = await createOpencodeServer(sandbox, {
         directory: PROJECT_DIR,
         config: getConfig(env),
