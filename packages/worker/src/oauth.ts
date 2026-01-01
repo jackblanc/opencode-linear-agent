@@ -1,10 +1,10 @@
 import { LinearClient } from "@linear/sdk";
 
 /**
- * Token storage structure for KV
+ * Refresh token storage structure for KV (permanent)
  */
-interface LinearTokenData {
-  accessToken: string;
+interface RefreshTokenData {
+  refreshToken: string;
   appId: string;
   organizationId: string;
   installedAt: string;
@@ -13,6 +13,9 @@ interface LinearTokenData {
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
+
+// Access token TTL: 23 hours (Linear tokens expire after 24 hours)
+const ACCESS_TOKEN_TTL_SECONDS = 23 * 60 * 60;
 
 /**
  * Required OAuth scopes for the agent
@@ -31,7 +34,7 @@ export async function handleAuthorize(
   const state = crypto.randomUUID();
 
   // Store state in KV with 5-minute TTL for CSRF protection
-  await env.OAUTH_STATES.put(state, "pending", { expirationTtl: 300 });
+  await env.KV.put(`oauth:state:${state}`, "pending", { expirationTtl: 300 });
 
   // Generate callback URL from the request origin
   const url = new URL(request.url);
@@ -63,6 +66,7 @@ async function exchangeCodeForToken(
   request: Request,
 ): Promise<{
   accessToken: string;
+  refreshToken: string;
   tokenType: string;
   expiresIn: number;
   scope: string[];
@@ -98,6 +102,7 @@ async function exchangeCodeForToken(
 
   const data = await response.json<{
     access_token: string;
+    refresh_token: string;
     token_type: string;
     expires_in: number;
     scope: string[];
@@ -107,10 +112,86 @@ async function exchangeCodeForToken(
 
   return {
     accessToken: data.access_token,
+    refreshToken: data.refresh_token,
     tokenType: data.token_type,
     expiresIn: data.expires_in,
     scope: data.scope,
   };
+}
+
+/**
+ * Refreshes an expired access token using the refresh token
+ * Also updates both the access token and refresh token in KV
+ */
+export async function refreshAccessToken(
+  env: Env,
+  organizationId: string,
+): Promise<string> {
+  console.info("Refreshing access token", { organizationId });
+
+  // Get refresh token data from KV
+  const refreshData = await env.KV.get<RefreshTokenData>(
+    `token:refresh:${organizationId}`,
+    "json",
+  );
+
+  if (!refreshData) {
+    throw new Error(
+      `No refresh token found for organization ${organizationId}. Please re-authorize at /oauth/authorize`,
+    );
+  }
+
+  // Exchange refresh token for new tokens
+  const response = await fetch(LINEAR_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: env.LINEAR_CLIENT_ID,
+      client_secret: env.LINEAR_CLIENT_SECRET,
+      refresh_token: refreshData.refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error("Token refresh failed", undefined, {
+      status: response.status,
+      body: text,
+    });
+    throw new Error(
+      `Token refresh failed: ${response.status}. Please re-authorize at /oauth/authorize`,
+    );
+  }
+
+  const data = await response.json<{
+    access_token: string;
+    refresh_token: string;
+    token_type: string;
+    expires_in: number;
+    scope: string[];
+  }>();
+
+  console.info("Token refresh successful", { organizationId });
+
+  // Store new access token with 23-hour TTL
+  await env.KV.put(`token:access:${organizationId}`, data.access_token, {
+    expirationTtl: ACCESS_TOKEN_TTL_SECONDS,
+  });
+
+  // Update refresh token data (Linear may rotate refresh tokens)
+  const updatedRefreshData: RefreshTokenData = {
+    ...refreshData,
+    refreshToken: data.refresh_token,
+  };
+  await env.KV.put(
+    `token:refresh:${organizationId}`,
+    JSON.stringify(updatedRefreshData),
+  );
+
+  return data.access_token;
 }
 
 /**
@@ -152,7 +233,7 @@ export async function handleCallback(
   }
 
   // Validate state parameter against stored value in KV
-  const storedState = await env.OAUTH_STATES.get(state);
+  const storedState = await env.KV.get(`oauth:state:${state}`);
   if (!storedState) {
     console.warn("Invalid or expired OAuth state", { state });
     return new Response(
@@ -162,7 +243,7 @@ export async function handleCallback(
   }
 
   // Delete state (one-time use)
-  await env.OAUTH_STATES.delete(state);
+  await env.KV.delete(`oauth:state:${state}`);
   console.debug("State validated successfully");
 
   try {
@@ -181,23 +262,27 @@ export async function handleCallback(
       organizationName: organization.name,
     });
 
-    // Store token data in KV using organization ID as key
-    const tokenStorageData: LinearTokenData = {
-      accessToken: tokenData.accessToken,
+    // Store access token with 23-hour TTL
+    await env.KV.put(`token:access:${organization.id}`, tokenData.accessToken, {
+      expirationTtl: ACCESS_TOKEN_TTL_SECONDS,
+    });
+
+    // Store refresh token data (permanent)
+    const refreshData: RefreshTokenData = {
+      refreshToken: tokenData.refreshToken,
       appId: viewer.id,
       organizationId: organization.id,
       installedAt: new Date().toISOString(),
       workspaceName: organization.name,
     };
-
-    // Store with organization ID - this matches what webhooks provide
-    await env.LINEAR_TOKENS.put(
-      `org:${organization.id}`,
-      JSON.stringify(tokenStorageData),
+    await env.KV.put(
+      `token:refresh:${organization.id}`,
+      JSON.stringify(refreshData),
     );
 
-    console.info("Token stored successfully", {
-      key: `org:${organization.id}`,
+    console.info("Tokens stored successfully", {
+      accessKey: `token:access:${organization.id}`,
+      refreshKey: `token:refresh:${organization.id}`,
       appId: viewer.id,
     });
 
@@ -235,7 +320,7 @@ export async function handleCallback(
 </head>
 <body>
   <div class="card">
-    <h1>✓ Setup Complete!</h1>
+    <h1>Setup Complete!</h1>
     <p class="success">Your Linear OpenCode Agent is now connected.</p>
     
     <h2>Next Steps:</h2>

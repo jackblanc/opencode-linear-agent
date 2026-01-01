@@ -7,8 +7,7 @@ declare namespace Cloudflare {
 		durableNamespaces: "Sandbox";
 	}
 	interface Env {
-		LINEAR_TOKENS: KVNamespace;
-		OAUTH_STATES: KVNamespace;
+		KV: KVNamespace;
 		ANTHROPIC_API_KEY: string;
 		LINEAR_CLIENT_ID: string;
 		LINEAR_CLIENT_SECRET: string;
