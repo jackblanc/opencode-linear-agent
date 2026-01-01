@@ -6,6 +6,9 @@ import { createOpencode } from "@cloudflare/sandbox/opencode";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { getConfig } from "./config";
 
+// Shared sandbox ID for all OpenCode access (web UI and Linear webhooks)
+const SANDBOX_ID = "opencode-instance";
+
 // Default working directory in Cloudflare Sandbox (matches gitCheckout default)
 const PROJECT_DIR = "/workspace";
 
@@ -25,22 +28,20 @@ interface SessionState {
 }
 
 /**
- * Get or create the OpenCode client for an organization.
- * One sandbox/OpenCode instance per organization.
+ * Get or create the OpenCode client.
+ * Uses a single shared sandbox instance.
  */
 async function getOpencodeClient(
   env: Env,
-  organizationId: string,
   accessToken: string,
 ): Promise<OpencodeClient> {
-  // One sandbox per organization - stays warm across requests
-  const sandbox = getSandbox(env.Sandbox, `org-${organizationId}`);
+  const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
 
   // Explicitly start the container - it may be sleeping or not yet started
   // The SDK's lazy start doesn't always work reliably
-  console.info("Starting sandbox container", { organizationId });
+  console.info("Starting sandbox container");
   await sandbox.start();
-  console.info("Sandbox container started", { organizationId });
+  console.info("Sandbox container started");
 
   // Ensure project directory exists
   await sandbox.exec(`mkdir -p ${PROJECT_DIR}`, { timeout: 30000 });
@@ -120,11 +121,10 @@ async function getOrCreateSession(
  */
 async function ensureRepoCloned(
   env: Env,
-  organizationId: string,
   linearSessionId: string,
   linearClient: LinearClient,
 ): Promise<void> {
-  const sandbox = getSandbox(env.Sandbox, `org-${organizationId}`);
+  const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
 
   // Check if repo already exists in the container filesystem
   const repoExists = await sandbox.exists(`${PROJECT_DIR}/.git`);
@@ -215,8 +215,8 @@ async function processAgentSessionEvent(
   }
 
   try {
-    // Get OpenCode client (reuses existing sandbox for this org)
-    const client = await getOpencodeClient(env, organizationId, accessToken);
+    // Get OpenCode client (reuses shared sandbox)
+    const client = await getOpencodeClient(env, accessToken);
 
     // Get or create OpenCode session for this Linear session
     const opencodeSessionId = await getOrCreateSession(
@@ -229,12 +229,7 @@ async function processAgentSessionEvent(
       console.info("New agent session created");
 
       // Ensure repo is cloned
-      await ensureRepoCloned(
-        env,
-        organizationId,
-        linearSessionId,
-        linearClient,
-      );
+      await ensureRepoCloned(env, linearSessionId, linearClient);
 
       const prompt = payload.promptContext || "Please help with this issue.";
 

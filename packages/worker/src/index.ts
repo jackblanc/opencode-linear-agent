@@ -10,8 +10,8 @@ import { getConfig } from "./config";
 
 export { Sandbox } from "@cloudflare/sandbox";
 
-// Default sandbox ID for web UI
-const DEFAULT_SANDBOX_ID = "opencode-dev";
+// Shared sandbox ID for all OpenCode access (web UI and Linear webhooks)
+const SANDBOX_ID = "opencode-instance";
 // Default working directory in Cloudflare Sandbox (matches gitCheckout default)
 const PROJECT_DIR = "/workspace";
 
@@ -76,7 +76,7 @@ export default {
         return unauthorizedResponse();
       }
 
-      const sandbox = getSandbox(env.Sandbox, DEFAULT_SANDBOX_ID);
+      const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
       const server = await createOpencodeServer(sandbox, {
         directory: PROJECT_DIR,
         config: getConfig(env),
