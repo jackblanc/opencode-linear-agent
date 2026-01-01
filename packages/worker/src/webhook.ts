@@ -6,7 +6,8 @@ import { createOpencode } from "@cloudflare/sandbox/opencode";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { getConfig } from "./config";
 
-const PROJECT_DIR = "/home/user/project";
+// Default working directory in Cloudflare Sandbox (matches gitCheckout default)
+const PROJECT_DIR = "/workspace";
 
 // Port used by OpenCode server (default)
 const OPENCODE_PORT = 4096;
@@ -126,19 +127,10 @@ async function ensureRepoCloned(
   const sandbox = getSandbox(env.Sandbox, `org-${organizationId}`);
 
   // Check if repo already exists in the container filesystem
-  try {
-    const result = await sandbox.exec(
-      `test -d ${PROJECT_DIR}/.git && echo "exists"`,
-      {
-        timeout: 10000,
-      },
-    );
-    if (result.stdout?.includes("exists")) {
-      console.info("Repository already cloned");
-      return;
-    }
-  } catch {
-    // Directory doesn't exist, proceed to clone
+  const repoExists = await sandbox.exists(`${PROJECT_DIR}/.git`);
+  if (repoExists.exists) {
+    console.info("Repository already cloned");
+    return;
   }
 
   // Validate REPO_URL and GITHUB_TOKEN are configured
@@ -165,7 +157,7 @@ async function ensureRepoCloned(
     `https://${env.GITHUB_TOKEN}@github.com/`,
   );
 
-  await sandbox.gitCheckout(authedRepoUrl, { targetDir: PROJECT_DIR });
+  await sandbox.gitCheckout(authedRepoUrl);
 
   console.info("Repository cloned successfully");
 }
