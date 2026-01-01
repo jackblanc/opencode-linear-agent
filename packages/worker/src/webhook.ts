@@ -141,10 +141,12 @@ async function ensureRepoCloned(
     // Directory doesn't exist, proceed to clone
   }
 
-  // Validate REPO_URL is configured
-  const repoUrl = env.REPO_URL;
-  if (!repoUrl) {
+  // Validate REPO_URL and GITHUB_TOKEN are configured
+  if (!env.REPO_URL) {
     throw new Error("REPO_URL environment variable is not configured");
+  }
+  if (!env.GITHUB_TOKEN) {
+    throw new Error("GITHUB_TOKEN environment variable is not configured");
   }
 
   await linearClient.createAgentActivity({
@@ -156,21 +158,14 @@ async function ensureRepoCloned(
     ephemeral: true,
   });
 
-  // Validate GITHUB_TOKEN is configured
-  if (!env.GITHUB_TOKEN) {
-    throw new Error("GITHUB_TOKEN environment variable is not configured");
-  }
-
-  // Clone with authentication
-  // Note: We use git credential helper to avoid token appearing in command logs
-  await sandbox.exec(
-    `git config --global credential.helper '!f() { echo "password=${env.GITHUB_TOKEN}"; }; f'`,
-    { timeout: 10000 },
+  // Clone with authentication using SDK's gitCheckout
+  // Embed token in URL for private repo access
+  const authedRepoUrl = env.REPO_URL.replace(
+    "https://github.com/",
+    `https://${env.GITHUB_TOKEN}@github.com/`,
   );
 
-  await sandbox.exec(`git clone ${repoUrl} ${PROJECT_DIR}`, {
-    timeout: 120000,
-  });
+  await sandbox.gitCheckout(authedRepoUrl, { targetDir: PROJECT_DIR });
 
   console.info("Repository cloned successfully");
 }
