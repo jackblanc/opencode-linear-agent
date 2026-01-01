@@ -15,7 +15,7 @@
   "containers": [
     {
       "class_name": "Sandbox",
-      "image": "./Dockerfile",
+      "image": "../../Dockerfile",
       // Use "basic" for more memory (1 GiB vs 256 MiB) - needed for OpenCode + AI operations
       "instance_type": "basic",
       "max_instances": 3,
