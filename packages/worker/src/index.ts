@@ -49,14 +49,30 @@ export default {
       });
     }
 
-    // Protected OpenCode UI routes - require API key
-    if (
+    // OpenCode UI and API routes
+    // Auth is required for the main entry point, but static assets and API
+    // calls are proxied through (OpenCode handles its own session management)
+    const isOpencodeRoute =
       url.pathname.startsWith("/session") ||
       url.pathname.startsWith("/event") ||
-      url.pathname === "/opencode" ||
-      url.pathname.startsWith("/opencode/")
-    ) {
-      if (!validateApiKey(request, env)) {
+      url.pathname.startsWith("/opencode") ||
+      url.pathname.startsWith("/assets") ||
+      url.pathname.startsWith("/_app") ||
+      url.pathname.startsWith("/@") ||
+      url.pathname.endsWith(".js") ||
+      url.pathname.endsWith(".css") ||
+      url.pathname.endsWith(".svg") ||
+      url.pathname.endsWith(".png") ||
+      url.pathname.endsWith(".ico");
+
+    if (isOpencodeRoute) {
+      // Require API key for main entry points, allow assets through
+      const isEntryPoint =
+        url.pathname === "/opencode" ||
+        url.pathname.startsWith("/session") ||
+        url.pathname.startsWith("/event");
+
+      if (isEntryPoint && !validateApiKey(request, env)) {
         return unauthorizedResponse();
       }
 
