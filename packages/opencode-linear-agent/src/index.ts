@@ -14,7 +14,7 @@
  *   is set after the plugin initializes.
  */
 
-import { LinearClient } from "@linear/sdk";
+import { LinearClient, AgentActivitySignal } from "@linear/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Event, Part, ToolPart } from "@opencode-ai/sdk";
 
@@ -123,6 +123,7 @@ function mapTodoStatus(
 
 /**
  * Send an activity to Linear using the SDK
+ * @param signal - Optional signal to send with the activity (e.g., AgentActivitySignal.Stop to end session)
  */
 async function sendLinearActivity(
   linearClient: LinearClient,
@@ -135,12 +136,14 @@ async function sendLinearActivity(
     result?: string;
   },
   ephemeral = false,
+  signal?: AgentActivitySignal,
 ): Promise<void> {
   try {
     await linearClient.createAgentActivity({
       agentSessionId: sessionId,
       content,
       ephemeral,
+      signal,
     });
   } catch (error) {
     console.error("[LINEAR PLUGIN] Failed to send activity:", error);
@@ -410,6 +413,8 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
               path: { id: opencodeSessionId },
             });
 
+            let sentStopSignal = false;
+
             if (messagesResponse.data) {
               // Find the last assistant message and extract its text parts
               const messages = messagesResponse.data;
@@ -431,30 +436,60 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
                       "[LINEAR PLUGIN] Sending final message text:",
                       fullText.slice(0, 100) + "...",
                     );
+                    // Send with Stop signal to mark session as complete
                     await sendLinearActivity(
                       linearClient,
                       linearSessionId,
                       { type: "response", body: fullText },
                       false,
+                      AgentActivitySignal.Stop,
                     );
                     // Mark all as sent
                     textParts.forEach((p) => sentParts.add(p.id));
+                  } else {
+                    // No unsent text parts, still send Stop signal to complete session
+                    console.log(
+                      "[LINEAR PLUGIN] No new text to send, sending Stop signal",
+                    );
+                    await sendLinearActivity(
+                      linearClient,
+                      linearSessionId,
+                      { type: "response", body: "Task completed." },
+                      false,
+                      AgentActivitySignal.Stop,
+                    );
                   }
+                  sentStopSignal = true;
                   break; // Only send the last assistant message
                 }
               }
+            }
+
+            // Ensure we always send a Stop signal even if no assistant message found
+            if (!sentStopSignal) {
+              console.log(
+                "[LINEAR PLUGIN] No assistant message found, sending Stop signal",
+              );
+              await sendLinearActivity(
+                linearClient,
+                linearSessionId,
+                { type: "response", body: "Task completed." },
+                false,
+                AgentActivitySignal.Stop,
+              );
             }
           } catch (error) {
             console.error(
               "[LINEAR PLUGIN] Error fetching session messages:",
               error,
             );
-            // Fall back to generic completion message
+            // Fall back to generic completion message with Stop signal
             await sendLinearActivity(
               linearClient,
               linearSessionId,
               { type: "response", body: "Task completed." },
               false,
+              AgentActivitySignal.Stop,
             );
           }
         }
