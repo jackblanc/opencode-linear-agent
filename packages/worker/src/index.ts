@@ -2,7 +2,7 @@ import { handleAuthorize, handleCallback } from "./oauth";
 import { handleWebhook } from "./webhook";
 import { validateBasicAuth, unauthorizedResponse } from "./auth";
 import { proxyToOpencode } from "@cloudflare/sandbox/opencode";
-import { getOrInitializeSandboxDefault } from "./sandbox";
+import { getOrInitializeSandbox } from "./sandbox";
 
 export { Sandbox } from "@cloudflare/sandbox";
 
@@ -102,7 +102,10 @@ export default {
     }
 
     // All authenticated requests proxy to OpenCode
-    const { sandbox, server } = await getOrInitializeSandboxDefault(env);
+    const { sandbox, server } = await getOrInitializeSandbox(
+      env,
+      env.LINEAR_ORGANIZATION_ID,
+    );
     const response = await proxyToOpencode(request, sandbox, server);
 
     // Fix missing/incorrect Content-Type for static assets
