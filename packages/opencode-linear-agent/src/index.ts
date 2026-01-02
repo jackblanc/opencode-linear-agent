@@ -16,6 +16,7 @@
 
 import { LinearClient } from "@linear/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
+import type { Event, Part, ToolPart } from "@opencode-ai/sdk";
 
 // Prefix used in OpenCode session titles to identify Linear sessions
 const LINEAR_SESSION_PREFIX = "linear:";
@@ -62,6 +63,14 @@ function getToolActionName(toolName: string, completed: boolean): string {
 }
 
 /**
+ * Safely extract a string from an unknown input object
+ */
+function getString(input: Record<string, unknown>, key: string): string | null {
+  const value = input[key];
+  return typeof value === "string" ? value : null;
+}
+
+/**
  * Extract parameter from tool input
  */
 function extractToolParameter(
@@ -73,17 +82,21 @@ function extractToolParameter(
     case "read":
     case "edit":
     case "write":
-      return (input.filePath as string) || (input.path as string) || "file";
+      return getString(input, "filePath") ?? getString(input, "path") ?? "file";
     case "bash":
-      return (input.command as string) || "command";
+      return getString(input, "command") ?? "command";
     case "glob":
     case "grep":
-      return (input.pattern as string) || "pattern";
+      return getString(input, "pattern") ?? "pattern";
     case "task":
-      return (input.description as string) || "task";
+      return getString(input, "description") ?? "task";
     default: {
       const firstKey = Object.keys(input)[0];
-      return firstKey ? String(input[firstKey]).slice(0, 100) : toolName;
+      if (firstKey) {
+        const value = input[firstKey];
+        return String(value).slice(0, 100);
+      }
+      return toolName;
     }
   }
 }
@@ -151,6 +164,42 @@ async function updateLinearPlan(
 }
 
 /**
+ * Type guard: check if part is a ToolPart
+ */
+function isToolPart(part: Part): part is ToolPart {
+  return part.type === "tool";
+}
+
+/**
+ * Type guard: check if part has text property
+ */
+function hasText(part: Part): part is Part & { text: string } {
+  return "text" in part && typeof part.text === "string";
+}
+
+/**
+ * Extract sessionID from an event based on its type.
+ * We only handle events that are relevant for Linear integration.
+ */
+function getSessionIdFromEvent(event: Event): string | null {
+  // Only handle events we care about for Linear integration
+  // Other event types don't need to be forwarded to Linear
+  if (event.type === "message.part.updated") {
+    return event.properties.part.sessionID;
+  }
+  if (event.type === "session.error") {
+    return event.properties.sessionID ?? null;
+  }
+  if (event.type === "session.idle") {
+    return event.properties.sessionID;
+  }
+  if (event.type === "todo.updated") {
+    return event.properties.sessionID;
+  }
+  return null;
+}
+
+/**
  * Linear Agent Plugin
  */
 export const LinearAgentPlugin: Plugin = async ({ client }) => {
@@ -194,179 +243,185 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
   return {
     event: async ({ event }) => {
       try {
+        console.log("[LINEAR PLUGIN] Event received:", event.type);
+
         // Get Linear client with fresh token
         const linearClient = getLinearClient();
         if (!linearClient) {
-          // Token not available yet - silently skip
+          console.log("[LINEAR PLUGIN] No LINEAR_ACCESS_TOKEN available");
           return;
         }
 
-        // Get the OpenCode session ID from the event
-        const properties = event.properties as Record<string, unknown>;
-        const opencodeSessionId = properties?.sessionId as string | undefined;
-
+        // Extract sessionID from the event
+        const opencodeSessionId = getSessionIdFromEvent(event);
         if (!opencodeSessionId) {
+          console.log(
+            "[LINEAR PLUGIN] No sessionID found in event:",
+            event.type,
+          );
           return;
         }
+
+        console.log(
+          "[LINEAR PLUGIN] Processing event for session:",
+          opencodeSessionId,
+        );
 
         // Look up the corresponding Linear session ID
         const linearSessionId = await getLinearSessionId(opencodeSessionId);
         if (!linearSessionId) {
-          // Not a Linear-linked session
+          console.log(
+            "[LINEAR PLUGIN] Not a Linear-linked session:",
+            opencodeSessionId,
+          );
           return;
         }
 
+        console.log("[LINEAR PLUGIN] Found Linear session:", linearSessionId);
+
         // Handle message part updates (tool calls, text, etc.)
         if (event.type === "message.part.updated") {
-          const part = event.properties.part as {
-            id: string;
-            type: string;
-            text?: string;
-            tool?: string;
-            state?: {
-              status: string;
-              input: Record<string, unknown>;
-              output?: string;
-              error?: string;
-            };
-          };
+          const { part } = event.properties;
+
+          console.log("[LINEAR PLUGIN] Part update:", part.type);
 
           // Skip if already sent (for non-ephemeral)
           if (sentParts.has(part.id)) {
             return;
           }
 
-          switch (part.type) {
-            case "text":
-              // Final text response
+          if (part.type === "text" && hasText(part)) {
+            // Final text response
+            console.log("[LINEAR PLUGIN] Sending text response to Linear");
+            await sendLinearActivity(
+              linearClient,
+              linearSessionId,
+              { type: "response", body: part.text },
+              false,
+            );
+            sentParts.add(part.id);
+          } else if (part.type === "reasoning" && hasText(part)) {
+            // Internal reasoning - ephemeral thought
+            await sendLinearActivity(
+              linearClient,
+              linearSessionId,
+              { type: "thought", body: part.text },
+              true,
+            );
+          } else if (isToolPart(part)) {
+            const { tool, state } = part;
+
+            console.log("[LINEAR PLUGIN] Tool:", tool, "Status:", state.status);
+
+            if (state.status === "running") {
+              // Tool starting - ephemeral action
+              console.log("[LINEAR PLUGIN] Tool running:", tool);
               await sendLinearActivity(
                 linearClient,
                 linearSessionId,
-                { type: "response", body: part.text },
+                {
+                  type: "action",
+                  action: getToolActionName(tool, false),
+                  parameter: extractToolParameter(tool, state.input),
+                },
+                true,
+              );
+            } else if (state.status === "completed") {
+              // Tool completed - persistent action with result
+              console.log("[LINEAR PLUGIN] Tool completed:", tool);
+              const output = state.output ?? "";
+              const result =
+                output.length > 500
+                  ? output.slice(0, 500) + "...(truncated)"
+                  : output;
+
+              await sendLinearActivity(
+                linearClient,
+                linearSessionId,
+                {
+                  type: "action",
+                  action: getToolActionName(tool, true),
+                  parameter: extractToolParameter(tool, state.input),
+                  result,
+                },
                 false,
               );
               sentParts.add(part.id);
-              break;
-
-            case "reasoning":
-              // Internal reasoning - ephemeral thought
+            } else if (state.status === "error") {
+              // Tool error
+              console.log("[LINEAR PLUGIN] Tool error:", tool);
               await sendLinearActivity(
                 linearClient,
                 linearSessionId,
-                { type: "thought", body: part.text },
-                true,
+                {
+                  type: "error",
+                  body: `${tool} failed: ${state.error ?? "Unknown error"}`,
+                },
+                false,
               );
-              break;
-
-            case "tool": {
-              const tool = part.tool!;
-              const state = part.state!;
-
-              if (state.status === "running") {
-                // Tool starting - ephemeral action
-                await sendLinearActivity(
-                  linearClient,
-                  linearSessionId,
-                  {
-                    type: "action",
-                    action: getToolActionName(tool, false),
-                    parameter: extractToolParameter(tool, state.input),
-                  },
-                  true,
-                );
-              } else if (state.status === "completed") {
-                // Tool completed - persistent action with result
-                const output = state.output || "";
-                const result =
-                  output.length > 500
-                    ? output.slice(0, 500) + "...(truncated)"
-                    : output;
-
-                await sendLinearActivity(
-                  linearClient,
-                  linearSessionId,
-                  {
-                    type: "action",
-                    action: getToolActionName(tool, true),
-                    parameter: extractToolParameter(tool, state.input),
-                    result,
-                  },
-                  false,
-                );
-                sentParts.add(part.id);
-              } else if (state.status === "error") {
-                // Tool error
-                await sendLinearActivity(
-                  linearClient,
-                  linearSessionId,
-                  { type: "error", body: `${tool} failed: ${state.error}` },
-                  false,
-                );
-                sentParts.add(part.id);
-              }
-              break;
+              sentParts.add(part.id);
             }
-
-            case "step-start":
-              await sendLinearActivity(
-                linearClient,
-                linearSessionId,
-                { type: "thought", body: "Working..." },
-                true,
-              );
-              break;
+          } else if (part.type === "step-start") {
+            await sendLinearActivity(
+              linearClient,
+              linearSessionId,
+              { type: "thought", body: "Working..." },
+              true,
+            );
           }
         }
 
         // Handle session errors
         if (event.type === "session.error") {
-          const error = event.properties as { message?: string };
+          const { error } = event.properties;
+          let errorMessage = "Unknown error";
+          if (
+            error &&
+            "data" in error &&
+            typeof error.data.message === "string"
+          ) {
+            errorMessage = error.data.message;
+          }
+          console.log("[LINEAR PLUGIN] Session error:", errorMessage);
           await sendLinearActivity(
             linearClient,
             linearSessionId,
             {
               type: "error",
-              body: `Session error: ${error.message || "Unknown error"}`,
+              body: `Session error: ${errorMessage}`,
             },
             false,
           );
         }
+
+        // Handle session idle (completion)
+        if (event.type === "session.idle") {
+          console.log("[LINEAR PLUGIN] Session idle - work complete");
+          await sendLinearActivity(
+            linearClient,
+            linearSessionId,
+            {
+              type: "response",
+              body: "Task completed.",
+            },
+            false,
+          );
+        }
+
+        // Handle todo updates -> sync to Linear plan
+        if (event.type === "todo.updated") {
+          const { todos } = event.properties;
+          console.log("[LINEAR PLUGIN] Todo updated:", todos.length, "items");
+
+          const plan = todos.map((todo) => ({
+            content: todo.content,
+            status: mapTodoStatus(todo.status),
+          }));
+
+          await updateLinearPlan(linearClient, linearSessionId, plan);
+        }
       } catch (error) {
         console.error("[LINEAR PLUGIN] Event handler error:", error);
-      }
-    },
-
-    // Handle todo updates -> sync to Linear plan
-    "todo.updated": async (input: {
-      sessionId?: string;
-      todos?: Array<{ content: string; status: string }>;
-    }) => {
-      try {
-        const linearClient = getLinearClient();
-        if (!linearClient) {
-          return;
-        }
-
-        // Get session ID from input
-        const opencodeSessionId = input.sessionId;
-        if (!opencodeSessionId) {
-          return;
-        }
-
-        const linearSessionId = await getLinearSessionId(opencodeSessionId);
-        if (!linearSessionId) {
-          return;
-        }
-
-        const todos = input.todos || [];
-        const plan = todos.map((todo) => ({
-          content: todo.content,
-          status: mapTodoStatus(todo.status),
-        }));
-
-        await updateLinearPlan(linearClient, linearSessionId, plan);
-      } catch (error) {
-        console.error("[LINEAR PLUGIN] Todo update error:", error);
       }
     },
   };

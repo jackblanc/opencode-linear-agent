@@ -1,5 +1,8 @@
 import { LinearWebhookClient } from "@linear/sdk/webhooks";
-import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type {
+  AgentSessionEventWebhookPayload,
+  LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import { LinearClient } from "@linear/sdk";
 import { getSandbox } from "@cloudflare/sandbox";
 import { createOpencode } from "@cloudflare/sandbox/opencode";
@@ -26,6 +29,15 @@ interface SessionState {
   opencodeSessionId: string;
   linearSessionId: string;
   lastActivityTime: number;
+}
+
+/**
+ * Type guard to check if payload is an AgentSessionEvent
+ */
+function isAgentSessionEvent(
+  payload: LinearWebhookPayload,
+): payload is AgentSessionEventWebhookPayload {
+  return payload.type === "AgentSessionEvent";
 }
 
 /**
@@ -237,13 +249,15 @@ async function processAgentSessionEvent(
       // Ensure repo is cloned
       await ensureRepoCloned(env, linearSessionId, linearClient);
 
-      const prompt = payload.promptContext || "Please help with this issue.";
+      const prompt = payload.promptContext ?? "Please help with this issue.";
 
-      console.info("Starting OpenCode prompt", {
+      console.info("Starting OpenCode prompt (async)", {
         sessionId: opencodeSessionId,
       });
 
-      await client.session.prompt({
+      // Use promptAsync to return immediately - the sandbox Durable Object
+      // continues running and the plugin streams events to Linear
+      await client.session.promptAsync({
         path: { id: opencodeSessionId },
         body: {
           model: {
@@ -254,7 +268,7 @@ async function processAgentSessionEvent(
         },
       });
 
-      console.info("OpenCode prompt completed");
+      console.info("OpenCode prompt started");
     } else if (payload.action === "prompted") {
       console.info("Agent prompted with follow-up");
 
@@ -279,11 +293,12 @@ async function processAgentSessionEvent(
       }
 
       const prompt =
-        payload.agentActivity?.content?.body ||
-        payload.promptContext ||
+        payload.agentActivity?.content?.body ??
+        payload.promptContext ??
         "Please continue.";
 
-      await client.session.prompt({
+      // Use promptAsync to return immediately
+      await client.session.promptAsync({
         path: { id: opencodeSessionId },
         body: {
           model: {
@@ -294,7 +309,7 @@ async function processAgentSessionEvent(
         },
       });
 
-      console.info("OpenCode prompt completed");
+      console.info("OpenCode prompt started");
     }
   } catch (error) {
     console.error("Error processing webhook", { error });
@@ -304,7 +319,7 @@ async function processAgentSessionEvent(
         agentSessionId: linearSessionId,
         content: {
           type: "error",
-          body: `Failed to process request: ${(error as Error).message}`,
+          body: `Failed to process request: ${error instanceof Error ? error.message : String(error)}`,
         },
       });
     } catch (activityError) {
@@ -334,25 +349,31 @@ export async function handleWebhook(
 
   const rawBody = Buffer.from(await request.arrayBuffer());
 
-  let payload: AgentSessionEventWebhookPayload;
+  // Parse and verify the webhook payload using the SDK
+  // parseData throws on invalid signature or timestamp
+  let webhookPayload: LinearWebhookPayload;
   try {
-    const parsed = JSON.parse(rawBody.toString());
-    const timestamp = parsed.webhookTimestamp;
-
-    const isValid = webhookClient.verify(rawBody, signature, timestamp);
-    if (!isValid) {
-      return new Response("Invalid webhook signature", { status: 400 });
-    }
-
-    payload = parsed as AgentSessionEventWebhookPayload;
+    const parsed: { webhookTimestamp?: number } = JSON.parse(
+      rawBody.toString(),
+    );
+    webhookPayload = webhookClient.parseData(
+      rawBody,
+      signature,
+      parsed.webhookTimestamp,
+    );
   } catch {
     return new Response("Invalid webhook", { status: 400 });
   }
 
-  if (payload.type !== "AgentSessionEvent") {
-    console.info("Ignoring non-AgentSessionEvent", { type: payload.type });
+  // Only handle AgentSessionEvent webhooks
+  if (!isAgentSessionEvent(webhookPayload)) {
+    console.info("Ignoring non-AgentSessionEvent", {
+      type: webhookPayload.type,
+    });
     return new Response("OK", { status: 200 });
   }
+
+  const payload = webhookPayload;
 
   console.info("Webhook received, processing in background", {
     action: payload.action,

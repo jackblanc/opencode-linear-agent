@@ -22,7 +22,7 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
-    console.debug("Request received", {
+    console.log("Request received", {
       method: request.method,
       pathname: url.pathname,
     });
