@@ -1,27 +1,38 @@
 /**
- * API key validation for protecting OpenCode UI and admin endpoints
+ * Authentication helpers for protecting routes
  */
 
 /**
- * Validate API key from query parameter
+ * Validate Basic Auth header against ADMIN_API_KEY
+ * Username is ignored, only password is validated
  */
-export function validateApiKey(request: Request, env: Env): boolean {
-  const url = new URL(request.url);
-  const key = url.searchParams.get("key");
+export function validateBasicAuth(request: Request, env: Env): boolean {
+  const auth = request.headers.get("Authorization");
 
-  if (!key || !env.ADMIN_API_KEY) {
+  if (!auth?.startsWith("Basic ") || !env.ADMIN_API_KEY) {
     return false;
   }
 
-  return key === env.ADMIN_API_KEY;
+  try {
+    // Decode base64: "username:password"
+    const decoded = atob(auth.slice(6));
+    // Extract password (handle case where password contains ":")
+    const password = decoded.split(":").slice(1).join(":");
+
+    return password === env.ADMIN_API_KEY;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Return 401 unauthorized response
+ * Return 401 unauthorized response with Basic Auth challenge
  */
 export function unauthorizedResponse(): Response {
-  return Response.json(
-    { error: "Unauthorized. Provide API key via ?key= query parameter." },
-    { status: 401 },
-  );
+  return new Response("Unauthorized", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": 'Basic realm="OpenCode"',
+    },
+  });
 }
