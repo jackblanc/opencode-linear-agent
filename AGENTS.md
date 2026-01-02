@@ -2,6 +2,18 @@
 
 This document provides coding agents with essential information for working on this Cloudflare Workers + OpenCode project.
 
+## LLM-Friendly Documentation
+
+When fetching external documentation, use LLM-optimized formats:
+
+- **Linear**: Append `.md` to any Linear developer docs URL to get Markdown instead of HTML
+  - Example: `https://linear.app/developers/webhooks` → `https://linear.app/developers/webhooks.md`
+- **Cloudflare**: Append `/llms-full.txt` to any Cloudflare docs section URL
+  - Example: `https://developers.cloudflare.com/sandbox/` → `https://developers.cloudflare.com/sandbox/llms-full.txt`
+- **OpenCode**: Documentation at `https://opencode.ai/docs/` returns Markdown automatically
+
+---
+
 ## Project Overview
 
 This is a Cloudflare Worker that integrates OpenCode (AI coding agent) with Cloudflare's Sandbox SDK, providing:
@@ -23,11 +35,10 @@ linear-opencode-agent/
 │   ├── worker/                              # Cloudflare Worker
 │   │   ├── src/
 │   │   │   ├── index.ts                    # Request routing, auth checks
-│   │   │   ├── auth.ts                     # API key validation helper
+│   │   │   ├── auth.ts                     # Basic Auth validation helper
 │   │   │   ├── oauth.ts                    # Linear OAuth flow
 │   │   │   ├── webhook.ts                  # Linear webhook handler
 │   │   │   └── config.ts                   # OpenCode configuration
-│   │   ├── Dockerfile                      # Sandbox container with plugin
 │   │   ├── wrangler.jsonc                  # Cloudflare Workers config
 │   │   ├── package.json                    # Worker dependencies
 │   │   ├── tsconfig.json                   # Extends root config
@@ -35,18 +46,19 @@ linear-opencode-agent/
 │   │
 │   └── opencode-linear-agent/              # Plugin package
 │       ├── src/
-│       │   └── index.ts                    # Plugin using @linear/sdk
+│       │   ├── index.ts                    # Linear agent plugin using @linear/sdk
+│       │   └── git-status-hook.ts          # Git status check plugin
 │       ├── dist/                           # Build output (gitignored)
 │       ├── package.json                    # Plugin dependencies
 │       └── tsconfig.json                   # Extends root config
 │
 ├── package.json                            # Root workspace configuration
 ├── tsconfig.json                           # Base TypeScript configuration
+├── Dockerfile                              # Sandbox container with OpenCode + plugins
 ├── bun.lock
 ├── .gitignore
 ├── .dev.vars.example                       # Environment variable template
 ├── AGENTS.md                               # This file
-├── PLAN.md                                 # Implementation plan
 └── README.md
 ```
 
@@ -271,10 +283,47 @@ bun run check  # Runs all three checks
 
 ---
 
-## Additional Resources
+## External References
 
-- [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
-- [Sandbox SDK](https://developers.cloudflare.com/sandbox/)
-- [OpenCode Documentation](https://opencode.ai/docs)
-- [Linear SDK](https://developers.linear.app/docs/sdk/getting-started)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
+All external documentation should be fetched in LLM-friendly formats. See the "LLM-Friendly Documentation" section at the top of this file for format conventions.
+
+### Linear Documentation
+
+**Agents:**
+
+- https://linear.app/developers/agents.md - Agent overview
+- https://linear.app/developers/aig.md - Agent implementation guide
+- https://linear.app/developers/agent-interaction.md - Agent interaction patterns
+- https://linear.app/developers/agent-best-practices.md - Best practices for agents
+- https://linear.app/developers/agent-signals.md - Agent signals reference
+
+**OAuth:**
+
+- https://linear.app/developers/oauth-2-0-authentication.md - OAuth 2.0 authentication
+- https://linear.app/developers/oauth-actor-authorization.md - Actor authorization
+
+**Webhooks:**
+
+- https://linear.app/developers/webhooks.md - Webhooks overview
+- https://linear.app/developers/sdk-webhooks.md - SDK webhook handling
+
+### Cloudflare Documentation
+
+**General:**
+
+- https://developers.cloudflare.com/llms.txt - Documentation directory
+- https://developers.cloudflare.com/workers/prompt.txt - Workers guide for LLMs
+
+**Services used in this project:**
+
+- https://developers.cloudflare.com/sandbox/llms-full.txt - Sandbox SDK (container execution)
+- https://developers.cloudflare.com/containers/llms-full.txt - Container bindings
+- https://developers.cloudflare.com/kv/llms-full.txt - KV storage (OAuth tokens, session state)
+- https://developers.cloudflare.com/workers/llms-full.txt - Workers platform
+- https://developers.cloudflare.com/durable-objects/llms-full.txt - Durable Objects
+
+### OpenCode Documentation
+
+- https://opencode.ai/docs/sdk/ - OpenCode SDK
+- https://opencode.ai/docs/server/ - OpenCode Server
+- https://opencode.ai/docs/plugins/ - OpenCode Plugins
