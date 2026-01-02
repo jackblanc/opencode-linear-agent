@@ -1,6 +1,6 @@
 import { handleAuthorize, handleCallback } from "./oauth";
 import { handleWebhook } from "./webhook";
-import { validateApiKey, unauthorizedResponse } from "./auth";
+import { validateBasicAuth, unauthorizedResponse } from "./auth";
 import { getSandbox } from "@cloudflare/sandbox";
 import {
   createOpencodeServer,
@@ -27,108 +27,46 @@ export default {
       pathname: url.pathname,
     });
 
-    // OAuth endpoints (public, protected by CSRF state)
-    if (url.pathname === "/oauth/authorize") {
-      return handleAuthorize(request, env);
-    }
+    // === PUBLIC ROUTES (no auth required) ===
 
-    if (url.pathname === "/oauth/callback") {
-      return handleCallback(request, env);
-    }
-
-    // Webhook endpoint (protected by signature verification)
-    if (url.pathname === "/webhook/linear") {
+    // Linear webhook - protected by signature verification
+    // Support both /webhook/linear (legacy) and /api/webhook/linear
+    if (
+      url.pathname === "/webhook/linear" ||
+      url.pathname === "/api/webhook/linear"
+    ) {
       return handleWebhook(request, env, ctx);
     }
 
-    // Health check (public)
-    if (url.pathname === "/health") {
+    // Health check
+    if (url.pathname === "/api/health") {
       return Response.json({
         status: "ok",
         timestamp: new Date().toISOString(),
       });
     }
 
-    // OpenCode UI and API routes
-    // Auth is required for the main entry point, but static assets and API
-    // calls are proxied through (OpenCode handles its own session management)
-    const isOpencodeRoute =
-      url.pathname.startsWith("/session") ||
-      url.pathname.startsWith("/event") ||
-      url.pathname.startsWith("/opencode") ||
-      url.pathname.startsWith("/assets") ||
-      url.pathname.startsWith("/_app") ||
-      url.pathname.startsWith("/@") ||
-      url.pathname.endsWith(".js") ||
-      url.pathname.endsWith(".css") ||
-      url.pathname.endsWith(".svg") ||
-      url.pathname.endsWith(".png") ||
-      url.pathname.endsWith(".ico");
-
-    if (isOpencodeRoute) {
-      // Require API key for main entry points, allow assets through
-      const isEntryPoint =
-        url.pathname === "/opencode" ||
-        url.pathname.startsWith("/session") ||
-        url.pathname.startsWith("/event");
-
-      if (isEntryPoint && !validateApiKey(request, env)) {
-        return unauthorizedResponse();
-      }
-
-      const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
-      const server = await createOpencodeServer(sandbox, {
-        directory: PROJECT_DIR,
-        config: getConfig(env),
-      });
-      return proxyToOpencode(request, sandbox, server);
+    // OAuth endpoints - protected by CSRF state
+    if (url.pathname === "/api/oauth/authorize") {
+      return handleAuthorize(request, env);
     }
 
-    // Default response - also protected
-    if (!validateApiKey(request, env)) {
-      return new Response(
-        `
-Linear OpenCode Agent
-
-Authentication required.
-Add ?key=YOUR_ADMIN_API_KEY to access the OpenCode UI.
-
-Public endpoints:
-- GET  /oauth/authorize  - Start OAuth flow
-- POST /webhook/linear   - Linear webhook receiver (signature verified)
-- GET  /health          - Health check
-        `.trim(),
-        {
-          status: 401,
-          headers: {
-            "Content-Type": "text/plain",
-          },
-        },
-      );
+    if (url.pathname === "/api/oauth/callback") {
+      return handleCallback(request, env);
     }
 
-    return new Response(
-      `
-Linear OpenCode Agent
+    // === PROTECTED ROUTES (Basic Auth required) ===
 
-Available endpoints:
-- GET  /oauth/authorize  - Start OAuth flow
-- POST /webhook/linear   - Linear webhook receiver
-- GET  /health          - Health check
-- GET  /opencode        - OpenCode Web UI
+    if (!validateBasicAuth(request, env)) {
+      return unauthorizedResponse();
+    }
 
-Setup Instructions:
-1. Visit /oauth/authorize to connect your Linear workspace
-2. Configure webhook URL in Linear app settings
-3. Delegate issues to the agent or @mention it
-
-Status: Ready
-      `.trim(),
-      {
-        headers: {
-          "Content-Type": "text/plain",
-        },
-      },
-    );
+    // All authenticated requests proxy to OpenCode
+    const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
+    const server = await createOpencodeServer(sandbox, {
+      directory: PROJECT_DIR,
+      config: getConfig(env),
+    });
+    return proxyToOpencode(request, sandbox, server);
   },
 };
