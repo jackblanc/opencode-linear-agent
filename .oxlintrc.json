@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import"],
+  "categories": {
+    "correctness": "deny",
+    "suspicious": "deny",
+    "pedantic": "off",
+    "perf": "deny",
+    "style": "off",
+    "nursery": "deny"
+  },
+  "rules": {
+    // Export/Import Control - CRITICAL for project requirements
+
+    "eslint-plugin-import/no-commonjs": "error",
+    "eslint-plugin-import/no-cycle": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-var-requires": "error",
+
+    // Type Safety - Aggressive typing for data integrity
+    "typescript/no-explicit-any": "error",
+    "typescript/explicit-function-return-type": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/promise-function-async": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-nullish-coalescing": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/consistent-type-imports": "error",
+
+    // Code Quality & Safety
+    "eslint/no-var": "error",
+    "eslint/no-param-reassign": "error",
+    "eslint/no-regex-spaces": "error",
+    "eslint/eqeqeq": "error",
+    "eslint/no-throw-literal": "error",
+    "eslint/no-fallthrough": "error",
+    "eslint/no-self-compare": "error",
+    "eslint/curly": "error",
+    "eslint/default-case-last": "error",
+    "typescript/no-namespace": "error",
+
+    // Bun/Node Best Practices
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-modern-math-apis": "error",
+    "unicorn/new-for-builtins": "error",
+    "unicorn/no-instanceof-array": "error",
+    "unicorn/prefer-array-some": "error",
+    "unicorn/throw-new-error": "error",
+    "unicorn/prefer-string-slice": "error",
+    "unicorn/no-console-spaces": "error",
+    "unicorn/number-literal-case": "error",
+
+    // Disable conflicting rules
+    "eslint-plugin-import/no-named-export": "off",
+    "eslint-plugin-import/prefer-default-export": "off",
+    "eslint/no-undef": "off"
+  }
+}

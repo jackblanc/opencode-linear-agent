@@ -71,7 +71,7 @@ async function exchangeCodeForToken(
   expiresIn: number;
   scope: string[];
 }> {
-  console.debug("Exchanging code for token");
+  console.log("Exchanging code for token");
 
   // Generate callback URL from the request origin
   const requestUrl = new URL(request.url);
@@ -216,7 +216,7 @@ export async function handleCallback(
       errorDescription,
     });
 
-    return new Response(`OAuth Error: ${error}\n${errorDescription || ""}`, {
+    return new Response(`OAuth Error: ${error}\n${errorDescription ?? ""}`, {
       status: 400,
     });
   }
@@ -244,7 +244,7 @@ export async function handleCallback(
 
   // Delete state (one-time use)
   await env.KV.delete(`oauth:state:${state}`);
-  console.debug("State validated successfully");
+  console.log("State validated successfully");
 
   try {
     // Exchange code for access token
