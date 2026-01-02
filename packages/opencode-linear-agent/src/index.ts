@@ -14,57 +14,12 @@
  *   is set after the plugin initializes.
  */
 
-import { exec } from "child_process";
-import { promisify } from "util";
 import { LinearClient } from "@linear/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Event, Part, ToolPart } from "@opencode-ai/sdk";
 
-const execAsync = promisify(exec);
-
-// Working directory for git operations
-const PROJECT_DIR = "/home/user/project";
-
 // Prefix used in OpenCode session titles to identify Linear sessions
 const LINEAR_SESSION_PREFIX = "linear:";
-
-/**
- * Check for untracked or uncommitted files in the repository.
- * Returns a message if there are issues, or null if everything is clean.
- */
-async function checkGitStatus(): Promise<string | null> {
-  try {
-    // Check for untracked files
-    const { stdout: untrackedOutput } = await execAsync(
-      "git status --porcelain",
-      { cwd: PROJECT_DIR },
-    );
-
-    if (untrackedOutput.trim()) {
-      // There are untracked or modified files
-      const lines = untrackedOutput.trim().split("\n");
-      const untracked = lines.filter((line) => line.startsWith("??"));
-      const modified = lines.filter(
-        (line) => line.startsWith(" M") || line.startsWith("M "),
-      );
-      const staged = lines.filter(
-        (line) =>
-          line.startsWith("A ") ||
-          line.startsWith("M ") ||
-          line.startsWith("D "),
-      );
-
-      if (untracked.length > 0 || modified.length > 0 || staged.length > 0) {
-        return "Stop hook feedback:\n[~/.claude/stop-hook-git-check.sh]: There are untracked files in the repository. Please commit and push these changes to the remote branch.";
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("[LINEAR PLUGIN] Error checking git status:", error);
-    return null;
-  }
-}
 
 // Tool name mapping for friendly action names
 const TOOL_ACTION_MAP: Record<string, { action: string; pastTense: string }> = {
@@ -441,33 +396,16 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
 
         // Handle session idle (completion)
         if (event.type === "session.idle") {
-          console.log("[LINEAR PLUGIN] Session idle - checking git status");
-
-          // Run stop hook to check for untracked files
-          const gitStatusMessage = await checkGitStatus();
-          if (gitStatusMessage) {
-            console.log("[LINEAR PLUGIN] Stop hook: untracked files detected");
-            await sendLinearActivity(
-              linearClient,
-              linearSessionId,
-              {
-                type: "response",
-                body: gitStatusMessage,
-              },
-              false,
-            );
-          } else {
-            console.log("[LINEAR PLUGIN] Session idle - work complete");
-            await sendLinearActivity(
-              linearClient,
-              linearSessionId,
-              {
-                type: "response",
-                body: "Task completed.",
-              },
-              false,
-            );
-          }
+          console.log("[LINEAR PLUGIN] Session idle - work complete");
+          await sendLinearActivity(
+            linearClient,
+            linearSessionId,
+            {
+              type: "response",
+              body: "Task completed.",
+            },
+            false,
+          );
         }
 
         // Handle todo updates -> sync to Linear plan
