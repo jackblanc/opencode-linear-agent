@@ -127,7 +127,7 @@ export async function getOrInitializeSandboxDefault(
   env: Env,
 ): Promise<SandboxContext> {
   const organizationId = env.LINEAR_ORGANIZATION_ID;
-  if (!organizationId || organizationId === "YOUR_LINEAR_ORG_ID") {
+  if (!organizationId) {
     throw new Error(
       "LINEAR_ORGANIZATION_ID not configured. Please set it in wrangler.jsonc after completing OAuth.",
     );
