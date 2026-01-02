@@ -7,8 +7,8 @@
  * and push the changes.
  */
 
-import { exec } from "child_process";
-import { promisify } from "util";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk";
 
@@ -88,7 +88,9 @@ export const GitStatusHookPlugin: Plugin = async ({ client }) => {
         // Check for untracked/uncommitted files
         const gitStatusMessage = await checkGitStatus();
         if (gitStatusMessage) {
-          console.log("[GIT STATUS HOOK] Untracked files detected, prompting agent");
+          console.log(
+            "[GIT STATUS HOOK] Untracked files detected, prompting agent",
+          );
 
           // Send the feedback message to the agent
           await client.session.promptAsync({

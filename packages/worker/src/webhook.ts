@@ -4,20 +4,12 @@ import type {
   LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
 import { LinearClient } from "@linear/sdk";
-import { getSandbox } from "@cloudflare/sandbox";
-import { createOpencode } from "@cloudflare/sandbox/opencode";
 import type { OpencodeClient } from "@opencode-ai/sdk";
-import { getConfig } from "./config";
-import { refreshAccessToken } from "./oauth";
-
-// Shared sandbox ID for all OpenCode access (web UI and Linear webhooks)
-const SANDBOX_ID = "opencode-instance";
-
-// Default working directory in Cloudflare Sandbox (matches gitCheckout default)
-const PROJECT_DIR = "/workspace";
-
-// Port used by OpenCode server (default)
-const OPENCODE_PORT = 4096;
+import {
+  getOrInitializeSandbox,
+  getSandboxInstance,
+  PROJECT_DIR,
+} from "./sandbox";
 
 // Prefix used in OpenCode session titles to identify Linear sessions
 const LINEAR_SESSION_PREFIX = "linear:";
@@ -38,40 +30,6 @@ function isAgentSessionEvent(
   payload: LinearWebhookPayload,
 ): payload is AgentSessionEventWebhookPayload {
   return payload.type === "AgentSessionEvent";
-}
-
-/**
- * Get or create the OpenCode client.
- * Uses a single shared sandbox instance.
- */
-async function getOpencodeClient(
-  env: Env,
-  accessToken: string,
-): Promise<OpencodeClient> {
-  const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
-
-  // Explicitly start the container - it may be sleeping or not yet started
-  // The SDK's lazy start doesn't always work reliably
-  console.info("Starting sandbox container");
-  await sandbox.start();
-  console.info("Sandbox container started");
-
-  // Ensure project directory exists
-  await sandbox.exec(`mkdir -p ${PROJECT_DIR}`, { timeout: 30000 });
-
-  // Set the access token for the Linear plugin (shared across org)
-  await sandbox.setEnvVars({
-    LINEAR_ACCESS_TOKEN: accessToken,
-  });
-
-  // Get or create OpenCode server (reuses existing if already running)
-  const { client } = await createOpencode<OpencodeClient>(sandbox, {
-    port: OPENCODE_PORT,
-    directory: PROJECT_DIR,
-    config: getConfig(env),
-  });
-
-  return client;
 }
 
 /**
@@ -137,7 +95,7 @@ async function ensureRepoCloned(
   linearSessionId: string,
   linearClient: LinearClient,
 ): Promise<void> {
-  const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
+  const sandbox = getSandboxInstance(env);
 
   // Check if repo already exists in the container filesystem
   const repoExists = await sandbox.exists(`${PROJECT_DIR}/.git`);
@@ -214,21 +172,15 @@ async function processAgentSessionEvent(
     return;
   }
 
-  // Try to get access token, refresh if expired (missing due to TTL)
-  let accessToken = await env.KV.get(`token:access:${organizationId}`);
-  if (!accessToken) {
-    console.info("Access token expired, refreshing...", { organizationId });
-    try {
-      accessToken = await refreshAccessToken(env, organizationId);
-    } catch (error) {
-      console.error("Failed to refresh access token", {
-        error,
-        organizationId,
-      });
-      return;
-    }
-  }
+  // Get sandbox with Linear access token set
+  const { client } = await getOrInitializeSandbox(env, organizationId);
 
+  // Create Linear client for sending activities
+  const accessToken = await env.KV.get(`token:access:${organizationId}`);
+  if (!accessToken) {
+    console.error("No access token available after sandbox init");
+    return;
+  }
   const linearClient = new LinearClient({ accessToken });
   const linearSessionId = payload.agentSession.id;
 
@@ -247,9 +199,6 @@ async function processAgentSessionEvent(
   }
 
   try {
-    // Get OpenCode client (reuses shared sandbox)
-    const client = await getOpencodeClient(env, accessToken);
-
     // Get or create OpenCode session for this Linear session
     const opencodeSessionId = await getOrCreateSession(
       client,
