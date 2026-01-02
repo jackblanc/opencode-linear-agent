@@ -17,7 +17,8 @@ ENV COMMAND_TIMEOUT_MS=600000
 COPY packages/opencode-linear-agent /tmp/plugin
 RUN cd /tmp/plugin \
     && bun install \
-    && bun build src/index.ts --outdir /home/user/.config/opencode/plugin --outfile linear-agent.js --target node \
+    && mkdir -p /root/.config/opencode/plugin \
+    && bun build src/index.ts --outdir /root/.config/opencode/plugin --outfile linear-agent.js --target bun --format esm \
     && rm -rf /tmp/plugin
 
 # Expose OpenCode server port
