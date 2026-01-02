@@ -15,6 +15,55 @@ const SANDBOX_ID = "opencode-instance";
 // Default working directory in Cloudflare Sandbox (matches gitCheckout default)
 const PROJECT_DIR = "/workspace";
 
+// MIME type mapping for static assets (proxyToOpencode doesn't set these correctly)
+const MIME_TYPES: Record<string, string> = {
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".webmanifest": "application/manifest+json",
+  ".html": "text/html",
+  ".txt": "text/plain",
+};
+
+/**
+ * Fix missing or incorrect Content-Type headers from proxyToOpencode.
+ * The sandbox proxy returns application/octet-stream or empty Content-Type
+ * for static assets, which causes browsers to reject JS/CSS files.
+ */
+function fixContentType(response: Response, pathname: string): Response {
+  const contentType = response.headers.get("Content-Type");
+
+  // Only fix if Content-Type is missing or generic
+  if (contentType && contentType !== "application/octet-stream") {
+    return response;
+  }
+
+  const ext = pathname.match(/(\.[^.]+)$/)?.[1];
+  const mimeType = ext ? MIME_TYPES[ext] : null;
+
+  if (!mimeType) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set("Content-Type", mimeType);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(
     request: Request,
@@ -67,6 +116,9 @@ export default {
       directory: PROJECT_DIR,
       config: getConfig(env),
     });
-    return proxyToOpencode(request, sandbox, server);
+    const response = await proxyToOpencode(request, sandbox, server);
+
+    // Fix missing/incorrect Content-Type for static assets
+    return fixContentType(response, url.pathname);
   },
 };
