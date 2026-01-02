@@ -62,10 +62,6 @@ export async function getOrInitializeSandbox(
 ): Promise<SandboxContext> {
   const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
 
-  console.info("Starting sandbox container");
-  await sandbox.start();
-  console.info("Sandbox container started");
-
   // Mount R2 at OpenCode's storage directory for session persistence
   try {
     await sandbox.mountBucket("opencode-data", OPENCODE_STORAGE_PATH, {
@@ -74,6 +70,7 @@ export async function getOrInitializeSandbox(
         accessKeyId: env.AWS_ACCESS_KEY_ID,
         secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
       },
+      s3fsOptions: ["nonempty"],
     });
     console.info("R2 bucket mounted at", OPENCODE_STORAGE_PATH);
   } catch (error) {
@@ -118,26 +115,6 @@ export async function getOrInitializeSandbox(
   });
 
   return { sandbox, client, server };
-}
-
-/**
- * Get or initialize sandbox using the default organization from env vars.
- * Use this when organization ID is not available from context (e.g., web UI).
- *
- * @param env - Worker environment
- * @throws Error if LINEAR_ORGANIZATION_ID is not configured
- */
-export async function getOrInitializeSandboxDefault(
-  env: Env,
-): Promise<SandboxContext> {
-  const organizationId = env.LINEAR_ORGANIZATION_ID;
-  if (!organizationId) {
-    throw new Error(
-      "LINEAR_ORGANIZATION_ID not configured. Please set it in wrangler.jsonc after completing OAuth.",
-    );
-  }
-
-  return getOrInitializeSandbox(env, organizationId);
 }
 
 /**
