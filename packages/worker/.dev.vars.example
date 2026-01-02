@@ -17,3 +17,7 @@ ADMIN_API_KEY=generate-a-secure-random-string
 
 # Repository URL for the agent to work on (required)
 REPO_URL=https://github.com/owner/repo
+
+# AWS Keys for R2 Bucket
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
