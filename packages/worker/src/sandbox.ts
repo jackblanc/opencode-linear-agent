@@ -70,6 +70,10 @@ export async function getOrInitializeSandbox(
   try {
     await sandbox.mountBucket("opencode-data", OPENCODE_STORAGE_PATH, {
       endpoint: `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+      },
     });
     console.info("R2 bucket mounted at", OPENCODE_STORAGE_PATH);
   } catch (error) {
