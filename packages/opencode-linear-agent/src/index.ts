@@ -14,7 +14,7 @@
  *   is set after the plugin initializes.
  */
 
-import { LinearClient } from "@linear/sdk";
+import { LinearClient, AgentActivitySignal } from "@linear/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Event, Part, ToolPart } from "@opencode-ai/sdk";
 
@@ -123,6 +123,7 @@ function mapTodoStatus(
 
 /**
  * Send an activity to Linear using the SDK
+ * @param signal - Optional signal to send with the activity (e.g., AgentActivitySignal.Stop to end session)
  */
 async function sendLinearActivity(
   linearClient: LinearClient,
@@ -135,12 +136,14 @@ async function sendLinearActivity(
     result?: string;
   },
   ephemeral = false,
+  signal?: AgentActivitySignal,
 ): Promise<void> {
   try {
     await linearClient.createAgentActivity({
       agentSessionId: sessionId,
       content,
       ephemeral,
+      signal,
     });
   } catch (error) {
     console.error("[LINEAR PLUGIN] Failed to send activity:", error);
@@ -281,7 +284,7 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
 
         // Handle message part updates (tool calls, text, etc.)
         if (event.type === "message.part.updated") {
-          const { part } = event.properties;
+          const { part, delta } = event.properties;
 
           console.log("[LINEAR PLUGIN] Part update:", part.type);
 
@@ -291,8 +294,14 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           }
 
           if (part.type === "text" && hasText(part)) {
-            // Final text response
-            console.log("[LINEAR PLUGIN] Sending text response to Linear");
+            // Skip streaming updates - only send complete text
+            // When delta is present, this is a streaming chunk, not the final content
+            if (delta !== undefined) {
+              console.log("[LINEAR PLUGIN] Skipping streaming text update");
+              return;
+            }
+            // Final text response (no delta means complete)
+            console.log("[LINEAR PLUGIN] Sending complete text response to Linear");
             await sendLinearActivity(
               linearClient,
               linearSessionId,
@@ -396,16 +405,93 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
 
         // Handle session idle (completion)
         if (event.type === "session.idle") {
-          console.log("[LINEAR PLUGIN] Session idle - work complete");
-          await sendLinearActivity(
-            linearClient,
-            linearSessionId,
-            {
-              type: "response",
-              body: "Task completed.",
-            },
-            false,
-          );
+          console.log("[LINEAR PLUGIN] Session idle - fetching final messages");
+
+          try {
+            // Fetch all messages from the session to get complete text
+            const messagesResponse = await client.session.messages({
+              path: { id: opencodeSessionId },
+            });
+
+            let sentStopSignal = false;
+
+            if (messagesResponse.data) {
+              // Find the last assistant message and extract its text parts
+              const messages = messagesResponse.data;
+              for (let i = messages.length - 1; i >= 0; i--) {
+                const { info, parts } = messages[i];
+                if (info.role === "assistant") {
+                  // Collect all text parts from this message
+                  const textParts = parts
+                    .filter(
+                      (p): p is Part & { text: string } =>
+                        p.type === "text" && hasText(p),
+                    )
+                    .filter((p) => !sentParts.has(p.id));
+
+                  if (textParts.length > 0) {
+                    // Send complete text from all unsent text parts
+                    const fullText = textParts.map((p) => p.text).join("\n\n");
+                    console.log(
+                      "[LINEAR PLUGIN] Sending final message text:",
+                      fullText.slice(0, 100) + "...",
+                    );
+                    // Send with Stop signal to mark session as complete
+                    await sendLinearActivity(
+                      linearClient,
+                      linearSessionId,
+                      { type: "response", body: fullText },
+                      false,
+                      AgentActivitySignal.Stop,
+                    );
+                    // Mark all as sent
+                    textParts.forEach((p) => sentParts.add(p.id));
+                  } else {
+                    // No unsent text parts, still send Stop signal to complete session
+                    console.log(
+                      "[LINEAR PLUGIN] No new text to send, sending Stop signal",
+                    );
+                    await sendLinearActivity(
+                      linearClient,
+                      linearSessionId,
+                      { type: "response", body: "Task completed." },
+                      false,
+                      AgentActivitySignal.Stop,
+                    );
+                  }
+                  sentStopSignal = true;
+                  break; // Only send the last assistant message
+                }
+              }
+            }
+
+            // Ensure we always send a Stop signal even if no assistant message found
+            if (!sentStopSignal) {
+              console.log(
+                "[LINEAR PLUGIN] No assistant message found, sending Stop signal",
+              );
+              await sendLinearActivity(
+                linearClient,
+                linearSessionId,
+                { type: "response", body: "Task completed." },
+                false,
+                AgentActivitySignal.Stop,
+              );
+            }
+          } catch (error) {
+            console.error(
+              "[LINEAR PLUGIN] Error fetching session messages:",
+              error,
+            );
+            // Fall back to generic completion message with Stop signal
+            await sendLinearActivity(
+              linearClient,
+              linearSessionId,
+              { type: "response", body: "Task completed." },
+              false,
+              AgentActivitySignal.Stop,
+            );
+          }
         }
 
         // Handle todo updates -> sync to Linear plan
