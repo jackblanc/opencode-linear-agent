@@ -12,11 +12,18 @@
  * - LINEAR_ACCESS_TOKEN: OAuth token for Linear API (shared across org)
  *   This is read fresh on each call to handle the case where the token
  *   is set after the plugin initializes.
+ *
+ * IMPORTANT: Linear does NOT support streaming. This plugin uses discrete hooks:
+ * - tool.execute.before: Send ephemeral "running" action
+ * - tool.execute.after: Send persistent "completed" action with result
+ * - experimental.text.complete: Send intermediate complete text responses
+ * - session.idle: Send final response with Stop signal
+ * - session.error: Report errors
+ * - todo.updated: Sync plan to Linear
  */
 
 import { LinearClient, AgentActivitySignal } from "@linear/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
-import type { Event, Part, ToolPart } from "@opencode-ai/sdk";
 
 // Prefix used in OpenCode session titles to identify Linear sessions
 const LINEAR_SESSION_PREFIX = "linear:";
@@ -167,42 +174,6 @@ async function updateLinearPlan(
 }
 
 /**
- * Type guard: check if part is a ToolPart
- */
-function isToolPart(part: Part): part is ToolPart {
-  return part.type === "tool";
-}
-
-/**
- * Type guard: check if part has text property
- */
-function hasText(part: Part): part is Part & { text: string } {
-  return "text" in part && typeof part.text === "string";
-}
-
-/**
- * Extract sessionID from an event based on its type.
- * We only handle events that are relevant for Linear integration.
- */
-function getSessionIdFromEvent(event: Event): string | null {
-  // Only handle events we care about for Linear integration
-  // Other event types don't need to be forwarded to Linear
-  if (event.type === "message.part.updated") {
-    return event.properties.part.sessionID;
-  }
-  if (event.type === "session.error") {
-    return event.properties.sessionID ?? null;
-  }
-  if (event.type === "session.idle") {
-    return event.properties.sessionID;
-  }
-  if (event.type === "todo.updated") {
-    return event.properties.sessionID;
-  }
-  return null;
-}
-
-/**
  * Linear Agent Plugin
  */
 export const LinearAgentPlugin: Plugin = async ({ client }) => {
@@ -240,146 +211,162 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
     return null;
   }
 
-  // Track sent parts to avoid duplicates (keyed by part ID)
-  const sentParts = new Set<string>();
+  // Track sent text part IDs to avoid duplicates
+  const sentTextParts = new Set<string>();
+
+  // Cache tool args from before hook for use in after hook (keyed by callID)
+  const toolArgsCache = new Map<string, Record<string, unknown>>();
 
   return {
+    // Tool starting - send ephemeral "running" action
+    "tool.execute.before": async (input, output) => {
+      // Safely extract args - output.args is typed as `any` from plugin API
+      const args: Record<string, unknown> = Object.assign(
+        {},
+        typeof output.args === "object" ? output.args : {},
+      );
+
+      // Cache args for the after hook
+      toolArgsCache.set(input.callID, args);
+
+      const linearClient = getLinearClient();
+      if (!linearClient) {
+        return;
+      }
+
+      const linearSessionId = await getLinearSessionId(input.sessionID);
+      if (!linearSessionId) {
+        return;
+      }
+
+      console.log("[LINEAR PLUGIN] Tool starting:", input.tool);
+
+      await sendLinearActivity(
+        linearClient,
+        linearSessionId,
+        {
+          type: "action",
+          action: getToolActionName(input.tool, false),
+          parameter: extractToolParameter(input.tool, args),
+        },
+        true, // ephemeral
+      );
+    },
+
+    // Tool completed - send persistent action with result
+    "tool.execute.after": async (input, output) => {
+      // Get cached args and clean up
+      const args = toolArgsCache.get(input.callID) ?? {};
+      toolArgsCache.delete(input.callID);
+
+      const linearClient = getLinearClient();
+      if (!linearClient) {
+        return;
+      }
+
+      const linearSessionId = await getLinearSessionId(input.sessionID);
+      if (!linearSessionId) {
+        return;
+      }
+
+      console.log("[LINEAR PLUGIN] Tool completed:", input.tool);
+
+      // Truncate long outputs
+      const result =
+        output.output.length > 500
+          ? output.output.slice(0, 500) + "...(truncated)"
+          : output.output;
+
+      await sendLinearActivity(
+        linearClient,
+        linearSessionId,
+        {
+          type: "action",
+          action: getToolActionName(input.tool, true),
+          parameter: extractToolParameter(input.tool, args),
+          result,
+        },
+        false, // persistent
+      );
+    },
+
+    // Text part completed - send intermediate complete text responses
+    // This fires when a text part finishes (e.g., before a tool call)
+    "experimental.text.complete": async (input, output) => {
+      const linearClient = getLinearClient();
+      if (!linearClient) {
+        return;
+      }
+
+      const linearSessionId = await getLinearSessionId(input.sessionID);
+      if (!linearSessionId) {
+        return;
+      }
+
+      // Skip if already sent
+      if (sentTextParts.has(input.partID)) {
+        return;
+      }
+
+      // Skip empty text
+      if (!output.text.trim()) {
+        return;
+      }
+
+      console.log(
+        "[LINEAR PLUGIN] Text complete:",
+        output.text.slice(0, 100) + "...",
+      );
+
+      await sendLinearActivity(
+        linearClient,
+        linearSessionId,
+        { type: "response", body: output.text },
+        false, // persistent
+      );
+
+      sentTextParts.add(input.partID);
+    },
+
+    // Event handler for session lifecycle and todos
     event: async ({ event }) => {
       try {
+        // Only handle events we care about
+        if (
+          event.type !== "session.error" &&
+          event.type !== "session.idle" &&
+          event.type !== "todo.updated"
+        ) {
+          return;
+        }
+
         console.log("[LINEAR PLUGIN] Event received:", event.type);
 
-        // Get Linear client with fresh token
         const linearClient = getLinearClient();
         if (!linearClient) {
           console.log("[LINEAR PLUGIN] No LINEAR_ACCESS_TOKEN available");
           return;
         }
 
-        // Extract sessionID from the event
-        const opencodeSessionId = getSessionIdFromEvent(event);
+        // Extract sessionID based on event type
+        let opencodeSessionId: string | null = null;
+        if (event.type === "session.error") {
+          opencodeSessionId = event.properties.sessionID ?? null;
+        } else if (event.type === "session.idle") {
+          opencodeSessionId = event.properties.sessionID;
+        } else if (event.type === "todo.updated") {
+          opencodeSessionId = event.properties.sessionID;
+        }
+
         if (!opencodeSessionId) {
-          console.log(
-            "[LINEAR PLUGIN] No sessionID found in event:",
-            event.type,
-          );
+          console.log("[LINEAR PLUGIN] No sessionID in event");
           return;
         }
 
-        console.log(
-          "[LINEAR PLUGIN] Processing event for session:",
-          opencodeSessionId,
-        );
-
-        // Look up the corresponding Linear session ID
         const linearSessionId = await getLinearSessionId(opencodeSessionId);
         if (!linearSessionId) {
-          console.log(
-            "[LINEAR PLUGIN] Not a Linear-linked session:",
-            opencodeSessionId,
-          );
+          console.log("[LINEAR PLUGIN] Not a Linear-linked session");
           return;
-        }
-
-        console.log("[LINEAR PLUGIN] Found Linear session:", linearSessionId);
-
-        // Handle message part updates (tool calls, text, etc.)
-        if (event.type === "message.part.updated") {
-          const { part, delta } = event.properties;
-
-          console.log("[LINEAR PLUGIN] Part update:", part.type);
-
-          // Skip if already sent (for non-ephemeral)
-          if (sentParts.has(part.id)) {
-            return;
-          }
-
-          if (part.type === "text" && hasText(part)) {
-            // Skip streaming updates - only send complete text
-            // When delta is present, this is a streaming chunk, not the final content
-            if (delta !== undefined) {
-              console.log("[LINEAR PLUGIN] Skipping streaming text update");
-              return;
-            }
-            // Final text response (no delta means complete)
-            console.log(
-              "[LINEAR PLUGIN] Sending complete text response to Linear",
-            );
-            await sendLinearActivity(
-              linearClient,
-              linearSessionId,
-              { type: "response", body: part.text },
-              false,
-            );
-            sentParts.add(part.id);
-          } else if (part.type === "reasoning" && hasText(part)) {
-            // Internal reasoning - ephemeral thought
-            await sendLinearActivity(
-              linearClient,
-              linearSessionId,
-              { type: "thought", body: part.text },
-              true,
-            );
-          } else if (isToolPart(part)) {
-            const { tool, state } = part;
-
-            console.log("[LINEAR PLUGIN] Tool:", tool, "Status:", state.status);
-
-            if (state.status === "running") {
-              // Tool starting - ephemeral action
-              console.log("[LINEAR PLUGIN] Tool running:", tool);
-              await sendLinearActivity(
-                linearClient,
-                linearSessionId,
-                {
-                  type: "action",
-                  action: getToolActionName(tool, false),
-                  parameter: extractToolParameter(tool, state.input),
-                },
-                true,
-              );
-            } else if (state.status === "completed") {
-              // Tool completed - persistent action with result
-              console.log("[LINEAR PLUGIN] Tool completed:", tool);
-              const output = state.output ?? "";
-              const result =
-                output.length > 500
-                  ? output.slice(0, 500) + "...(truncated)"
-                  : output;
-
-              await sendLinearActivity(
-                linearClient,
-                linearSessionId,
-                {
-                  type: "action",
-                  action: getToolActionName(tool, true),
-                  parameter: extractToolParameter(tool, state.input),
-                  result,
-                },
-                false,
-              );
-              sentParts.add(part.id);
-            } else if (state.status === "error") {
-              // Tool error
-              console.log("[LINEAR PLUGIN] Tool error:", tool);
-              await sendLinearActivity(
-                linearClient,
-                linearSessionId,
-                {
-                  type: "error",
-                  body: `${tool} failed: ${state.error ?? "Unknown error"}`,
-                },
-                false,
-              );
-              sentParts.add(part.id);
-            }
-          } else if (part.type === "step-start") {
-            await sendLinearActivity(
-              linearClient,
-              linearSessionId,
-              { type: "thought", body: "Working..." },
-              true,
-            );
-          }
         }
 
         // Handle session errors
@@ -405,94 +392,20 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           );
         }
 
-        // Handle session idle (completion)
+        // Handle session idle (completion) - send Stop signal
+        // Note: Text responses are sent via experimental.text.complete hook
         if (event.type === "session.idle") {
-          console.log("[LINEAR PLUGIN] Session idle - fetching final messages");
+          console.log("[LINEAR PLUGIN] Session idle - sending Stop signal");
 
-          try {
-            // Fetch all messages from the session to get complete text
-            const messagesResponse = await client.session.messages({
-              path: { id: opencodeSessionId },
-            });
-
-            let sentStopSignal = false;
-
-            if (messagesResponse.data) {
-              // Find the last assistant message and extract its unsent text parts
-              const messages = messagesResponse.data;
-              const lastAssistantMessage = messages
-                .toReversed()
-                .find((m) => m.info.role === "assistant");
-
-              if (lastAssistantMessage) {
-                const textParts = lastAssistantMessage.parts
-                  .filter(
-                    (p): p is Part & { text: string } =>
-                      p.type === "text" && hasText(p),
-                  )
-                  .filter((p) => !sentParts.has(p.id));
-
-                if (textParts.length > 0) {
-                  // Send complete text from all unsent text parts
-                  const fullText = textParts.map((p) => p.text).join("\n\n");
-                  console.log(
-                    "[LINEAR PLUGIN] Sending final message text:",
-                    fullText.slice(0, 100) + "...",
-                  );
-                  // Send with Stop signal to mark session as complete
-                  await sendLinearActivity(
-                    linearClient,
-                    linearSessionId,
-                    { type: "response", body: fullText },
-                    false,
-                    AgentActivitySignal.Stop,
-                  );
-                  // Mark all as sent
-                  textParts.forEach((p) => sentParts.add(p.id));
-                } else {
-                  // No unsent text parts, still send Stop signal to complete session
-                  console.log(
-                    "[LINEAR PLUGIN] No new text to send, sending Stop signal",
-                  );
-                  await sendLinearActivity(
-                    linearClient,
-                    linearSessionId,
-                    { type: "response", body: "Task completed." },
-                    false,
-                    AgentActivitySignal.Stop,
-                  );
-                }
-                sentStopSignal = true;
-              }
-            }
-
-            // Ensure we always send a Stop signal even if no assistant message found
-            if (!sentStopSignal) {
-              console.log(
-                "[LINEAR PLUGIN] No assistant message found, sending Stop signal",
-              );
-              await sendLinearActivity(
-                linearClient,
-                linearSessionId,
-                { type: "response", body: "Task completed." },
-                false,
-                AgentActivitySignal.Stop,
-              );
-            }
-          } catch (error) {
-            console.error(
-              "[LINEAR PLUGIN] Error fetching session messages:",
-              error,
-            );
-            // Fall back to generic completion message with Stop signal
-            await sendLinearActivity(
-              linearClient,
-              linearSessionId,
-              { type: "response", body: "Task completed." },
-              false,
-              AgentActivitySignal.Stop,
-            );
-          }
+          // Send Stop signal to mark session as complete
+          // We use a thought activity since all text was already sent
+          await sendLinearActivity(
+            linearClient,
+            linearSessionId,
+            { type: "thought", body: "Task completed." },
+            false,
+            AgentActivitySignal.Stop,
+          );
         }
 
         // Handle todo updates -> sync to Linear plan
