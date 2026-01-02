@@ -173,6 +173,20 @@ async function ensureRepoCloned(
   await sandbox.gitCheckout(authedRepoUrl);
 
   console.info("Repository cloned successfully");
+
+  // Install dependencies with bun
+  await linearClient.createAgentActivity({
+    agentSessionId: linearSessionId,
+    content: {
+      type: "thought",
+      body: "Installing dependencies...",
+    },
+    ephemeral: true,
+  });
+
+  await sandbox.exec(`cd ${PROJECT_DIR} && bun install`, { timeout: 120000 });
+
+  console.info("Dependencies installed successfully");
 }
 
 /**
