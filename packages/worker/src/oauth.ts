@@ -325,16 +325,20 @@ export async function handleCallback(
     
     <h2>Next Steps:</h2>
     <ul>
+      <li><strong>Set LINEAR_ORGANIZATION_ID</strong> in your <code>wrangler.jsonc</code>:
+        <br><code>${organization.id}</code>
+      </li>
+      <li>Re-deploy the worker after updating the config</li>
       <li>Make sure your webhook URL is configured in Linear:
         <br><code>${url.origin}/webhook/linear</code>
       </li>
       <li>Webhook category should be: <strong>Agent session events</strong></li>
-      <li>Delegate a Linear issue to your agent or @mention it in a comment</li>
-      <li>Specify a GitHub repository URL in the issue description or comment</li>
     </ul>
 
     <h2>App Information:</h2>
     <ul>
+      <li><strong>Organization ID:</strong> <code>${organization.id}</code></li>
+      <li><strong>Organization Name:</strong> ${organization.name}</li>
       <li><strong>App ID:</strong> ${viewer.id}</li>
       <li><strong>App Name:</strong> ${viewer.name}</li>
       <li><strong>Installed:</strong> ${new Date().toLocaleString()}</li>

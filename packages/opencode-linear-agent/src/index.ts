@@ -301,7 +301,9 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
               return;
             }
             // Final text response (no delta means complete)
-            console.log("[LINEAR PLUGIN] Sending complete text response to Linear");
+            console.log(
+              "[LINEAR PLUGIN] Sending complete text response to Linear",
+            );
             await sendLinearActivity(
               linearClient,
               linearSessionId,
@@ -416,52 +418,51 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
             let sentStopSignal = false;
 
             if (messagesResponse.data) {
-              // Find the last assistant message and extract its text parts
+              // Find the last assistant message and extract its unsent text parts
               const messages = messagesResponse.data;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                const { info, parts } = messages[i];
-                if (info.role === "assistant") {
-                  // Collect all text parts from this message
-                  const textParts = parts
-                    .filter(
-                      (p): p is Part & { text: string } =>
-                        p.type === "text" && hasText(p),
-                    )
-                    .filter((p) => !sentParts.has(p.id));
+              const lastAssistantMessage = messages
+                .toReversed()
+                .find((m) => m.info.role === "assistant");
 
-                  if (textParts.length > 0) {
-                    // Send complete text from all unsent text parts
-                    const fullText = textParts.map((p) => p.text).join("\n\n");
-                    console.log(
-                      "[LINEAR PLUGIN] Sending final message text:",
-                      fullText.slice(0, 100) + "...",
-                    );
-                    // Send with Stop signal to mark session as complete
-                    await sendLinearActivity(
-                      linearClient,
-                      linearSessionId,
-                      { type: "response", body: fullText },
-                      false,
-                      AgentActivitySignal.Stop,
-                    );
-                    // Mark all as sent
-                    textParts.forEach((p) => sentParts.add(p.id));
-                  } else {
-                    // No unsent text parts, still send Stop signal to complete session
-                    console.log(
-                      "[LINEAR PLUGIN] No new text to send, sending Stop signal",
-                    );
-                    await sendLinearActivity(
-                      linearClient,
-                      linearSessionId,
-                      { type: "response", body: "Task completed." },
-                      false,
-                      AgentActivitySignal.Stop,
-                    );
-                  }
-                  sentStopSignal = true;
-                  break; // Only send the last assistant message
+              if (lastAssistantMessage) {
+                const textParts = lastAssistantMessage.parts
+                  .filter(
+                    (p): p is Part & { text: string } =>
+                      p.type === "text" && hasText(p),
+                  )
+                  .filter((p) => !sentParts.has(p.id));
+
+                if (textParts.length > 0) {
+                  // Send complete text from all unsent text parts
+                  const fullText = textParts.map((p) => p.text).join("\n\n");
+                  console.log(
+                    "[LINEAR PLUGIN] Sending final message text:",
+                    fullText.slice(0, 100) + "...",
+                  );
+                  // Send with Stop signal to mark session as complete
+                  await sendLinearActivity(
+                    linearClient,
+                    linearSessionId,
+                    { type: "response", body: fullText },
+                    false,
+                    AgentActivitySignal.Stop,
+                  );
+                  // Mark all as sent
+                  textParts.forEach((p) => sentParts.add(p.id));
+                } else {
+                  // No unsent text parts, still send Stop signal to complete session
+                  console.log(
+                    "[LINEAR PLUGIN] No new text to send, sending Stop signal",
+                  );
+                  await sendLinearActivity(
+                    linearClient,
+                    linearSessionId,
+                    { type: "response", body: "Task completed." },
+                    false,
+                    AgentActivitySignal.Stop,
+                  );
                 }
+                sentStopSignal = true;
               }
             }
 
