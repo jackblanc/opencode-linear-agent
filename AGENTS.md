@@ -46,8 +46,7 @@ linear-opencode-agent/
 │   │
 │   └── opencode-linear-agent/              # Plugin package
 │       ├── src/
-│       │   ├── index.ts                    # Linear agent plugin using @linear/sdk
-│       │   └── git-status-hook.ts          # Git status check plugin
+│       │   └── index.ts                    # Linear agent plugin using @linear/sdk
 │       ├── dist/                           # Build output (gitignored)
 │       ├── package.json                    # Plugin dependencies
 │       └── tsconfig.json                   # Extends root config
@@ -107,6 +106,10 @@ bun run fix            # Run lint:fix + format:fix
 ```
 
 ### Deployment
+
+**Automatic**: Pushing to `master` triggers GitHub Actions to build and deploy automatically. No manual deployment needed.
+
+**Manual** (if needed):
 
 ```bash
 bun run deploy         # Build plugin and deploy to Cloudflare Workers
