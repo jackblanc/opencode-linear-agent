@@ -52,7 +52,7 @@ export async function handleAuthorize(
 
   const authUrl = `${LINEAR_OAUTH_URL}?${params.toString()}`;
 
-  console.info("Redirecting to Linear OAuth", { state });
+  console.info(`[oauth] Redirecting to Linear OAuth with state ${state}`);
 
   return Response.redirect(authUrl, 302);
 }
@@ -71,7 +71,7 @@ async function exchangeCodeForToken(
   expiresIn: number;
   scope: string[];
 }> {
-  console.log("Exchanging code for token");
+  console.info(`[oauth] Exchanging authorization code for token`);
 
   // Generate callback URL from the request origin
   const requestUrl = new URL(request.url);
@@ -93,10 +93,9 @@ async function exchangeCodeForToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error("Token exchange failed", undefined, {
-      status: response.status,
-      body: text,
-    });
+    console.error(
+      `[oauth] Token exchange failed with status ${response.status}: ${text}`,
+    );
     throw new Error(`Token exchange failed: ${response.status}`);
   }
 
@@ -108,7 +107,9 @@ async function exchangeCodeForToken(
     scope: string[];
   }>();
 
-  console.info("Token exchange successful");
+  console.info(
+    `[oauth] Token exchange successful, expires in ${data.expires_in}s`,
+  );
 
   return {
     accessToken: data.access_token,
@@ -127,7 +128,7 @@ export async function refreshAccessToken(
   env: Env,
   organizationId: string,
 ): Promise<string> {
-  console.info("Refreshing access token", { organizationId });
+  console.info(`[oauth] Refreshing access token for org ${organizationId}`);
 
   // Get refresh token data from KV
   const refreshData = await env.KV.get<RefreshTokenData>(
@@ -136,10 +137,12 @@ export async function refreshAccessToken(
   );
 
   if (!refreshData) {
+    console.error(`[oauth] No refresh token found for org ${organizationId}`);
     throw new Error(
       `No refresh token found for organization ${organizationId}. Please re-authorize at /oauth/authorize`,
     );
   }
+  console.info(`[oauth] Found refresh token for org ${organizationId}`);
 
   // Exchange refresh token for new tokens
   const response = await fetch(LINEAR_TOKEN_URL, {
@@ -157,10 +160,9 @@ export async function refreshAccessToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error("Token refresh failed", undefined, {
-      status: response.status,
-      body: text,
-    });
+    console.error(
+      `[oauth] Token refresh failed for org ${organizationId} with status ${response.status}: ${text}`,
+    );
     throw new Error(
       `Token refresh failed: ${response.status}. Please re-authorize at /oauth/authorize`,
     );
@@ -174,7 +176,9 @@ export async function refreshAccessToken(
     scope: string[];
   }>();
 
-  console.info("Token refresh successful", { organizationId });
+  console.info(
+    `[oauth] Token refresh successful for org ${organizationId}, expires in ${data.expires_in}s`,
+  );
 
   // Store new access token with 23-hour TTL
   await env.KV.put(`token:access:${organizationId}`, data.access_token, {
@@ -211,11 +215,9 @@ export async function handleCallback(
 
   // Handle OAuth errors
   if (error) {
-    console.error("OAuth error from Linear", undefined, {
-      error,
-      errorDescription,
-    });
-
+    console.error(
+      `[oauth] OAuth error from Linear: ${error} - ${errorDescription ?? "no description"}`,
+    );
     return new Response(`OAuth Error: ${error}\n${errorDescription ?? ""}`, {
       status: 400,
     });
@@ -223,19 +225,19 @@ export async function handleCallback(
 
   // Validate required parameters
   if (!code) {
-    console.warn("Missing code parameter in callback");
+    console.warn(`[oauth] Missing code parameter in callback`);
     return new Response("Missing authorization code", { status: 400 });
   }
 
   if (!state) {
-    console.warn("Missing state parameter in callback");
+    console.warn(`[oauth] Missing state parameter in callback`);
     return new Response("Missing state parameter", { status: 400 });
   }
 
   // Validate state parameter against stored value in KV
   const storedState = await env.KV.get(`oauth:state:${state}`);
   if (!storedState) {
-    console.warn("Invalid or expired OAuth state", { state });
+    console.warn(`[oauth] Invalid or expired OAuth state: ${state}`);
     return new Response(
       "Invalid or expired state parameter. Please restart the OAuth flow.",
       { status: 403 },
@@ -244,7 +246,7 @@ export async function handleCallback(
 
   // Delete state (one-time use)
   await env.KV.delete(`oauth:state:${state}`);
-  console.log("State validated successfully");
+  console.info(`[oauth] State ${state} validated and deleted`);
 
   try {
     // Exchange code for access token
@@ -255,12 +257,9 @@ export async function handleCallback(
     const viewer = await client.viewer;
     const organization = await viewer.organization;
 
-    console.info("Retrieved app and organization info", {
-      appId: viewer.id,
-      appName: viewer.name,
-      organizationId: organization.id,
-      organizationName: organization.name,
-    });
+    console.info(
+      `[oauth] Retrieved app info: ${viewer.name} (${viewer.id}) in org ${organization.name} (${organization.id})`,
+    );
 
     // Store access token with 23-hour TTL
     await env.KV.put(`token:access:${organization.id}`, tokenData.accessToken, {
@@ -280,11 +279,9 @@ export async function handleCallback(
       JSON.stringify(refreshData),
     );
 
-    console.info("Tokens stored successfully", {
-      accessKey: `token:access:${organization.id}`,
-      refreshKey: `token:refresh:${organization.id}`,
-      appId: viewer.id,
-    });
+    console.info(
+      `[oauth] Tokens stored successfully for org ${organization.id} (app ${viewer.id})`,
+    );
 
     // Return success page
     return new Response(
@@ -357,11 +354,9 @@ export async function handleCallback(
       },
     );
   } catch (error) {
-    console.error("OAuth callback failed", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[oauth] OAuth callback failed: ${errorMessage}`);
 
-    return new Response(
-      `OAuth setup failed: ${error instanceof Error ? error.message : String(error)}`,
-      { status: 500 },
-    );
+    return new Response(`OAuth setup failed: ${errorMessage}`, { status: 500 });
   }
 }

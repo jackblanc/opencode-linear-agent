@@ -73,9 +73,13 @@ export async function getOrInitializeSandbox(
   organizationId: string,
   workdir?: string,
 ): Promise<SandboxContext> {
+  console.info(
+    `[sandbox] Initializing sandbox for org ${organizationId}, workdir: ${workdir ?? PROJECT_DIR}`,
+  );
   const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
 
   // Mount R2 at OpenCode's storage directory for session persistence
+  console.info(`[sandbox] Mounting R2 bucket at ${OPENCODE_STORAGE_PATH}`);
   try {
     await sandbox.mountBucket("opencode-data", OPENCODE_STORAGE_PATH, {
       endpoint: `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -85,20 +89,22 @@ export async function getOrInitializeSandbox(
       },
       s3fsOptions: ["nonempty"],
     });
-    console.info("R2 bucket mounted at", OPENCODE_STORAGE_PATH);
+    console.info(
+      `[sandbox] R2 bucket mounted successfully at ${OPENCODE_STORAGE_PATH}`,
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (errorMessage.includes("already in use")) {
-      // Bucket already mounted - this is fine
-      console.info("R2 bucket already mounted");
+      console.info(
+        `[sandbox] R2 bucket already mounted at ${OPENCODE_STORAGE_PATH}`,
+      );
     } else if (errorMessage.includes("wrangler dev")) {
-      // Local development - mountBucket not supported, continue without persistence
       console.warn(
-        "R2 bucket mounting not available in local dev, continuing without persistence",
+        `[sandbox] R2 bucket mounting not available in local dev, continuing without persistence`,
       );
     } else {
-      // Production mount failure - throw
+      console.error(`[sandbox] Failed to mount R2 bucket: ${errorMessage}`);
       throw new Error(`Failed to mount R2 bucket: ${errorMessage}`, {
         cause: error,
       });
@@ -106,13 +112,20 @@ export async function getOrInitializeSandbox(
   }
 
   // Get Linear access token (refresh if expired)
+  console.info(`[sandbox] Fetching access token for org ${organizationId}`);
   let accessToken = await env.KV.get(`token:access:${organizationId}`);
   if (!accessToken) {
-    console.info("Access token expired, refreshing...", { organizationId });
+    console.info(
+      `[sandbox] Access token not found or expired, refreshing for org ${organizationId}`,
+    );
     accessToken = await refreshAccessToken(env, organizationId);
+    console.info(`[sandbox] Access token refreshed successfully`);
+  } else {
+    console.info(`[sandbox] Access token found in KV`);
   }
 
   // Set environment variables for the container
+  console.info(`[sandbox] Setting LINEAR_ACCESS_TOKEN environment variable`);
   await sandbox.setEnvVars({
     LINEAR_ACCESS_TOKEN: accessToken,
   });
@@ -121,15 +134,20 @@ export async function getOrInitializeSandbox(
   const directory = workdir ?? PROJECT_DIR;
 
   // Ensure project directory exists
+  console.info(`[sandbox] Ensuring directory exists: ${directory}`);
   await sandbox.exec(`mkdir -p ${directory}`, { timeout: 30000 });
 
   // Create OpenCode client and server
+  console.info(
+    `[sandbox] Creating OpenCode client and server on port ${OPENCODE_PORT}`,
+  );
   const { client, server } = await createOpencode<OpencodeClient>(sandbox, {
     port: OPENCODE_PORT,
     directory,
     config: getConfig(env),
   });
 
+  console.info(`[sandbox] Sandbox initialized successfully`);
   return { sandbox, client, server };
 }
 
