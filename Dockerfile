@@ -19,7 +19,6 @@ RUN cd /tmp/plugin \
     && bun install \
     && mkdir -p /root/.config/opencode/plugin \
     && bun build src/index.ts --outdir /root/.config/opencode/plugin --outfile linear-agent.js --target bun --format esm \
-    && bun build src/git-status-hook.ts --outdir /root/.config/opencode/plugin --outfile git-status-hook.js --target bun --format esm \
     && rm -rf /tmp/plugin
 
 # Expose OpenCode server port

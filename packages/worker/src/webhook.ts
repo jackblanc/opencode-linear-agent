@@ -8,7 +8,8 @@ import type { OpencodeClient } from "@opencode-ai/sdk";
 import {
   getOrInitializeSandbox,
   getSandboxInstance,
-  PROJECT_DIR,
+  REPO_DIR,
+  getSessionWorkdir,
 } from "./sandbox";
 
 // Prefix used in OpenCode session titles to identify Linear sessions
@@ -20,7 +21,17 @@ const LINEAR_SESSION_PREFIX = "linear:";
 interface SessionState {
   opencodeSessionId: string;
   linearSessionId: string;
+  issueId: string;
+  branchName: string;
   lastActivityTime: number;
+}
+
+/**
+ * Result from ensureSessionWorktree
+ */
+interface WorktreeResult {
+  workdir: string;
+  branchName: string;
 }
 
 /**
@@ -33,13 +44,23 @@ function isAgentSessionEvent(
 }
 
 /**
+ * Result of getOrCreateSession including state for resume handling
+ */
+interface SessionResult {
+  opencodeSessionId: string;
+  existingState: SessionState | null;
+}
+
+/**
  * Get or create OpenCode session for a Linear session
  */
 async function getOrCreateSession(
   client: OpencodeClient,
   kv: KVNamespace,
   linearSessionId: string,
-): Promise<string> {
+  issueId: string,
+  branchName: string,
+): Promise<SessionResult> {
   const stateKey = `session:${linearSessionId}`;
   const existingState = await kv.get<SessionState>(stateKey, "json");
 
@@ -54,7 +75,7 @@ async function getOrCreateSession(
       });
 
       if (session.data) {
-        return session.data.id;
+        return { opencodeSessionId: session.data.id, existingState };
       }
     } catch (error) {
       console.warn("Failed to resume session, creating new one", { error });
@@ -76,31 +97,31 @@ async function getOrCreateSession(
   const newState: SessionState = {
     opencodeSessionId: session.data.id,
     linearSessionId,
+    issueId,
+    branchName,
     lastActivityTime: Date.now(),
   };
 
   await kv.put(stateKey, JSON.stringify(newState));
 
-  return session.data.id;
+  return { opencodeSessionId: session.data.id, existingState: null };
 }
 
 /**
- * Clone repository into sandbox (checks filesystem, not KV)
- *
- * Fixed: No longer stores state in KV. After container restart,
- * the check will correctly see the repo is missing and re-clone.
+ * Ensure the main repository is cloned to REPO_DIR.
+ * This is the source for all worktrees.
  */
-async function ensureRepoCloned(
+async function ensureMainRepoCloned(
   env: Env,
   linearSessionId: string,
   linearClient: LinearClient,
 ): Promise<void> {
   const sandbox = getSandboxInstance(env);
 
-  // Check if repo already exists in the container filesystem
-  const repoExists = await sandbox.exists(`${PROJECT_DIR}/.git`);
+  // Check if main repo already exists
+  const repoExists = await sandbox.exists(`${REPO_DIR}/.git`);
   if (repoExists.exists) {
-    console.info("Repository already cloned");
+    console.info("Main repository already cloned");
     return;
   }
 
@@ -121,18 +142,109 @@ async function ensureRepoCloned(
     ephemeral: true,
   });
 
-  // Clone with authentication using SDK's gitCheckout
-  // Embed token in URL for private repo access
+  // Clone with authentication
   const authedRepoUrl = env.REPO_URL.replace(
     "https://github.com/",
     `https://${env.GITHUB_TOKEN}@github.com/`,
   );
 
-  await sandbox.gitCheckout(authedRepoUrl);
+  // Clone to REPO_DIR instead of default /workspace
+  await sandbox.exec(`mkdir -p ${REPO_DIR}`, { timeout: 30000 });
+  await sandbox.exec(`git clone ${authedRepoUrl} ${REPO_DIR}`, {
+    timeout: 120000,
+  });
 
-  console.info("Repository cloned successfully");
+  console.info("Main repository cloned successfully");
+}
 
-  // Install dependencies with bun
+/**
+ * Create or resume a session worktree.
+ *
+ * This function handles:
+ * - Cloning the main repo (if needed)
+ * - Creating or fetching the session branch
+ * - Creating the worktree directory
+ * - Configuring git user and remote
+ * - Installing dependencies
+ */
+async function ensureSessionWorktree(
+  env: Env,
+  linearSessionId: string,
+  issueId: string,
+  linearClient: LinearClient,
+  existingBranch?: string,
+): Promise<WorktreeResult> {
+  const sandbox = getSandboxInstance(env);
+  const workdir = getSessionWorkdir(linearSessionId);
+  const branchName =
+    existingBranch ?? `linear-opencode-agent/${issueId}/${linearSessionId}`;
+
+  // Ensure main repo is cloned
+  await ensureMainRepoCloned(env, linearSessionId, linearClient);
+
+  // Check if worktree already exists
+  const worktreeExists = await sandbox.exists(`${workdir}/.git`);
+  if (worktreeExists.exists) {
+    console.info("Worktree already exists", { workdir });
+    return { workdir, branchName };
+  }
+
+  await linearClient.createAgentActivity({
+    agentSessionId: linearSessionId,
+    content: {
+      type: "thought",
+      body: "Setting up workspace...",
+    },
+    ephemeral: true,
+  });
+
+  // Create sessions directory
+  await sandbox.exec("mkdir -p /workspace/sessions", { timeout: 30000 });
+
+  // Check if branch already exists on remote (for resume)
+  const branchExistsResult = await sandbox.exec(
+    `cd ${REPO_DIR} && git fetch origin ${branchName} 2>/dev/null && echo "exists" || echo "new"`,
+    { timeout: 60000 },
+  );
+  const branchExists = branchExistsResult.stdout.trim() === "exists";
+
+  if (branchExists) {
+    // Resume: create worktree from existing remote branch
+    console.info("Resuming from existing branch", { branchName });
+    await sandbox.exec(
+      `cd ${REPO_DIR} && git worktree add ${workdir} origin/${branchName}`,
+      { timeout: 60000 },
+    );
+  } else {
+    // New: create worktree with new branch from main
+    console.info("Creating new branch", { branchName });
+    await sandbox.exec(
+      `cd ${REPO_DIR} && git worktree add -b ${branchName} ${workdir}`,
+      { timeout: 60000 },
+    );
+  }
+
+  // Configure git user for the worktree
+  await sandbox.exec(
+    `cd ${workdir} && git config user.name "Linear OpenCode Agent" && git config user.email "agent@linear.app"`,
+    { timeout: 30000 },
+  );
+
+  // Set remote URL with auth token for pushing
+  if (env.GITHUB_TOKEN && env.REPO_URL) {
+    const authedRepoUrl = env.REPO_URL.replace(
+      "https://github.com/",
+      `https://${env.GITHUB_TOKEN}@github.com/`,
+    );
+    await sandbox.exec(
+      `cd ${workdir} && git remote set-url origin ${authedRepoUrl}`,
+      {
+        timeout: 30000,
+      },
+    );
+  }
+
+  // Install dependencies
   await linearClient.createAgentActivity({
     agentSessionId: linearSessionId,
     content: {
@@ -142,9 +254,13 @@ async function ensureRepoCloned(
     ephemeral: true,
   });
 
-  await sandbox.exec(`cd ${PROJECT_DIR} && bun install`, { timeout: 120000 });
+  await sandbox.exec(`cd ${workdir} && bun install`, { timeout: 120000 });
 
-  console.info("Dependencies installed successfully");
+  console.info("Session worktree created successfully", {
+    workdir,
+    branchName,
+  });
+  return { workdir, branchName };
 }
 
 /**
@@ -160,6 +276,7 @@ function hasStopSignal(activity: { signal?: string | null }): boolean {
 async function processAgentSessionEvent(
   payload: AgentSessionEventWebhookPayload,
   env: Env,
+  workerUrl: string,
 ): Promise<void> {
   console.info("Processing agent session event", {
     action: payload.action,
@@ -172,17 +289,18 @@ async function processAgentSessionEvent(
     return;
   }
 
-  // Get sandbox with Linear access token set
-  const { client } = await getOrInitializeSandbox(env, organizationId);
-
   // Create Linear client for sending activities
   const accessToken = await env.KV.get(`token:access:${organizationId}`);
   if (!accessToken) {
-    console.error("No access token available after sandbox init");
+    console.error("No access token available");
     return;
   }
   const linearClient = new LinearClient({ accessToken });
   const linearSessionId = payload.agentSession.id;
+
+  // Extract issue ID from payload
+  const issueId =
+    payload.agentSession.issue?.id ?? payload.agentSession.issueId ?? "unknown";
 
   // Send immediate acknowledgment to Linear
   try {
@@ -199,18 +317,49 @@ async function processAgentSessionEvent(
   }
 
   try {
+    // Set up the session worktree (handles both new and resumed sessions)
+    // For resumed sessions, we may need to retrieve the existing branch name
+    const stateKey = `session:${linearSessionId}`;
+    const existingState = await env.KV.get<SessionState>(stateKey, "json");
+    const existingBranch = existingState?.branchName;
+
+    const { workdir, branchName } = await ensureSessionWorktree(
+      env,
+      linearSessionId,
+      issueId,
+      linearClient,
+      existingBranch,
+    );
+
+    // Get sandbox with session-specific workdir
+    const { client } = await getOrInitializeSandbox(
+      env,
+      organizationId,
+      workdir,
+    );
+
     // Get or create OpenCode session for this Linear session
-    const opencodeSessionId = await getOrCreateSession(
+    const sessionResult = await getOrCreateSession(
       client,
       env.KV,
       linearSessionId,
+      issueId,
+      branchName,
     );
+    const opencodeSessionId = sessionResult.opencodeSessionId;
+
+    // Set externalLink on Linear session to link to OpenCode UI
+    try {
+      const externalLink = `${workerUrl}/opencode?session=${opencodeSessionId}`;
+      const agentSession = await linearClient.agentSession(linearSessionId);
+      await agentSession.update({ externalLink });
+      console.info("Set externalLink on Linear session", { externalLink });
+    } catch (error) {
+      console.error("Failed to set externalLink", { error });
+    }
 
     if (payload.action === "created") {
-      console.info("New agent session created");
-
-      // Ensure repo is cloned
-      await ensureRepoCloned(env, linearSessionId, linearClient);
+      console.info("New agent session created", { workdir, branchName });
 
       const prompt = payload.promptContext ?? "Please help with this issue.";
 
@@ -343,11 +492,14 @@ export async function handleWebhook(
     sessionId: payload.agentSession.id,
   });
 
+  // Extract worker URL for externalLink on Linear session
+  const workerUrl = new URL(request.url).origin;
+
   // Process in background using waitUntil - Linear webhooks require response within 5s
   // The Durable Object (sandbox) keeps running after waitUntil completes,
   // so the plugin can stream events to Linear
   ctx.waitUntil(
-    processAgentSessionEvent(payload, env).catch((error) => {
+    processAgentSessionEvent(payload, env, workerUrl).catch((error) => {
       console.error("Background processing failed", error);
     }),
   );
