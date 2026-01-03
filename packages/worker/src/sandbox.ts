@@ -78,6 +78,11 @@ export async function getOrInitializeSandbox(
   );
   const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
 
+  // Ensure the container is running before any operations
+  console.info(`[sandbox] Starting container`);
+  await sandbox.start();
+  console.info(`[sandbox] Container is running`);
+
   // Mount R2 at OpenCode's storage directory for session persistence
   console.info(`[sandbox] Mounting R2 bucket at ${OPENCODE_STORAGE_PATH}`);
   try {
