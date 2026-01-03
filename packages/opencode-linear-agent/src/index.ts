@@ -22,8 +22,12 @@
  * - todo.updated: Sync plan to Linear
  */
 
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { LinearClient, AgentActivitySignal } from "@linear/sdk";
 import type { Plugin } from "@opencode-ai/plugin";
+
+const execAsync = promisify(exec);
 
 // Prefix used in OpenCode session titles to identify Linear sessions
 const LINEAR_SESSION_PREFIX = "linear:";
@@ -126,6 +130,105 @@ function mapTodoStatus(
     default:
       return "pending";
   }
+}
+
+/**
+ * Result of git status check for session completion
+ */
+interface GitCheckResult {
+  action: "commit" | "push" | "complete";
+  branchName: string;
+}
+
+/**
+ * Check git status to determine if session can complete.
+ * Returns the action needed: commit, push, or complete.
+ */
+async function checkGitStatusForCompletion(
+  workdir: string,
+): Promise<GitCheckResult> {
+  try {
+    // Get current branch name
+    const { stdout: branchOutput } = await execAsync(
+      "git rev-parse --abbrev-ref HEAD",
+      { cwd: workdir },
+    );
+    const branchName = branchOutput.trim();
+
+    // Check for uncommitted changes
+    const { stdout: statusOutput } = await execAsync("git status --porcelain", {
+      cwd: workdir,
+    });
+
+    if (statusOutput.trim()) {
+      // There are uncommitted changes
+      console.log("[LINEAR PLUGIN] Uncommitted changes detected");
+      return { action: "commit", branchName };
+    }
+
+    // Check for unpushed commits
+    // First check if upstream is set
+    try {
+      const { stdout: upstreamOutput } = await execAsync(
+        `git rev-list --count @{u}..HEAD 2>/dev/null || git rev-list --count origin/main..HEAD 2>/dev/null || echo "0"`,
+        { cwd: workdir },
+      );
+      const unpushedCount = parseInt(upstreamOutput.trim(), 10);
+
+      if (unpushedCount > 0) {
+        console.log(
+          "[LINEAR PLUGIN] Unpushed commits detected:",
+          unpushedCount,
+        );
+        return { action: "push", branchName };
+      }
+    } catch {
+      // If we can't determine upstream, check against origin/main
+      const { stdout: diffOutput } = await execAsync(
+        "git log origin/main..HEAD --oneline 2>/dev/null || echo ''",
+        { cwd: workdir },
+      );
+      if (diffOutput.trim()) {
+        console.log("[LINEAR PLUGIN] Commits ahead of origin/main detected");
+        return { action: "push", branchName };
+      }
+    }
+
+    // Everything is clean
+    console.log("[LINEAR PLUGIN] Git status clean, session can complete");
+    return { action: "complete", branchName };
+  } catch (error) {
+    console.error("[LINEAR PLUGIN] Error checking git status:", error);
+    // If git check fails, allow completion
+    return { action: "complete", branchName: "unknown" };
+  }
+}
+
+/**
+ * Build prompt for agent to commit changes
+ */
+function buildCommitPrompt(branchName: string): string {
+  return `[git-status-check]: You have uncommitted changes in the repository.
+
+Please:
+1. Stage and commit all changes with a descriptive commit message
+2. Push to the remote branch: ${branchName}
+3. Create a pull request for your changes
+
+Do not stop until all changes are committed and pushed.`;
+}
+
+/**
+ * Build prompt for agent to push changes
+ */
+function buildPushPrompt(branchName: string): string {
+  return `[git-status-check]: You have unpushed commits on branch ${branchName}.
+
+Please:
+1. Push your commits: git push origin ${branchName}
+2. Create a pull request for your changes
+
+Do not stop until changes are pushed and a PR is created.`;
 }
 
 /**
@@ -392,13 +495,51 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           );
         }
 
-        // Handle session idle (completion) - send Stop signal
+        // Handle session idle (completion) - check git status before sending Stop
         // Note: Text responses are sent via experimental.text.complete hook
         if (event.type === "session.idle") {
-          console.log("[LINEAR PLUGIN] Session idle - sending Stop signal");
+          console.log("[LINEAR PLUGIN] Session idle - checking git status");
 
-          // Send Stop signal to mark session as complete
-          // We use a thought activity since all text was already sent
+          // Get working directory from process.cwd()
+          const workdir = process.cwd();
+          const gitCheck = await checkGitStatusForCompletion(workdir);
+
+          if (gitCheck.action === "commit") {
+            // Prompt agent to commit - DO NOT send Stop signal
+            console.log("[LINEAR PLUGIN] Prompting agent to commit changes");
+            await client.session.promptAsync({
+              path: { id: opencodeSessionId },
+              body: {
+                parts: [
+                  {
+                    type: "text",
+                    text: buildCommitPrompt(gitCheck.branchName),
+                  },
+                ],
+              },
+            });
+            return;
+          }
+
+          if (gitCheck.action === "push") {
+            // Prompt agent to push and create PR - DO NOT send Stop signal
+            console.log("[LINEAR PLUGIN] Prompting agent to push changes");
+            await client.session.promptAsync({
+              path: { id: opencodeSessionId },
+              body: {
+                parts: [
+                  {
+                    type: "text",
+                    text: buildPushPrompt(gitCheck.branchName),
+                  },
+                ],
+              },
+            });
+            return;
+          }
+
+          // Clean - send Stop signal to mark session as complete
+          console.log("[LINEAR PLUGIN] Git clean - sending Stop signal");
           await sendLinearActivity(
             linearClient,
             linearSessionId,

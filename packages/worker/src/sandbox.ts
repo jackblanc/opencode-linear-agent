@@ -20,8 +20,19 @@ import { refreshAccessToken } from "./oauth";
 // Shared sandbox ID for all OpenCode access (web UI and Linear webhooks)
 export const SANDBOX_ID = "opencode-instance";
 
+// Main repository directory (source for worktrees)
+export const REPO_DIR = "/workspace/repo";
+
 // Default working directory in Cloudflare Sandbox (matches gitCheckout default)
 export const PROJECT_DIR = "/workspace";
+
+/**
+ * Get the working directory for a specific session.
+ * Each session gets its own git worktree for isolation.
+ */
+export function getSessionWorkdir(sessionId: string): string {
+  return `/workspace/sessions/${sessionId}`;
+}
 
 // Port used by OpenCode server (default)
 export const OPENCODE_PORT = 4096;
@@ -53,12 +64,14 @@ export interface SandboxContext {
  *
  * @param env - Worker environment
  * @param organizationId - Linear organization ID (used to fetch/refresh access token)
+ * @param workdir - Optional working directory override (defaults to PROJECT_DIR)
  * @throws Error if R2 bucket fails to mount in production
  * @throws Error if Linear access token cannot be obtained
  */
 export async function getOrInitializeSandbox(
   env: Env,
   organizationId: string,
+  workdir?: string,
 ): Promise<SandboxContext> {
   const sandbox = getSandbox(env.Sandbox, SANDBOX_ID);
 
@@ -104,13 +117,16 @@ export async function getOrInitializeSandbox(
     LINEAR_ACCESS_TOKEN: accessToken,
   });
 
+  // Determine which directory to use
+  const directory = workdir ?? PROJECT_DIR;
+
   // Ensure project directory exists
-  await sandbox.exec(`mkdir -p ${PROJECT_DIR}`, { timeout: 30000 });
+  await sandbox.exec(`mkdir -p ${directory}`, { timeout: 30000 });
 
   // Create OpenCode client and server
   const { client, server } = await createOpencode<OpencodeClient>(sandbox, {
     port: OPENCODE_PORT,
-    directory: PROJECT_DIR,
+    directory,
     config: getConfig(env),
   });
 
