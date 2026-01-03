@@ -161,8 +161,9 @@ async function checkGitStatusForCompletion(
     });
 
     if (statusOutput.trim()) {
-      // There are uncommitted changes
-      console.log("[LINEAR PLUGIN] Uncommitted changes detected");
+      console.log(
+        `[LINEAR PLUGIN] Uncommitted changes detected on branch ${branchName}`,
+      );
       return { action: "commit", branchName };
     }
 
@@ -177,8 +178,7 @@ async function checkGitStatusForCompletion(
 
       if (unpushedCount > 0) {
         console.log(
-          "[LINEAR PLUGIN] Unpushed commits detected:",
-          unpushedCount,
+          `[LINEAR PLUGIN] ${unpushedCount} unpushed commits detected on branch ${branchName}`,
         );
         return { action: "push", branchName };
       }
@@ -189,16 +189,20 @@ async function checkGitStatusForCompletion(
         { cwd: workdir },
       );
       if (diffOutput.trim()) {
-        console.log("[LINEAR PLUGIN] Commits ahead of origin/main detected");
+        console.log(
+          `[LINEAR PLUGIN] Commits ahead of origin/main detected on branch ${branchName}`,
+        );
         return { action: "push", branchName };
       }
     }
 
-    // Everything is clean
-    console.log("[LINEAR PLUGIN] Git status clean, session can complete");
+    console.log(
+      `[LINEAR PLUGIN] Git status clean on branch ${branchName}, session can complete`,
+    );
     return { action: "complete", branchName };
   } catch (error) {
-    console.error("[LINEAR PLUGIN] Error checking git status:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[LINEAR PLUGIN] Error checking git status: ${errorMessage}`);
     // If git check fails, allow completion
     return { action: "complete", branchName: "unknown" };
   }
@@ -256,7 +260,10 @@ async function sendLinearActivity(
       signal,
     });
   } catch (error) {
-    console.error("[LINEAR PLUGIN] Failed to send activity:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[LINEAR PLUGIN] Failed to send ${content.type} activity to session ${sessionId}: ${errorMessage}`,
+    );
   }
 }
 
@@ -272,7 +279,10 @@ async function updateLinearPlan(
     const agentSession = await linearClient.agentSession(sessionId);
     await agentSession.update({ plan });
   } catch (error) {
-    console.error("[LINEAR PLUGIN] Failed to update plan:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[LINEAR PLUGIN] Failed to update plan for session ${sessionId}: ${errorMessage}`,
+    );
   }
 }
 
@@ -280,7 +290,7 @@ async function updateLinearPlan(
  * Linear Agent Plugin
  */
 export const LinearAgentPlugin: Plugin = async ({ client }) => {
-  console.log("[LINEAR PLUGIN] Plugin initializing...");
+  console.log("[LINEAR PLUGIN] Plugin initializing, workdir: " + process.cwd());
 
   /**
    * Get Linear session ID for an OpenCode session (with caching)
@@ -308,7 +318,11 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         return linearSessionId;
       }
     } catch (error) {
-      console.error("[LINEAR PLUGIN] Error fetching session:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        `[LINEAR PLUGIN] Error fetching session ${opencodeSessionId}: ${errorMessage}`,
+      );
     }
 
     return null;
@@ -342,7 +356,7 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         return;
       }
 
-      console.log("[LINEAR PLUGIN] Tool starting:", input.tool);
+      console.log(`[LINEAR PLUGIN] Tool starting: ${input.tool}`);
 
       await sendLinearActivity(
         linearClient,
@@ -372,7 +386,7 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         return;
       }
 
-      console.log("[LINEAR PLUGIN] Tool completed:", input.tool);
+      console.log(`[LINEAR PLUGIN] Tool completed: ${input.tool}`);
 
       // Truncate long outputs
       const result =
@@ -417,8 +431,7 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
       }
 
       console.log(
-        "[LINEAR PLUGIN] Text complete:",
-        output.text.slice(0, 100) + "...",
+        `[LINEAR PLUGIN] Text complete (${output.text.length} chars): ${output.text.slice(0, 100)}...`,
       );
 
       await sendLinearActivity(
@@ -443,11 +456,13 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           return;
         }
 
-        console.log("[LINEAR PLUGIN] Event received:", event.type);
+        console.log(`[LINEAR PLUGIN] Event received: ${event.type}`);
 
         const linearClient = getLinearClient();
         if (!linearClient) {
-          console.log("[LINEAR PLUGIN] No LINEAR_ACCESS_TOKEN available");
+          console.log(
+            `[LINEAR PLUGIN] No LINEAR_ACCESS_TOKEN available, skipping event`,
+          );
           return;
         }
 
@@ -462,15 +477,22 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         }
 
         if (!opencodeSessionId) {
-          console.log("[LINEAR PLUGIN] No sessionID in event");
+          console.log(
+            `[LINEAR PLUGIN] No sessionID in ${event.type} event, skipping`,
+          );
           return;
         }
 
         const linearSessionId = await getLinearSessionId(opencodeSessionId);
         if (!linearSessionId) {
-          console.log("[LINEAR PLUGIN] Not a Linear-linked session");
+          console.log(
+            `[LINEAR PLUGIN] Session ${opencodeSessionId} is not a Linear-linked session, skipping`,
+          );
           return;
         }
+        console.log(
+          `[LINEAR PLUGIN] Mapped OpenCode session ${opencodeSessionId} to Linear session ${linearSessionId}`,
+        );
 
         // Handle session errors
         if (event.type === "session.error") {
@@ -483,7 +505,9 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           ) {
             errorMessage = error.data.message;
           }
-          console.log("[LINEAR PLUGIN] Session error:", errorMessage);
+          console.log(
+            `[LINEAR PLUGIN] Session error for ${linearSessionId}: ${errorMessage}`,
+          );
           await sendLinearActivity(
             linearClient,
             linearSessionId,
@@ -498,15 +522,20 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         // Handle session idle (completion) - check git status before sending Stop
         // Note: Text responses are sent via experimental.text.complete hook
         if (event.type === "session.idle") {
-          console.log("[LINEAR PLUGIN] Session idle - checking git status");
-
-          // Get working directory from process.cwd()
           const workdir = process.cwd();
+          console.log(
+            `[LINEAR PLUGIN] Session ${opencodeSessionId} idle, checking git status in ${workdir}`,
+          );
+
           const gitCheck = await checkGitStatusForCompletion(workdir);
+          console.log(
+            `[LINEAR PLUGIN] Git check result: action=${gitCheck.action}, branch=${gitCheck.branchName}`,
+          );
 
           if (gitCheck.action === "commit") {
-            // Prompt agent to commit - DO NOT send Stop signal
-            console.log("[LINEAR PLUGIN] Prompting agent to commit changes");
+            console.log(
+              `[LINEAR PLUGIN] Prompting agent to commit changes on branch ${gitCheck.branchName}`,
+            );
             await client.session.promptAsync({
               path: { id: opencodeSessionId },
               body: {
@@ -522,8 +551,9 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           }
 
           if (gitCheck.action === "push") {
-            // Prompt agent to push and create PR - DO NOT send Stop signal
-            console.log("[LINEAR PLUGIN] Prompting agent to push changes");
+            console.log(
+              `[LINEAR PLUGIN] Prompting agent to push changes on branch ${gitCheck.branchName}`,
+            );
             await client.session.promptAsync({
               path: { id: opencodeSessionId },
               body: {
@@ -538,8 +568,9 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
             return;
           }
 
-          // Clean - send Stop signal to mark session as complete
-          console.log("[LINEAR PLUGIN] Git clean - sending Stop signal");
+          console.log(
+            `[LINEAR PLUGIN] Git clean on branch ${gitCheck.branchName}, sending Stop signal to Linear session ${linearSessionId}`,
+          );
           await sendLinearActivity(
             linearClient,
             linearSessionId,
@@ -552,7 +583,9 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         // Handle todo updates -> sync to Linear plan
         if (event.type === "todo.updated") {
           const { todos } = event.properties;
-          console.log("[LINEAR PLUGIN] Todo updated:", todos.length, "items");
+          console.log(
+            `[LINEAR PLUGIN] Todo updated for session ${linearSessionId}: ${todos.length} items`,
+          );
 
           const plan = todos.map((todo) => ({
             content: todo.content,
@@ -562,7 +595,9 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           await updateLinearPlan(linearClient, linearSessionId, plan);
         }
       } catch (error) {
-        console.error("[LINEAR PLUGIN] Event handler error:", error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        console.error(`[LINEAR PLUGIN] Event handler error: ${errorMessage}`);
       }
     },
   };

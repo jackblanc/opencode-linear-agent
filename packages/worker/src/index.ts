@@ -62,10 +62,7 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
-    console.log("Request received", {
-      method: request.method,
-      pathname: url.pathname,
-    });
+    console.info(`[router] ${request.method} ${url.pathname}`);
 
     // === PUBLIC ROUTES (no auth required) ===
 
