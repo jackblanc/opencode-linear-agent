@@ -8,8 +8,8 @@ When fetching external documentation, use LLM-optimized formats:
 
 - **Linear**: Append `.md` to any Linear developer docs URL to get Markdown instead of HTML
   - Example: `https://linear.app/developers/webhooks` → `https://linear.app/developers/webhooks.md`
-- **Cloudflare**: Append `/llms-full.txt` to any Cloudflare docs section URL
-  - Example: `https://developers.cloudflare.com/sandbox/` → `https://developers.cloudflare.com/sandbox/llms-full.txt`
+- **Cloudflare**: Append `index.md` to any Cloudflare docs section URL to get Markdown
+  - Example: `https://developers.cloudflare.com/sandbox/` → `https://developers.cloudflare.com/sandbox/index.md`
 - **OpenCode**: Documentation at `https://opencode.ai/docs/` returns Markdown automatically
 
 ---
@@ -319,11 +319,11 @@ All external documentation should be fetched in LLM-friendly formats. See the "L
 
 **Services used in this project:**
 
-- https://developers.cloudflare.com/sandbox/llms-full.txt - Sandbox SDK (container execution)
-- https://developers.cloudflare.com/containers/llms-full.txt - Container bindings
-- https://developers.cloudflare.com/kv/llms-full.txt - KV storage (OAuth tokens, session state)
-- https://developers.cloudflare.com/workers/llms-full.txt - Workers platform
-- https://developers.cloudflare.com/durable-objects/llms-full.txt - Durable Objects
+- https://developers.cloudflare.com/sandbox/index.md - Sandbox SDK (container execution)
+- https://developers.cloudflare.com/containers/index.md - Container bindings
+- https://developers.cloudflare.com/kv/index.md - KV storage (OAuth tokens, session state)
+- https://developers.cloudflare.com/workers/index.md - Workers platform
+- https://developers.cloudflare.com/durable-objects/index.md - Durable Objects
 
 ### OpenCode Documentation
 
