@@ -1,6 +1,6 @@
 import { handleAuthorize, handleCallback } from "./oauth";
 import { handleWebhook } from "./webhook";
-import { validateBasicAuth, unauthorizedResponse } from "./auth";
+import { validateAuth, unauthorizedResponse, createAuthCookie } from "./auth";
 import { proxyToOpencode } from "@cloudflare/sandbox/opencode";
 import { getOrInitializeSandbox } from "./sandbox";
 
@@ -95,9 +95,14 @@ export default {
       return handleCallback(request, env);
     }
 
-    // === PROTECTED ROUTES (Basic Auth required) ===
+    // === PROTECTED ROUTES (Basic Auth or cookie required) ===
 
-    if (!validateBasicAuth(request, env)) {
+    // Check if request has Basic Auth header (to determine if we need to set cookie)
+    const hasBasicAuthHeader = request.headers
+      .get("Authorization")
+      ?.startsWith("Basic ");
+
+    if (!(await validateAuth(request, env))) {
       return unauthorizedResponse();
     }
 
@@ -109,6 +114,21 @@ export default {
     const response = await proxyToOpencode(request, sandbox, server);
 
     // Fix missing/incorrect Content-Type for static assets
-    return fixContentType(response, url.pathname);
+    const fixedResponse = fixContentType(response, url.pathname);
+
+    // If authenticated via Basic Auth header, set auth cookie for WebSocket connections
+    // WebSocket upgrade requests can't send Authorization headers, but they can send cookies
+    if (hasBasicAuthHeader && env.ADMIN_API_KEY) {
+      const headers = new Headers(fixedResponse.headers);
+      headers.append("Set-Cookie", await createAuthCookie(env.ADMIN_API_KEY));
+
+      return new Response(fixedResponse.body, {
+        status: fixedResponse.status,
+        statusText: fixedResponse.statusText,
+        headers,
+      });
+    }
+
+    return fixedResponse;
   },
 };
