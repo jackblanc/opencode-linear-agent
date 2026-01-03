@@ -108,6 +108,18 @@ export default {
       env,
       env.LINEAR_ORGANIZATION_ID,
     );
+
+    // Check if this is a WebSocket upgrade request
+    // WebSocket upgrades need to go directly through wsConnect with the correct port
+    // because proxyToOpencode uses containerFetch which doesn't handle WebSocket routing
+    const isWebSocketUpgrade =
+      request.headers.get("Upgrade")?.toLowerCase() === "websocket" &&
+      request.headers.get("Connection")?.toLowerCase().includes("upgrade");
+
+    if (isWebSocketUpgrade) {
+      return sandbox.wsConnect(request, server.port);
+    }
+
     const response = await proxyToOpencode(request, sandbox, server);
 
     // Fix missing/incorrect Content-Type for static assets
