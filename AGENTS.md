@@ -44,7 +44,7 @@ linear-opencode-agent/
 │   │   ├── tsconfig.json                   # Extends root config
 │   │   └── worker-configuration.d.ts       # Generated Cloudflare types
 │   │
-│   └── opencode-linear-agent/              # Plugin package
+│   └── opencode-linear-plugin/              # Plugin package
 │       ├── src/
 │       │   └── index.ts                    # Linear agent plugin using @linear/sdk
 │       ├── dist/                           # Build output (gitignored)
@@ -120,7 +120,7 @@ bun run deploy         # Build plugin and deploy to Cloudflare Workers
 ```bash
 bun run --filter @linear-opencode-agent/worker dev       # Run worker dev server
 bun run --filter @linear-opencode-agent/worker deploy    # Deploy worker only
-bun run --filter opencode-linear-agent build             # Build plugin only
+bun run --filter opencode-linear-plugin build             # Build plugin only
 ```
 
 ---
@@ -245,7 +245,7 @@ export { Sandbox } from "@cloudflare/sandbox";
 
 ### Updating the plugin
 
-1. Edit `packages/opencode-linear-agent/src/index.ts`
+1. Edit `packages/opencode-linear-plugin/src/index.ts`
 2. Run `bun run build` to rebuild
 3. Test locally with `bun run dev`
 

@@ -14,7 +14,7 @@ ENV COMMAND_TIMEOUT_MS=600000
 
 # Copy plugin source and build plugins
 # Using bun which is available in the sandbox image
-COPY packages/opencode-linear-agent /tmp/plugin
+COPY packages/opencode-linear-plugin /tmp/plugin
 RUN cd /tmp/plugin \
     && bun install \
     && mkdir -p /root/.config/opencode/plugin \
