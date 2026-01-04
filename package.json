@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --filter opencode-linear-agent build",
+    "build": "bun run --filter opencode-linear-plugin build",
     "dev": "bun run --filter @linear-opencode-agent/worker dev",
     "deploy": "bun run build && bun run --filter @linear-opencode-agent/worker deploy",
     "typecheck": "bun run --filter '*' typecheck",
