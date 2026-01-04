@@ -1,123 +1,255 @@
 # Architecture Refactor: Queue-Based Decoupling & Package Restructure
 
 **Date**: January 4, 2026  
-**Status**: Approved for Implementation
+**Status**: Approved for Implementation (Revised)
 
 ## Overview
 
 This plan addresses the brittleness of the current codebase by:
+
 1. Introducing queue-based decoupling to solve the Cloudflare timeout issue
-2. Restructuring into multiple packages with clear domain boundaries
-3. Enabling unit testing through dependency inversion
-4. Simplifying the OpenCode plugin to focus only on activity streaming
+2. Splitting into three workers: Linear (webhooks/OAuth), Agent (queue consumer), UI Proxy
+3. Restructuring into multiple packages with clear domain boundaries
+4. Abstracting ALL Cloudflare resources (KV, Queue, Sandbox) behind interfaces
+5. Enabling local development with swappable implementations
+6. Simplifying the OpenCode plugin to focus only on activity streaming
 
 ## Current Problems
 
-| Problem | Impact |
-|---------|--------|
-| Monolithic `webhook.ts` (676 lines) | Hard to test, reason about, modify |
-| No domain boundaries | Infrastructure mixed with business logic |
-| Implicit state management | State scattered across KV, sandbox, filesystem |
-| Tight coupling to Cloudflare | No unit testing, painful local dev |
-| Ad-hoc error handling | Partial state left behind on failures |
-| Plugin does too much | Git checking, continuation prompts belong in orchestrator |
-| `waitUntil` timeout | Cloudflare kills long I/O operations |
+| Problem                              | Impact                                                             |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| Monolithic `webhook.ts` (688 lines)  | Hard to test, reason about, modify                                 |
+| No domain boundaries                 | Infrastructure mixed with business logic                           |
+| Implicit state management            | State scattered across KV, sandbox, filesystem                     |
+| Tight coupling to Cloudflare/Sandbox | No unit testing, painful local dev                                 |
+| Ad-hoc error handling                | Partial state left behind on failures                              |
+| Plugin does too much                 | Git checking, continuation prompts belong in orchestrator          |
+| `waitUntil` timeout                  | Cloudflare kills long I/O operations                               |
+| Silent failures                      | Errors not reported to Linear, sessions show "Ongoing" for 30+ min |
 
 ## Target Architecture
 
 ```
 linear-opencode-agent/
 ├── packages/
-│   ├── worker/                    # Cloudflare Worker (thin entry point)
-│   │   └── src/
-│   │       ├── index.ts           # Route dispatch + queue export
-│   │       ├── routes/
-│   │       │   ├── webhook.ts     # Verify signature → enqueue → 200 OK
-│   │       │   ├── oauth.ts       # OAuth flow (mostly unchanged)
-│   │       │   ├── health.ts      # Health check endpoint
-│   │       │   └── opencode.ts    # Proxy to OpenCode UI
-│   │       ├── queue.ts           # Queue consumer (heavy lifting)
-│   │       └── bindings.ts        # Cloudflare binding types
+│   ├── linear/                    # Linear Worker: webhooks + OAuth
+│   │   ├── src/
+│   │   │   ├── index.ts           # Route dispatch
+│   │   │   └── routes/
+│   │   │       ├── webhook.ts     # Verify signature -> enqueue -> 200 OK
+│   │   │       ├── oauth.ts       # OAuth flow
+│   │   │       └── health.ts      # Health check
+│   │   └── wrangler.jsonc
+│   │
+│   ├── agent/                     # Agent Worker: queue consumer
+│   │   ├── src/
+│   │   │   └── index.ts           # Queue handler, wires up dependencies
+│   │   └── wrangler.jsonc
+│   │
+│   ├── ui-proxy/                  # UI Proxy Worker: forwards to OpenCode UI
+│   │   ├── src/
+│   │   │   └── index.ts           # Admin auth + proxy to sandbox
+│   │   └── wrangler.jsonc
 │   │
 │   ├── core/                      # Domain logic (platform-agnostic)
 │   │   └── src/
 │   │       ├── index.ts           # Public exports
+│   │       ├── EventProcessor.ts  # Main entry: processes LinearEvent
 │   │       ├── session/
 │   │       │   ├── SessionManager.ts
 │   │       │   ├── SessionState.ts
-│   │       │   └── ISessionRepository.ts
+│   │       │   └── SessionRepository.ts  # Interface
 │   │       ├── git/
-│   │       │   ├── GitService.ts
-│   │       │   ├── IGitService.ts
+│   │       │   ├── GitOperations.ts      # Interface
 │   │       │   └── types.ts
 │   │       ├── linear/
-│   │       │   ├── LinearClientWrapper.ts
-│   │       │   ├── ActivityReporter.ts
-│   │       │   ├── ILinearClient.ts
-│   │       │   └── webhook-types.ts
-│   │       ├── opencode/
-│   │       │   ├── OpencodeOrchestrator.ts
-│   │       │   ├── IOpencodeService.ts
+│   │       │   ├── LinearAdapter.ts      # Interface
 │   │       │   └── types.ts
-│   │       └── jobs/
-│   │           ├── JobProcessor.ts
-│   │           └── types.ts
+│   │       └── types.ts
 │   │
-│   ├── infrastructure/            # Cloudflare-specific implementations
+│   ├── infrastructure/            # ALL Cloudflare resource abstractions
 │   │   └── src/
 │   │       ├── index.ts
-│   │       ├── KVSessionRepository.ts
-│   │       ├── KVTokenStore.ts
-│   │       ├── SandboxGitService.ts
-│   │       ├── SandboxOpencodeService.ts
-│   │       └── CloudflareLogger.ts
+│   │       ├── cloudflare/        # Cloudflare implementations
+│   │       │   ├── KVSessionRepository.ts
+│   │       │   ├── KVTokenStore.ts
+│   │       │   ├── CloudflareQueue.ts
+│   │       │   ├── CloudflareSandbox.ts  # Only place that imports @cloudflare/sandbox
+│   │       │   └── index.ts
+│   │       ├── local/             # Local implementations (future)
+│   │       │   ├── InMemorySessionRepository.ts
+│   │       │   ├── InMemoryTokenStore.ts
+│   │       │   ├── LocalQueue.ts
+│   │       │   ├── LocalSandbox.ts
+│   │       │   └── index.ts
+│   │       ├── LinearClientAdapter.ts
+│   │       └── types.ts           # Shared infrastructure interfaces
 │   │
-│   └── opencode-linear-plugin/    # Simplified: activity streaming only
+│   └── plugin/                    # Simplified: activity streaming only
 │       └── src/
 │           └── index.ts
 │
 ├── package.json
-├── tsconfig.json
-└── wrangler.jsonc
+└── tsconfig.json
+```
+
+## Key Design Principles
+
+### 1. Core Knows Nothing About Infrastructure
+
+The `core` package receives:
+
+- An `OpencodeClient` (from `@opencode-ai/sdk`) - doesn't know where it comes from
+- A `LinearAdapter` interface - for reporting activities
+- A `SessionRepository` interface - for persisting state
+- A `GitOperations` interface - for git commands
+
+```typescript
+// Core's main entry point - no infrastructure knowledge
+export class EventProcessor {
+  constructor(
+    private opencodeClient: OpencodeClient,
+    private linear: LinearAdapter,
+    private sessions: SessionRepository,
+    private git: GitOperations,
+  ) {}
+
+  async process(
+    event: AgentSessionEventWebhookPayload,
+    workerUrl: string,
+  ): Promise<void> {
+    try {
+      // ... process event using injected dependencies
+    } catch (error) {
+      await this.linear.postError(event.agentSession.id, error);
+      throw error;
+    }
+  }
+}
+```
+
+### 2. Infrastructure Abstracts ALL Cloudflare Resources
+
+The `infrastructure` package is the **only** place that imports Cloudflare-specific modules:
+
+```typescript
+// Infrastructure interfaces (in infrastructure/src/types.ts)
+
+interface SandboxProvider {
+  // Get the sandbox for an organization (creates if needed)
+  // Returns an OpencodeClient ready to use
+  getOpencodeClient(
+    organizationId: string,
+    workdir: string,
+  ): Promise<OpencodeClient>;
+
+  // Proxy HTTP request to the sandbox's OpenCode UI
+  proxyToOpencode(organizationId: string, request: Request): Promise<Response>;
+
+  // Execute a command in the sandbox
+  exec(
+    organizationId: string,
+    command: string,
+    options?: ExecOptions,
+  ): Promise<ExecResult>;
+}
+
+interface Queue<T> {
+  send(message: T): Promise<void>;
+}
+
+interface KeyValueStore {
+  get<T>(key: string): Promise<T | null>;
+  put(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+```
+
+### 3. One Sandbox Per Organization
+
+- Each organization gets a single persistent Sandbox
+- The Sandbox can clone any repo on demand
+- All sessions for that org share the same Sandbox
+- Agent worker and UI Proxy worker access the same Sandbox instance
+
+### 4. Swappable Implementations
+
+```typescript
+// Cloudflare production
+import {
+  CloudflareSandbox,
+  CloudflareKV,
+  CloudflareQueue,
+} from "@linear-opencode-agent/infrastructure/cloudflare";
+
+// Local development / testing
+import {
+  LocalSandbox,
+  InMemoryKV,
+  LocalQueue,
+} from "@linear-opencode-agent/infrastructure/local";
 ```
 
 ## Package Responsibilities
 
-### `@linear-opencode-agent/worker`
-- **Role**: Cloudflare Worker entry point
+### `@linear-opencode-agent/linear`
+
+- **Role**: Cloudflare Worker for Linear integration
 - **Responsibilities**:
-  - Route HTTP requests to handlers
-  - Export queue consumer
-  - Wire up dependencies (DI container)
+  - Verify Linear webhook signatures
+  - Enqueue events to the queue
+  - Handle OAuth flow
+- **Dependencies**: `infrastructure` (for queue, KV)
+
+### `@linear-opencode-agent/agent`
+
+- **Role**: Cloudflare Worker for processing queued events
+- **Responsibilities**:
+  - Consume events from queue
+  - Get `OpencodeClient` from `SandboxProvider`
+  - Wire up dependencies and call into core
+  - Report all errors to Linear
 - **Dependencies**: `core`, `infrastructure`
 
+### `@linear-opencode-agent/ui-proxy`
+
+- **Role**: Cloudflare Worker for OpenCode UI access
+- **Responsibilities**:
+  - Validate admin API key
+  - Proxy requests to Sandbox's OpenCode UI via `SandboxProvider`
+- **Dependencies**: `infrastructure`
+
 ### `@linear-opencode-agent/core`
+
 - **Role**: Platform-agnostic domain logic
 - **Responsibilities**:
+  - Process Linear events
   - Session lifecycle management
-  - Job processing orchestration
-  - Business rules (when to commit, when to stop)
-- **Dependencies**: None (only interfaces)
-- **Testability**: 100% unit testable with mocks
+  - Orchestrate OpenCode prompts
+  - Business rules
+- **Dependencies**: `@opencode-ai/sdk` (types only), `@linear/sdk` (types only)
+- **No imports from**: `@cloudflare/*`, infrastructure implementations
 
 ### `@linear-opencode-agent/infrastructure`
-- **Role**: Cloudflare-specific implementations
-- **Responsibilities**:
-  - KV operations (sessions, tokens)
-  - Sandbox operations (git, opencode)
-  - R2 storage (if needed)
-- **Dependencies**: `core` (implements interfaces)
 
-### `opencode-linear-plugin`
+- **Role**: All platform-specific implementations
+- **Responsibilities**:
+  - Cloudflare: KV, Queue, Sandbox abstractions
+  - Local: In-memory/file-based alternatives
+  - Linear API adapter
+- **The ONLY package that imports**: `@cloudflare/sandbox`, `@cloudflare/workers-types`
+
+### `@linear-opencode-agent/plugin`
+
 - **Role**: Activity streaming inside OpenCode process
 - **Responsibilities**:
   - Stream tool activities to Linear
   - Stream text responses to Linear
   - Report errors
+  - Send Stop signal on session.idle
 - **NOT responsible for**:
-  - Git status checking (moved to queue consumer)
-  - Continuation prompts (moved to queue consumer)
-  - Session completion logic
+  - Git status checking
+  - Continuation prompts
 
 ## Queue-Based Flow
 
@@ -130,357 +262,346 @@ linear-opencode-agent/
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 2. Worker (webhook.ts)                                          │
+│ 2. Linear Worker                                                │
 │    - Verify Linear signature                                    │
 │    - Parse payload                                              │
-│    - Enqueue: { type: "session.created", ... }                  │
+│    - queue.send({ payload, workerUrl })                         │
 │    - Return 200 OK immediately                                  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 3. Queue (Cloudflare Queue)                                     │
+│ 3. Queue (linear-agent-events)                                  │
 │    - 15 minute execution limit                                  │
-│    - Automatic retries on failure                               │
+│    - Automatic retries on failure (max 3)                       │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. Queue Consumer (queue.ts)                                    │
+│ 4. Agent Worker                                                 │
+│    a. sandboxProvider.getOpencodeClient(orgId, workdir)         │
+│    b. Create LinearAdapter, SessionRepository, GitOperations    │
+│    c. new EventProcessor(client, linear, sessions, git)         │
+│    d. eventProcessor.process(payload)                           │
+│                                                                 │
+│    ALL errors caught and reported to Linear                     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 5. EventProcessor (core)                                        │
 │    - Post acknowledgment to Linear                              │
-│    - SessionManager.initializeSession()                         │
-│      - Clone repo (if needed)                                   │
-│      - Create worktree                                          │
-│      - Install dependencies                                     │
-│      - Create OpenCode session                                  │
-│    - OpencodeOrchestrator.sendPrompt()                          │
+│    - Get/create session state                                   │
+│    - Ensure worktree exists (via GitOperations)                 │
+│    - Create OpenCode session if needed                          │
+│    - Send prompt via OpencodeClient                             │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 5. OpenCode Plugin (in sandbox)                                 │
+│ 6. Plugin (in sandbox)                                          │
 │    - Streams activities to Linear                               │
-│    - On session.idle: posts "completed" with Stop signal        │
+│    - On session.idle: sends Stop signal                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Follow-up (`prompted`)
+### UI Proxy Flow
 
 ```
-Webhook → Enqueue → Queue Consumer → OpencodeOrchestrator.sendPrompt()
-                                            │
-                         (session already initialized, no git work)
-```
-
-### Stop Signal
-
-```
-Webhook → Enqueue → Queue Consumer → OpencodeOrchestrator.abort()
-                                            │
-                         → Post "stopped" activity to Linear
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. User requests /opencode?session=xyz                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. UI Proxy Worker                                              │
+│    - Validate admin API key                                     │
+│    - sandboxProvider.proxyToOpencode(orgId, request)            │
+│    - Return proxied response                                    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Interfaces
 
-### ISessionRepository
+### SessionRepository
 
 ```typescript
-interface ISessionRepository {
+interface SessionState {
+  opencodeSessionId: string;
+  linearSessionId: string;
+  issueId: string;
+  branchName: string;
+  workdir: string;
+  lastActivityTime: number;
+}
+
+interface SessionRepository {
   get(linearSessionId: string): Promise<SessionState | null>;
   save(state: SessionState): Promise<void>;
   delete(linearSessionId: string): Promise<void>;
 }
 ```
 
-### IGitService
+### GitOperations
 
 ```typescript
-interface IGitService {
-  ensureRepoCloned(repoUrl: string, targetDir: string): Promise<void>;
-  createWorktree(repoDir: string, worktreeDir: string, branchName: string, fromRemote?: boolean): Promise<void>;
-  configureUser(workdir: string, name: string, email: string): Promise<void>;
-  setRemoteUrl(workdir: string, url: string): Promise<void>;
-  installDependencies(workdir: string): Promise<void>;
+interface GitStatus {
+  hasUncommittedChanges: boolean;
+  hasUnpushedCommits: boolean;
+  branchName: string;
+}
+
+interface WorktreeInfo {
+  workdir: string;
+  branchName: string;
+}
+
+interface GitOperations {
+  ensureRepoCloned(repoUrl: string): Promise<void>;
+  ensureWorktree(
+    sessionId: string,
+    issueId: string,
+    existingBranch?: string,
+  ): Promise<WorktreeInfo>;
   getStatus(workdir: string): Promise<GitStatus>;
-  worktreeExists(worktreeDir: string): Promise<boolean>;
 }
 ```
 
-### ILinearClient
+### LinearAdapter
 
 ```typescript
-interface ILinearClient {
-  createActivity(sessionId: string, content: ActivityContent, ephemeral?: boolean, signal?: ActivitySignal): Promise<void>;
-  updateSessionLink(sessionId: string, externalLink: string): Promise<void>;
-  getAccessToken(organizationId: string): Promise<string>;
+interface ActivityContent {
+  type: "thought" | "action" | "response" | "error";
+  body?: string;
+  action?: string;
+  parameter?: string;
+  result?: string;
+}
+
+interface LinearAdapter {
+  postActivity(
+    sessionId: string,
+    content: ActivityContent,
+    ephemeral?: boolean,
+  ): Promise<void>;
+  postError(sessionId: string, error: unknown): Promise<void>;
+  setExternalLink(sessionId: string, url: string): Promise<void>;
 }
 ```
 
-### IOpencodeService
+## Infrastructure Interfaces
 
 ```typescript
-interface IOpencodeService {
-  initialize(workdir: string): Promise<void>;
-  createSession(title: string): Promise<string>;
-  getSession(sessionId: string): Promise<OpencodeSession | null>;
-  sendPrompt(sessionId: string, prompt: string, model?: ModelConfig): Promise<void>;
-  abort(sessionId: string): Promise<void>;
+// SandboxProvider - abstracts Cloudflare Sandbox completely
+interface SandboxProvider {
+  getOpencodeClient(
+    organizationId: string,
+    workdir: string,
+  ): Promise<OpencodeClient>;
+  proxyToOpencode(organizationId: string, request: Request): Promise<Response>;
+  exec(
+    organizationId: string,
+    command: string,
+    options?: ExecOptions,
+  ): Promise<ExecResult>;
+}
+
+interface ExecOptions {
+  cwd?: string;
+  timeout?: number;
+}
+
+interface ExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+// Queue - abstracts Cloudflare Queue
+interface Queue<T> {
+  send(message: T): Promise<void>;
+}
+
+// KeyValueStore - abstracts Cloudflare KV
+interface KeyValueStore {
+  get<T>(key: string): Promise<T | null>;
+  put(
+    key: string,
+    value: unknown,
+    options?: { expirationTtl?: number },
+  ): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+// TokenStore - for OAuth tokens
+interface TokenStore {
+  getAccessToken(organizationId: string): Promise<string | null>;
+  setAccessToken(organizationId: string, token: string): Promise<void>;
 }
 ```
 
-## Job Types
+## Event Types
 
 ```typescript
-type AgentJob =
-  | {
-      type: "session.created";
-      linearSessionId: string;
-      organizationId: string;
-      issueId: string;
-      prompt: string;
-      workerUrl: string;
-    }
-  | {
-      type: "session.prompted";
-      linearSessionId: string;
-      organizationId: string;
-      prompt: string;
-      signal?: "stop";
-    };
-```
+import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 
-## Wrangler Queue Configuration
-
-```jsonc
-// wrangler.jsonc additions
-{
-  "queues": {
-    "producers": [
-      {
-        "queue": "linear-agent-jobs",
-        "binding": "JOBS_QUEUE"
-      }
-    ],
-    "consumers": [
-      {
-        "queue": "linear-agent-jobs",
-        "max_batch_size": 1,
-        "max_retries": 3,
-        "dead_letter_queue": "linear-agent-dlq"
-      }
-    ]
-  }
+interface LinearEventMessage {
+  payload: AgentSessionEventWebhookPayload;
+  workerUrl: string;
 }
 ```
 
-## Implementation Plan
+## Implementation Phases
 
-### Phase 1: Create Package Structure (Complexity: Low)
+### Phase 1: Package Structure + Interfaces (Complexity: Low)
 
-1. Create `packages/core/` with package.json, tsconfig.json
-2. Create `packages/infrastructure/` with package.json, tsconfig.json
-3. Update root package.json workspaces
-4. Verify monorepo builds
+1. Create new package structure: `linear/`, `agent/`, `ui-proxy/`, `core/`, `infrastructure/`, `plugin/`
+2. Define all core interfaces
+3. Define all infrastructure interfaces
+4. Update root package.json workspaces
+5. Verify monorepo builds
 
-### Phase 2: Define Core Interfaces (Complexity: Low)
+### Phase 2: Core Domain Logic (Complexity: Medium)
 
-1. Create `core/src/session/ISessionRepository.ts`
-2. Create `core/src/session/SessionState.ts`
-3. Create `core/src/git/IGitService.ts`
-4. Create `core/src/git/types.ts`
-5. Create `core/src/linear/ILinearClient.ts`
-6. Create `core/src/opencode/IOpencodeService.ts`
-7. Create `core/src/jobs/types.ts`
+1. Implement `EventProcessor`
+2. Implement `SessionManager`
+3. All business logic uses injected interfaces
+4. Zero Cloudflare imports in core
 
-### Phase 3: Implement Core Domain Logic (Complexity: Medium)
+### Phase 3: Infrastructure - Cloudflare (Complexity: Medium)
 
-1. Implement `core/src/session/SessionManager.ts`
-2. Implement `core/src/linear/ActivityReporter.ts`
-3. Implement `core/src/opencode/OpencodeOrchestrator.ts`
-4. Implement `core/src/jobs/JobProcessor.ts`
-5. Write unit tests for each
+1. Implement `CloudflareSandbox` (only place that imports `@cloudflare/sandbox`)
+2. Implement `CloudflareKV`
+3. Implement `CloudflareQueue`
+4. Implement `KVSessionRepository`
+5. Implement `KVTokenStore`
+6. Implement `LinearClientAdapter`
 
-### Phase 4: Implement Infrastructure (Complexity: Medium)
+### Phase 4: Workers (Complexity: Medium)
 
-1. Implement `infrastructure/src/KVSessionRepository.ts`
-2. Implement `infrastructure/src/KVTokenStore.ts`
-3. Implement `infrastructure/src/SandboxGitService.ts`
-4. Implement `infrastructure/src/SandboxOpencodeService.ts`
+1. Create queue: `wrangler queues create linear-agent-events`
+2. Implement Linear worker (webhook + OAuth)
+3. Implement Agent worker (queue consumer)
+4. Implement UI Proxy worker
+5. Configure all wrangler.jsonc files
+6. Delete old monolithic worker
 
-### Phase 5: Add Queue Support (Complexity: Medium)
+### Phase 5: Simplify Plugin (Complexity: Low)
 
-1. Update `wrangler.jsonc` with queue bindings
-2. Create `worker/src/queue.ts` queue consumer
-3. Update `worker/src/index.ts` to export queue handler
-4. Update webhook to enqueue instead of process inline
-
-### Phase 6: Refactor Worker Routes (Complexity: Low)
-
-1. Extract `worker/src/routes/webhook.ts` (thin dispatcher)
-2. Extract `worker/src/routes/oauth.ts` (mostly unchanged)
-3. Extract `worker/src/routes/health.ts`
-4. Extract `worker/src/routes/opencode.ts`
-5. Update `worker/src/index.ts` to compose routes
-
-### Phase 7: Simplify Plugin (Complexity: Low)
-
-1. Remove git status checking from plugin
-2. Remove continuation prompt logic from plugin
+1. Remove git checking logic
+2. Remove continuation prompts
 3. Keep only activity streaming
-4. Update session.idle to just send Stop signal
+4. Simplify session.idle to just send Stop
 
-### Phase 8: Integration Testing (Complexity: Medium)
+### Phase 6 (Future): Local Infrastructure
 
-1. Test full flow with local wrangler dev
-2. Test queue retry behavior
-3. Test error scenarios
-4. Deploy to staging and test with real Linear
-
-## File-by-File Implementation Details
-
-### `packages/core/package.json`
-
-```json
-{
-  "name": "@linear-opencode-agent/core",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "vitest": "^3.0.0"
-  }
-}
-```
-
-### `packages/infrastructure/package.json`
-
-```json
-{
-  "name": "@linear-opencode-agent/infrastructure",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@linear-opencode-agent/core": "workspace:*",
-    "@cloudflare/sandbox": "^0.6.7",
-    "@linear/sdk": "^68.1.0",
-    "@opencode-ai/sdk": "^1.0.137"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241127.0",
-    "typescript": "^5.9.3"
-  }
-}
-```
-
-### `packages/worker/package.json` (updated)
-
-```json
-{
-  "name": "@linear-opencode-agent/worker",
-  "version": "1.0.0",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
-    "cf-typegen": "wrangler types"
-  },
-  "dependencies": {
-    "@linear-opencode-agent/core": "workspace:*",
-    "@linear-opencode-agent/infrastructure": "workspace:*",
-    "@cloudflare/sandbox": "^0.6.7",
-    "@linear/sdk": "^68.1.0",
-    "@opencode-ai/sdk": "^1.0.137"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241127.0",
-    "@types/node": "^25.0.3"
-  }
-}
-```
+1. Implement `LocalSandbox` (Docker-based or direct process)
+2. Implement `InMemoryKV`
+3. Implement `LocalQueue`
+4. Enable full local development without Cloudflare
 
 ## Error Handling Strategy
 
-### Queue Retries
+**Critical Rule**: Every error MUST be reported to Linear.
 
-- `max_retries: 3` with exponential backoff
-- After 3 failures, message goes to dead-letter queue (`linear-agent-dlq`)
+### Agent Worker Error Handling
 
-### Idempotency
+```typescript
+async function handleQueueMessage(
+  message: LinearEventMessage,
+  env: Env,
+): Promise<void> {
+  const { payload, workerUrl } = message;
+  const linearSessionId = payload.agentSession.id;
 
-Before processing a job:
-1. Check if session already exists in KV
-2. Check if worktree already exists
-3. Skip steps that are already complete
+  // Create Linear client for error reporting FIRST
+  const linearClient = await createLinearClient(env, payload.organizationId);
 
-This handles the case where a job is retried after partial completion.
+  try {
+    const sandboxProvider = new CloudflareSandbox(env);
+    const opencodeClient = await sandboxProvider.getOpencodeClient(
+      payload.organizationId,
+      workdir,
+    );
+    // ... create other dependencies, process event
+  } catch (error) {
+    // ALWAYS report to Linear
+    try {
+      await linearClient.createAgentActivity({
+        agentSessionId: linearSessionId,
+        content: {
+          type: "error",
+          body: `Processing failed: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      });
+    } catch (reportError) {
+      console.error("Failed to report error to Linear:", reportError);
+    }
+    throw error; // Re-throw for queue retry
+  }
+}
+```
 
-### Error Reporting to Linear
+## Package Dependencies
 
-On job failure:
-1. Try to post error activity to Linear
-2. If that fails, log and let the message go to DLQ
-3. DLQ can be monitored for manual intervention
-
-## Testing Strategy
-
-### Unit Tests (packages/core)
-
-- `SessionManager.test.ts` - mock all dependencies
-- `JobProcessor.test.ts` - mock all dependencies
-- `ActivityReporter.test.ts` - mock Linear client
-
-### Integration Tests (packages/worker)
-
-- Use `wrangler dev --test-scheduled` for queue testing
-- Mock external services (Linear API, GitHub)
-- Test full webhook → queue → sandbox flow
-
-## Migration Path
-
-1. Deploy new code alongside existing
-2. Both webhook paths work (old inline, new queued)
-3. Switch webhook URL to new path
-4. Monitor for issues
-5. Remove old code path
+```
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│ linear       │   │ agent        │   │ ui-proxy     │
+│ worker       │   │ worker       │   │ worker       │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+       │                  │                  │
+       │                  │                  │
+       ▼                  ▼                  ▼
+┌─────────────────────────────────────────────────────┐
+│                  infrastructure                      │
+│  ┌─────────────────┐  ┌─────────────────┐           │
+│  │ cloudflare/     │  │ local/ (future) │           │
+│  │ - Sandbox       │  │ - LocalSandbox  │           │
+│  │ - KV            │  │ - InMemoryKV    │           │
+│  │ - Queue         │  │ - LocalQueue    │           │
+│  └─────────────────┘  └─────────────────┘           │
+└──────────────────────────┬──────────────────────────┘
+                           │
+       ┌───────────────────┼───────────────────┐
+       │                   │                   │
+       ▼                   ▼                   ▼
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│ core         │   │ @cloudflare/ │   │ @linear/sdk  │
+│ (interfaces) │   │ sandbox      │   │              │
+└──────────────┘   └──────────────┘   └──────────────┘
+       │
+       │ types only
+       ▼
+┌──────────────┐
+│ @opencode/   │
+│ sdk          │
+└──────────────┘
+```
 
 ## Success Criteria
 
 - [ ] Webhook responds in <100ms (just enqueue + ack)
-- [ ] Queue jobs complete within 2 minutes for new sessions
-- [ ] Queue jobs complete within 10 seconds for follow-ups
+- [ ] Queue events complete within 2 minutes for new sessions
+- [ ] Queue events complete within 10 seconds for follow-ups
 - [ ] No `IoContext timed out` errors
-- [ ] Unit test coverage >80% for core package
+- [ ] **All errors reported to Linear within seconds**
+- [ ] Core package has zero Cloudflare imports
+- [ ] Infrastructure package is the ONLY place with `@cloudflare/*` imports
 - [ ] All existing functionality preserved
 
 ## Risks & Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Queue adds latency | User sees "Starting..." activity immediately |
-| Queue job fails after partial work | Idempotency checks resume from last good state |
-| Plugin simplification breaks something | Test both old and new paths before removing old |
-| Package refactor breaks imports | Use TypeScript to catch at compile time |
+| Risk                                     | Mitigation                                        |
+| ---------------------------------------- | ------------------------------------------------- |
+| Queue adds latency                       | User sees "Starting..." activity immediately      |
+| Queue event fails after partial work     | Idempotency checks resume from last good state    |
+| Error reporting fails                    | Log error, queue will retry, eventual consistency |
+| Plugin simplification breaks something   | Test thoroughly before deploying                  |
+| Three workers adds deployment complexity | All deployed via same CI pipeline                 |
+| Sandbox sharing across workers           | Same org ID maps to same Sandbox instance         |
 
 ## Next Steps
 
-1. Review and approve this plan
-2. Begin Phase 1: Create Package Structure
+1. Review and approve this revised plan
+2. Begin Phase 1: Package structure + interfaces
 3. Iterate through phases with testing at each step
