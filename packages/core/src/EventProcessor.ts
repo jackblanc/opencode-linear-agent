@@ -131,19 +131,18 @@ export class EventProcessor {
     });
 
     try {
-      // Post git setup stage activity
-      await this.linear.postStageActivity(linearSessionId, "git_setup");
-
       // Get existing state to check for branch
       const existingState =
         await this.sessionManager["repository"].get(linearSessionId);
       const existingBranch = existingState?.branchName;
 
-      // Ensure worktree exists
+      // Ensure worktree exists with progress callback
       const { workdir, branchName } = await this.git.ensureWorktree(
         linearSessionId,
         issueId,
         existingBranch,
+        async (step, details) =>
+          this.linear.postGitStepActivity(linearSessionId, step, details),
       );
 
       console.info({

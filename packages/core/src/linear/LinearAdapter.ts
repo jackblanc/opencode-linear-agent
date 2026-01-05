@@ -1,4 +1,9 @@
-import type { ActivityContent, PlanItem, ProcessingStage } from "./types";
+import type {
+  ActivityContent,
+  GitSetupStep,
+  PlanItem,
+  ProcessingStage,
+} from "./types";
 
 /**
  * Signal to send with an activity
@@ -28,6 +33,17 @@ export interface LinearAdapter {
   postStageActivity(
     sessionId: string,
     stage: ProcessingStage,
+    details?: string,
+  ): Promise<void>;
+
+  /**
+   * Post a git setup step activity (ephemeral thought)
+   *
+   * These provide granular progress updates during workspace setup.
+   */
+  postGitStepActivity(
+    sessionId: string,
+    step: GitSetupStep,
     details?: string,
   ): Promise<void>;
 

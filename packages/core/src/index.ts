@@ -17,7 +17,7 @@ export type { SessionState } from "./session/SessionState";
 export type { SessionRepository } from "./session/SessionRepository";
 
 // Git operations interface
-export type { GitOperations } from "./git/GitOperations";
+export type { GitOperations, GitProgressCallback } from "./git/GitOperations";
 export type { GitStatus, WorktreeInfo } from "./git/types";
 
 // Linear adapter interface
@@ -26,8 +26,9 @@ export type {
   ActivityContent,
   PlanItem,
   ProcessingStage,
+  GitSetupStep,
 } from "./linear/types";
-export { STAGE_MESSAGES } from "./linear/types";
+export { STAGE_MESSAGES, GIT_STEP_MESSAGES } from "./linear/types";
 
 // Shared types
 export type { LinearEventMessage, ExecResult, ExecOptions } from "./types";

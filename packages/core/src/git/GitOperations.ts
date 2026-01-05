@@ -1,4 +1,13 @@
+import type { GitSetupStep } from "../linear/types";
 import type { GitStatus, WorktreeInfo } from "./types";
+
+/**
+ * Callback for reporting git setup progress
+ */
+export type GitProgressCallback = (
+  step: GitSetupStep,
+  details?: string,
+) => void | Promise<void>;
 
 /**
  * Interface for git operations in the sandbox
@@ -7,7 +16,10 @@ export interface GitOperations {
   /**
    * Ensure the repository is cloned to the sandbox
    */
-  ensureRepoCloned(repoUrl: string): Promise<void>;
+  ensureRepoCloned(
+    repoUrl: string,
+    onProgress?: GitProgressCallback,
+  ): Promise<void>;
 
   /**
    * Ensure a worktree exists for the session
@@ -17,6 +29,7 @@ export interface GitOperations {
     sessionId: string,
     issueId: string,
     existingBranch?: string,
+    onProgress?: GitProgressCallback,
   ): Promise<WorktreeInfo>;
 
   /**
