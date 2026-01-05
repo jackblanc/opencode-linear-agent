@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@linear/sdk": "^68.1.0",
-    "@opencode-ai/sdk": "^1.0.137"
+    "@opencode-ai/sdk": "^1.1.2"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241127.0"
+    "@cloudflare/workers-types": "^4.20260103.0"
   }
 }

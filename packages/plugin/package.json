@@ -13,8 +13,8 @@
     "@linear/sdk": "^68.1.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.0.207",
-    "@opencode-ai/sdk": "^1.0.209",
+    "@opencode-ai/plugin": "^1.1.2",
+    "@opencode-ai/sdk": "^1.1.2",
     "@types/node": "^25.0.3"
   }
 }
