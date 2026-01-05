@@ -3,10 +3,11 @@ import type {
   LinearAdapter,
   ActivitySignal,
   ActivityContent,
+  GitSetupStep,
   PlanItem,
   ProcessingStage,
 } from "@linear-opencode-agent/core";
-import { STAGE_MESSAGES } from "@linear-opencode-agent/core";
+import { GIT_STEP_MESSAGES, STAGE_MESSAGES } from "@linear-opencode-agent/core";
 
 /**
  * Maps our ActivitySignal type to Linear's AgentActivitySignal
@@ -79,6 +80,36 @@ export class LinearClientAdapter implements LinearAdapter {
         message: "Failed to send stage activity",
         stage: "linear",
         processingStage: stage,
+        linearSessionId: sessionId,
+        error: errorMessage,
+      });
+    }
+  }
+
+  async postGitStepActivity(
+    sessionId: string,
+    step: GitSetupStep,
+    details?: string,
+  ): Promise<void> {
+    const baseMessage = GIT_STEP_MESSAGES[step];
+    const body = details ? `${baseMessage}\n\n${details}` : baseMessage;
+
+    try {
+      await this.client.createAgentActivity({
+        agentSessionId: sessionId,
+        content: {
+          type: "thought",
+          body,
+        },
+        ephemeral: true,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error({
+        message: "Failed to send git step activity",
+        stage: "linear",
+        gitStep: step,
         linearSessionId: sessionId,
         error: errorMessage,
       });

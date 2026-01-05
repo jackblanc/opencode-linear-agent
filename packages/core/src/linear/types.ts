@@ -44,3 +44,30 @@ export const STAGE_MESSAGES: Record<ProcessingStage, string> = {
   session_ready: "Session ready...",
   sending_prompt: "Sending task to AI agent...",
 };
+
+/**
+ * Granular steps within the git setup process
+ *
+ * These provide more detailed progress updates during workspace setup.
+ */
+export type GitSetupStep =
+  | "checking_repo"
+  | "cloning_repo"
+  | "checking_worktree"
+  | "checking_branch"
+  | "creating_worktree"
+  | "configuring_git"
+  | "installing_dependencies";
+
+/**
+ * Human-readable descriptions for each git setup step
+ */
+export const GIT_STEP_MESSAGES: Record<GitSetupStep, string> = {
+  checking_repo: "Checking repository...",
+  cloning_repo: "Cloning repository...",
+  checking_worktree: "Checking worktree...",
+  checking_branch: "Checking branch on remote...",
+  creating_worktree: "Creating worktree...",
+  configuring_git: "Configuring git...",
+  installing_dependencies: "Installing dependencies...",
+};

@@ -1,5 +1,6 @@
 import type {
   GitOperations,
+  GitProgressCallback,
   GitStatus,
   WorktreeInfo,
 } from "@linear-opencode-agent/core";
@@ -96,7 +97,12 @@ export class SandboxGitOperations implements GitOperations {
     private readonly githubToken: string,
   ) {}
 
-  async ensureRepoCloned(): Promise<void> {
+  async ensureRepoCloned(
+    _repoUrl: string,
+    onProgress?: GitProgressCallback,
+  ): Promise<void> {
+    await onProgress?.("checking_repo");
+
     console.info({
       message: "Checking if main repo exists",
       stage: "git",
@@ -116,6 +122,8 @@ export class SandboxGitOperations implements GitOperations {
       });
       return;
     }
+
+    await onProgress?.("cloning_repo");
 
     console.info({
       message: "Cloning repository",
@@ -156,6 +164,7 @@ export class SandboxGitOperations implements GitOperations {
     sessionId: string,
     issueId: string,
     existingBranch?: string,
+    onProgress?: GitProgressCallback,
   ): Promise<WorktreeInfo> {
     const workdir = getSessionWorkdir(sessionId);
     const branchName =
@@ -171,9 +180,11 @@ export class SandboxGitOperations implements GitOperations {
     });
 
     // Step 1: Ensure main repo is cloned
-    await this.ensureRepoCloned();
+    await this.ensureRepoCloned(this.repoUrl, onProgress);
 
     // Step 2: Check if worktree already exists
+    await onProgress?.("checking_worktree");
+
     const worktreeExists = await this.sandbox.exists(
       this.organizationId,
       `${workdir}/.git`,
@@ -199,6 +210,8 @@ export class SandboxGitOperations implements GitOperations {
     );
 
     // Step 4: Check if branch exists on remote
+    await onProgress?.("checking_branch");
+
     const branchExistsResult = await this.sandbox.exec(
       this.organizationId,
       `cd ${REPO_DIR} && git fetch origin ${branchName} 2>/dev/null && echo "exists" || echo "new"`,
@@ -214,6 +227,8 @@ export class SandboxGitOperations implements GitOperations {
     });
 
     // Step 5: Create worktree
+    await onProgress?.("creating_worktree");
+
     if (branchExists) {
       console.info({
         message: "Resuming from existing remote branch",
@@ -243,6 +258,8 @@ export class SandboxGitOperations implements GitOperations {
     }
 
     // Step 6: Configure git user and remote
+    await onProgress?.("configuring_git");
+
     await execWithLogging(
       this.sandbox,
       this.organizationId,
@@ -264,6 +281,8 @@ export class SandboxGitOperations implements GitOperations {
     );
 
     // Step 7: Install dependencies
+    await onProgress?.("installing_dependencies");
+
     await execWithLogging(
       this.sandbox,
       this.organizationId,
