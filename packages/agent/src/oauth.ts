@@ -23,7 +23,11 @@ export async function refreshAccessToken(
   tokenStore: TokenStore,
   organizationId: string,
 ): Promise<string> {
-  console.info(`[oauth] Refreshing access token for org ${organizationId}`);
+  console.info({
+    message: "Refreshing access token",
+    stage: "oauth",
+    organizationId,
+  });
 
   const refreshData = await tokenStore.getRefreshTokenData(organizationId);
   if (!refreshData) {
@@ -47,7 +51,13 @@ export async function refreshAccessToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error(`[oauth] Token refresh failed: ${response.status}: ${text}`);
+    console.error({
+      message: "Token refresh failed",
+      stage: "oauth",
+      status: response.status,
+      response: text,
+      organizationId,
+    });
     throw new Error(`Token refresh failed: ${response.status}`);
   }
 
@@ -71,6 +81,10 @@ export async function refreshAccessToken(
   };
   await tokenStore.setRefreshTokenData(organizationId, updatedRefreshData);
 
-  console.info(`[oauth] Token refreshed for org ${organizationId}`);
+  console.info({
+    message: "Token refreshed successfully",
+    stage: "oauth",
+    organizationId,
+  });
   return data.access_token;
 }

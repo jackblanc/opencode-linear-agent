@@ -53,7 +53,11 @@ export async function handleAuthorize(
   });
 
   const authUrl = `${LINEAR_OAUTH_URL}?${params.toString()}`;
-  console.info(`[oauth] Redirecting to Linear OAuth with state ${state}`);
+  console.info({
+    message: "Redirecting to Linear OAuth",
+    stage: "oauth",
+    state,
+  });
 
   return Response.redirect(authUrl, 302);
 }
@@ -89,7 +93,12 @@ async function exchangeCodeForToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error(`[oauth] Token exchange failed: ${response.status}: ${text}`);
+    console.error({
+      message: "Token exchange failed",
+      stage: "oauth",
+      status: response.status,
+      response: text,
+    });
     throw new Error(`Token exchange failed: ${response.status}`);
   }
 
@@ -123,7 +132,12 @@ export async function handleCallback(
   const errorDescription = url.searchParams.get("error_description");
 
   if (error) {
-    console.error(`[oauth] OAuth error: ${error} - ${errorDescription ?? ""}`);
+    console.error({
+      message: "OAuth error from Linear",
+      stage: "oauth",
+      error,
+      errorDescription,
+    });
     return new Response(`OAuth Error: ${error}\n${errorDescription ?? ""}`, {
       status: 400,
     });
@@ -154,9 +168,14 @@ export async function handleCallback(
     const viewer = await client.viewer;
     const organization = await viewer.organization;
 
-    console.info(
-      `[oauth] Retrieved app info: ${viewer.name} (${viewer.id}) in org ${organization.name} (${organization.id})`,
-    );
+    console.info({
+      message: "Retrieved app info",
+      stage: "oauth",
+      viewerName: viewer.name,
+      viewerId: viewer.id,
+      organizationName: organization.name,
+      organizationId: organization.id,
+    });
 
     // Store tokens
     await tokenStore.setAccessToken(
@@ -174,7 +193,11 @@ export async function handleCallback(
     };
     await tokenStore.setRefreshTokenData(organization.id, refreshData);
 
-    console.info(`[oauth] Tokens stored for org ${organization.id}`);
+    console.info({
+      message: "Tokens stored successfully",
+      stage: "oauth",
+      organizationId: organization.id,
+    });
 
     // Return success page
     return new Response(
@@ -245,7 +268,13 @@ export async function handleCallback(
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[oauth] Callback failed: ${errorMessage}`);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error({
+      message: "OAuth callback failed",
+      stage: "oauth",
+      error: errorMessage,
+      stack: errorStack,
+    });
     return new Response(`OAuth setup failed: ${errorMessage}`, { status: 500 });
   }
 }
@@ -258,7 +287,11 @@ export async function refreshAccessToken(
   tokenStore: TokenStore,
   organizationId: string,
 ): Promise<string> {
-  console.info(`[oauth] Refreshing access token for org ${organizationId}`);
+  console.info({
+    message: "Refreshing access token",
+    stage: "oauth",
+    organizationId,
+  });
 
   const refreshData = await tokenStore.getRefreshTokenData(organizationId);
   if (!refreshData) {
@@ -282,7 +315,13 @@ export async function refreshAccessToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error(`[oauth] Token refresh failed: ${response.status}: ${text}`);
+    console.error({
+      message: "Token refresh failed",
+      stage: "oauth",
+      status: response.status,
+      response: text,
+      organizationId,
+    });
     throw new Error(`Token refresh failed: ${response.status}`);
   }
 
@@ -306,6 +345,10 @@ export async function refreshAccessToken(
   };
   await tokenStore.setRefreshTokenData(organizationId, updatedRefreshData);
 
-  console.info(`[oauth] Token refreshed for org ${organizationId}`);
+  console.info({
+    message: "Token refreshed successfully",
+    stage: "oauth",
+    organizationId,
+  });
   return data.access_token;
 }

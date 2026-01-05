@@ -28,7 +28,17 @@ async function execWithLogging(
   context: string,
 ): Promise<ExecResult> {
   const startTime = Date.now();
-  console.info(`[${context}] Executing command: ${command}`);
+
+  console.info({
+    message: "Executing command",
+    stage: "git",
+    context,
+    command: command.replace(
+      /https:\/\/[^@]+@github\.com/,
+      "https://***@github.com",
+    ),
+    timeout,
+  });
 
   let result: ExecResult;
   try {
@@ -36,30 +46,42 @@ async function execWithLogging(
   } catch (error) {
     const elapsed = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(
-      `[${context}] Command threw exception after ${elapsed}ms: ${errorMessage}`,
-    );
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    console.error({
+      message: "Command threw exception",
+      stage: "git",
+      context,
+      error: errorMessage,
+      stack: errorStack,
+      elapsedMs: elapsed,
+    });
     throw error;
   }
 
   const elapsed = Date.now() - startTime;
 
   if (result.exitCode !== 0) {
-    console.error(
-      `[${context}] Command failed after ${elapsed}ms with exit code ${result.exitCode}`,
-    );
-    if (result.stderr) {
-      console.error(`[${context}] stderr: ${result.stderr}`);
-    }
-    if (result.stdout) {
-      console.info(`[${context}] stdout: ${result.stdout}`);
-    }
+    console.error({
+      message: "Command failed",
+      stage: "git",
+      context,
+      exitCode: result.exitCode,
+      stderr: result.stderr,
+      stdout: result.stdout,
+      elapsedMs: elapsed,
+    });
     throw new Error(
       `Command failed with exit code ${result.exitCode}: ${result.stderr || result.stdout || "no output"}`,
     );
   }
 
-  console.info(`[${context}] Command succeeded in ${elapsed}ms`);
+  console.info({
+    message: "Command succeeded",
+    stage: "git",
+    context,
+    elapsedMs: elapsed,
+  });
   return result;
 }
 
@@ -75,18 +97,33 @@ export class SandboxGitOperations implements GitOperations {
   ) {}
 
   async ensureRepoCloned(): Promise<void> {
-    console.info(`[clone] Checking if main repo exists at ${REPO_DIR}`);
+    console.info({
+      message: "Checking if main repo exists",
+      stage: "git",
+      repoDir: REPO_DIR,
+    });
+
     const repoExists = await this.sandbox.exists(
       this.organizationId,
       `${REPO_DIR}/.git`,
     );
 
     if (repoExists) {
-      console.info(`[clone] Main repository already cloned at ${REPO_DIR}`);
+      console.info({
+        message: "Main repository already cloned",
+        stage: "git",
+        repoDir: REPO_DIR,
+      });
       return;
     }
 
-    console.info(`[clone] Cloning repository to ${REPO_DIR}`);
+    console.info({
+      message: "Cloning repository",
+      stage: "git",
+      repoUrl: this.repoUrl,
+      repoDir: REPO_DIR,
+    });
+
     const authedRepoUrl = this.repoUrl.replace(
       "https://github.com/",
       `https://${this.githubToken}@github.com/`,
@@ -108,7 +145,11 @@ export class SandboxGitOperations implements GitOperations {
       "clone-git",
     );
 
-    console.info(`[clone] Main repository cloned successfully to ${REPO_DIR}`);
+    console.info({
+      message: "Main repository cloned successfully",
+      stage: "git",
+      repoDir: REPO_DIR,
+    });
   }
 
   async ensureWorktree(
@@ -120,9 +161,14 @@ export class SandboxGitOperations implements GitOperations {
     const branchName =
       existingBranch ?? `linear-opencode-agent/${issueId}/${sessionId}`;
 
-    console.info(
-      `[worktree] Starting worktree setup for session ${sessionId}, workdir: ${workdir}, branch: ${branchName}`,
-    );
+    console.info({
+      message: "Starting worktree setup",
+      stage: "git",
+      sessionId,
+      issueId,
+      workdir,
+      branchName,
+    });
 
     // Step 1: Ensure main repo is cloned
     await this.ensureRepoCloned();
@@ -134,7 +180,12 @@ export class SandboxGitOperations implements GitOperations {
     );
 
     if (worktreeExists) {
-      console.info(`[worktree] Worktree already exists at ${workdir}`);
+      console.info({
+        message: "Worktree already exists",
+        stage: "git",
+        workdir,
+        branchName,
+      });
       return { workdir, branchName };
     }
 
@@ -154,15 +205,21 @@ export class SandboxGitOperations implements GitOperations {
       { timeout: 60000 },
     );
     const branchExists = branchExistsResult.stdout.trim() === "exists";
-    console.info(
-      `[worktree] Branch ${branchName} exists on remote: ${branchExists}`,
-    );
+
+    console.info({
+      message: "Checked branch existence on remote",
+      stage: "git",
+      branchName,
+      existsOnRemote: branchExists,
+    });
 
     // Step 5: Create worktree
     if (branchExists) {
-      console.info(
-        `[worktree] Resuming from existing remote branch: ${branchName}`,
-      );
+      console.info({
+        message: "Resuming from existing remote branch",
+        stage: "git",
+        branchName,
+      });
       await execWithLogging(
         this.sandbox,
         this.organizationId,
@@ -171,7 +228,11 @@ export class SandboxGitOperations implements GitOperations {
         "worktree-add-existing",
       );
     } else {
-      console.info(`[worktree] Creating new branch: ${branchName}`);
+      console.info({
+        message: "Creating new branch",
+        stage: "git",
+        branchName,
+      });
       await execWithLogging(
         this.sandbox,
         this.organizationId,
@@ -211,9 +272,12 @@ export class SandboxGitOperations implements GitOperations {
       "worktree-bun-install",
     );
 
-    console.info(
-      `[worktree] Session worktree created successfully at ${workdir} on branch ${branchName}`,
-    );
+    console.info({
+      message: "Session worktree created successfully",
+      stage: "git",
+      workdir,
+      branchName,
+    });
     return { workdir, branchName };
   }
 
@@ -252,7 +316,16 @@ export class SandboxGitOperations implements GitOperations {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(`[git] Error checking git status: ${errorMessage}`);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error({
+        message: "Error checking git status",
+        stage: "git",
+        error: errorMessage,
+        stack: errorStack,
+        workdir,
+      });
+
       return {
         hasUncommittedChanges: false,
         hasUnpushedCommits: false,

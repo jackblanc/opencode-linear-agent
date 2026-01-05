@@ -4,7 +4,9 @@ import type {
   ActivitySignal,
   ActivityContent,
   PlanItem,
+  ProcessingStage,
 } from "@linear-opencode-agent/core";
+import { STAGE_MESSAGES } from "@linear-opencode-agent/core";
 
 /**
  * Maps our ActivitySignal type to Linear's AgentActivitySignal
@@ -42,21 +44,62 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
-        `[linear] Failed to send ${content.type} activity to session ${sessionId}: ${errorMessage}`,
-      );
+      console.error({
+        message: "Failed to send activity",
+        stage: "linear",
+        activityType: content.type,
+        linearSessionId: sessionId,
+        ephemeral,
+        error: errorMessage,
+      });
+    }
+  }
+
+  async postStageActivity(
+    sessionId: string,
+    stage: ProcessingStage,
+    details?: string,
+  ): Promise<void> {
+    const baseMessage = STAGE_MESSAGES[stage];
+    const body = details ? `${baseMessage}\n\n${details}` : baseMessage;
+
+    try {
+      await this.client.createAgentActivity({
+        agentSessionId: sessionId,
+        content: {
+          type: "thought",
+          body,
+        },
+        ephemeral: true,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error({
+        message: "Failed to send stage activity",
+        stage: "linear",
+        processingStage: stage,
+        linearSessionId: sessionId,
+        error: errorMessage,
+      });
     }
   }
 
   async postError(sessionId: string, error: unknown): Promise<void> {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    // Build the error body with full details
+    const errorBody = errorStack
+      ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${errorStack}\n\`\`\``
+      : `**Error:** ${errorMessage}`;
 
     try {
       await this.client.createAgentActivity({
         agentSessionId: sessionId,
         content: {
           type: "error",
-          body: `Processing failed: ${errorMessage}`,
+          body: errorBody,
         },
         ephemeral: false,
       });
@@ -65,9 +108,13 @@ export class LinearClientAdapter implements LinearAdapter {
         reportError instanceof Error
           ? reportError.message
           : String(reportError);
-      console.error(
-        `[linear] Failed to report error to session ${sessionId}: ${reportErrorMessage}`,
-      );
+      console.error({
+        message: "Failed to report error to Linear",
+        stage: "linear",
+        linearSessionId: sessionId,
+        originalError: errorMessage,
+        reportError: reportErrorMessage,
+      });
     }
   }
 
@@ -78,9 +125,13 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
-        `[linear] Failed to set external link for session ${sessionId}: ${errorMessage}`,
-      );
+      console.error({
+        message: "Failed to set external link",
+        stage: "linear",
+        linearSessionId: sessionId,
+        url,
+        error: errorMessage,
+      });
     }
   }
 
@@ -91,9 +142,13 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
-        `[linear] Failed to update plan for session ${sessionId}: ${errorMessage}`,
-      );
+      console.error({
+        message: "Failed to update plan",
+        stage: "linear",
+        linearSessionId: sessionId,
+        planItemCount: plan.length,
+        error: errorMessage,
+      });
     }
   }
 

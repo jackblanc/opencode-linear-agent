@@ -7,6 +7,14 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+    },
   },
   "vars": {
     "CLOUDFLARE_ACCOUNT_ID": "35f1f2ba9dadd4a97e78dbd5aea6aed1",

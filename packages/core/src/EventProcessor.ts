@@ -4,6 +4,7 @@ import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { SessionRepository } from "./session/SessionRepository";
 import type { GitOperations } from "./git/GitOperations";
 import { SessionManager } from "./session/SessionManager";
+import { base64Encode } from "./utils/encode";
 
 /**
  * Configuration for the EventProcessor
@@ -62,17 +63,17 @@ export class EventProcessor {
     const issueId =
       event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
 
-    console.info(
-      `[processor] Processing ${event.action} event for session ${linearSessionId}`,
-    );
+    console.info({
+      message: "Processing event",
+      stage: "processor",
+      action: event.action,
+      linearSessionId,
+      issueId,
+    });
 
     try {
-      // Send immediate acknowledgment
-      await this.linear.postActivity(
-        linearSessionId,
-        { type: "thought", body: "Starting to work on this..." },
-        true, // ephemeral
-      );
+      // Post git setup stage activity
+      await this.linear.postStageActivity(linearSessionId, "git_setup");
 
       // Get existing state to check for branch
       const existingState =
@@ -86,8 +87,19 @@ export class EventProcessor {
         existingBranch,
       );
 
-      console.info(
-        `[processor] Worktree ready at ${workdir} on branch ${branchName}`,
+      console.info({
+        message: "Worktree ready",
+        stage: "processor",
+        linearSessionId,
+        workdir,
+        branchName,
+      });
+
+      // Post session ready stage activity with branch info
+      await this.linear.postStageActivity(
+        linearSessionId,
+        "session_ready",
+        `Branch: \`${branchName}\``,
       );
 
       // Get or create OpenCode session
@@ -99,19 +111,48 @@ export class EventProcessor {
           workdir,
         );
 
+      console.info({
+        message: "OpenCode session ready",
+        stage: "processor",
+        linearSessionId,
+        opencodeSessionId,
+        workdir,
+      });
+
       // Set external link to OpenCode UI
-      const externalLink = `${workerUrl}/opencode?session=${opencodeSessionId}`;
+      // Format: /{base64_encoded_workdir}/session/{sessionId}
+      const encodedWorkdir = base64Encode(workdir);
+      const externalLink = `${workerUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
       await this.linear.setExternalLink(linearSessionId, externalLink);
 
       if (event.action === "created") {
-        await this.handleCreated(event, opencodeSessionId);
+        await this.handleCreated(
+          event,
+          opencodeSessionId,
+          linearSessionId,
+          issueId,
+        );
       } else if (event.action === "prompted") {
-        await this.handlePrompted(event, opencodeSessionId, linearSessionId);
+        await this.handlePrompted(
+          event,
+          opencodeSessionId,
+          linearSessionId,
+          issueId,
+        );
       }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(`[processor] Error processing event: ${errorMessage}`);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      console.error({
+        message: "Error processing event",
+        stage: "processor",
+        error: errorMessage,
+        stack: errorStack,
+        linearSessionId,
+        issueId,
+      });
 
       // Report error to Linear
       await this.linear.postError(linearSessionId, error);
@@ -126,11 +167,22 @@ export class EventProcessor {
   private async handleCreated(
     event: AgentSessionEventWebhookPayload,
     opencodeSessionId: string,
+    linearSessionId: string,
+    issueId: string,
   ): Promise<void> {
     const prompt = event.promptContext ?? "Please help with this issue.";
-    console.info(
-      `[processor] Starting new session ${opencodeSessionId} with prompt (${prompt.length} chars)`,
-    );
+
+    console.info({
+      message: "Starting new session with prompt",
+      stage: "processor",
+      linearSessionId,
+      opencodeSessionId,
+      issueId,
+      promptLength: prompt.length,
+    });
+
+    // Post sending prompt stage activity
+    await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
     await this.opencodeClient.session.promptAsync({
       path: { id: opencodeSessionId },
@@ -143,7 +195,12 @@ export class EventProcessor {
       },
     });
 
-    console.info(`[processor] OpenCode prompt started successfully`);
+    console.info({
+      message: "OpenCode prompt started successfully",
+      stage: "processor",
+      linearSessionId,
+      opencodeSessionId,
+    });
   }
 
   /**
@@ -153,12 +210,17 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opencodeSessionId: string,
     linearSessionId: string,
+    issueId: string,
   ): Promise<void> {
     // Check for stop signal
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
-      console.info(
-        `[processor] Stop signal received, aborting session ${opencodeSessionId}`,
-      );
+      console.info({
+        message: "Stop signal received, aborting session",
+        stage: "processor",
+        linearSessionId,
+        opencodeSessionId,
+        issueId,
+      });
 
       await this.opencodeClient.session.abort({
         path: { id: opencodeSessionId },
@@ -177,9 +239,17 @@ export class EventProcessor {
       event.promptContext ??
       "Please continue.";
 
-    console.info(
-      `[processor] Sending follow-up prompt (${prompt.length} chars) to session ${opencodeSessionId}`,
-    );
+    console.info({
+      message: "Sending follow-up prompt",
+      stage: "processor",
+      linearSessionId,
+      opencodeSessionId,
+      issueId,
+      promptLength: prompt.length,
+    });
+
+    // Post sending prompt stage activity
+    await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
     await this.opencodeClient.session.promptAsync({
       path: { id: opencodeSessionId },
@@ -192,6 +262,11 @@ export class EventProcessor {
       },
     });
 
-    console.info(`[processor] Follow-up prompt started successfully`);
+    console.info({
+      message: "Follow-up prompt started successfully",
+      stage: "processor",
+      linearSessionId,
+      opencodeSessionId,
+    });
   }
 }

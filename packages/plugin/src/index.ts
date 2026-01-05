@@ -147,7 +147,14 @@ async function sendLinearActivity(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(
-      `[LINEAR PLUGIN] Failed to send ${content.type} activity: ${errorMessage}`,
+      JSON.stringify({
+        message: "Failed to send activity",
+        stage: "plugin",
+        activityType: content.type,
+        linearSessionId: sessionId,
+        ephemeral,
+        error: errorMessage,
+      }),
     );
   }
 }
@@ -165,7 +172,15 @@ async function updateLinearPlan(
     await agentSession.update({ plan });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[LINEAR PLUGIN] Failed to update plan: ${errorMessage}`);
+    console.error(
+      JSON.stringify({
+        message: "Failed to update plan",
+        stage: "plugin",
+        linearSessionId: sessionId,
+        planItemCount: plan.length,
+        error: errorMessage,
+      }),
+    );
   }
 }
 
@@ -173,7 +188,13 @@ async function updateLinearPlan(
  * Linear Agent Plugin
  */
 export const LinearAgentPlugin: Plugin = async ({ client }) => {
-  console.log("[LINEAR PLUGIN] Plugin initializing, workdir: " + process.cwd());
+  console.log(
+    JSON.stringify({
+      message: "Plugin initializing",
+      stage: "plugin",
+      workdir: process.cwd(),
+    }),
+  );
 
   /**
    * Get Linear session ID for an OpenCode session
@@ -202,7 +223,12 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       console.error(
-        `[LINEAR PLUGIN] Error fetching session ${opencodeSessionId}: ${errorMessage}`,
+        JSON.stringify({
+          message: "Error fetching session",
+          stage: "plugin",
+          opencodeSessionId,
+          error: errorMessage,
+        }),
       );
     }
 
@@ -235,7 +261,15 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         return;
       }
 
-      console.log(`[LINEAR PLUGIN] Tool starting: ${input.tool}`);
+      console.log(
+        JSON.stringify({
+          message: "Tool starting",
+          stage: "plugin",
+          tool: input.tool,
+          opencodeSessionId: input.sessionID,
+          linearSessionId,
+        }),
+      );
 
       await sendLinearActivity(
         linearClient,
@@ -264,7 +298,16 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         return;
       }
 
-      console.log(`[LINEAR PLUGIN] Tool completed: ${input.tool}`);
+      console.log(
+        JSON.stringify({
+          message: "Tool completed",
+          stage: "plugin",
+          tool: input.tool,
+          opencodeSessionId: input.sessionID,
+          linearSessionId,
+          outputLength: output.output.length,
+        }),
+      );
 
       const result =
         output.output.length > 500
@@ -304,7 +347,13 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
       }
 
       console.log(
-        `[LINEAR PLUGIN] Text complete (${output.text.length} chars)`,
+        JSON.stringify({
+          message: "Text complete",
+          stage: "plugin",
+          opencodeSessionId: input.sessionID,
+          linearSessionId,
+          textLength: output.text.length,
+        }),
       );
 
       await sendLinearActivity(
@@ -328,11 +377,23 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           return;
         }
 
-        console.log(`[LINEAR PLUGIN] Event received: ${event.type}`);
+        console.log(
+          JSON.stringify({
+            message: "Event received",
+            stage: "plugin",
+            eventType: event.type,
+          }),
+        );
 
         const linearClient = getLinearClient();
         if (!linearClient) {
-          console.log(`[LINEAR PLUGIN] No LINEAR_ACCESS_TOKEN, skipping`);
+          console.log(
+            JSON.stringify({
+              message: "No LINEAR_ACCESS_TOKEN, skipping",
+              stage: "plugin",
+              eventType: event.type,
+            }),
+          );
           return;
         }
 
@@ -347,13 +408,26 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         }
 
         if (!opencodeSessionId) {
-          console.log(`[LINEAR PLUGIN] No sessionID in event, skipping`);
+          console.log(
+            JSON.stringify({
+              message: "No sessionID in event, skipping",
+              stage: "plugin",
+              eventType: event.type,
+            }),
+          );
           return;
         }
 
         const linearSessionId = await getLinearSessionId(opencodeSessionId);
         if (!linearSessionId) {
-          console.log(`[LINEAR PLUGIN] Not a Linear session, skipping`);
+          console.log(
+            JSON.stringify({
+              message: "Not a Linear session, skipping",
+              stage: "plugin",
+              eventType: event.type,
+              opencodeSessionId,
+            }),
+          );
           return;
         }
 
@@ -368,7 +442,15 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
           ) {
             errorMessage = error.data.message;
           }
-          console.log(`[LINEAR PLUGIN] Session error: ${errorMessage}`);
+          console.log(
+            JSON.stringify({
+              message: "Session error",
+              stage: "plugin",
+              opencodeSessionId,
+              linearSessionId,
+              error: errorMessage,
+            }),
+          );
           await sendLinearActivity(
             linearClient,
             linearSessionId,
@@ -380,7 +462,14 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         // Handle session idle - just send Stop signal
         // Git checking is now handled by the EventProcessor
         if (event.type === "session.idle") {
-          console.log(`[LINEAR PLUGIN] Session idle, sending Stop signal`);
+          console.log(
+            JSON.stringify({
+              message: "Session idle, sending Stop signal",
+              stage: "plugin",
+              opencodeSessionId,
+              linearSessionId,
+            }),
+          );
           await sendLinearActivity(
             linearClient,
             linearSessionId,
@@ -393,7 +482,15 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
         // Handle todo updates -> sync to Linear plan
         if (event.type === "todo.updated") {
           const { todos } = event.properties;
-          console.log(`[LINEAR PLUGIN] Syncing ${todos.length} todos to plan`);
+          console.log(
+            JSON.stringify({
+              message: "Syncing todos to plan",
+              stage: "plugin",
+              opencodeSessionId,
+              linearSessionId,
+              todoCount: todos.length,
+            }),
+          );
 
           const plan = todos.map((todo) => ({
             content: todo.content,
@@ -405,7 +502,15 @@ export const LinearAgentPlugin: Plugin = async ({ client }) => {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.error(`[LINEAR PLUGIN] Event handler error: ${errorMessage}`);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        console.error(
+          JSON.stringify({
+            message: "Event handler error",
+            stage: "plugin",
+            error: errorMessage,
+            stack: errorStack,
+          }),
+        );
       }
     },
   };

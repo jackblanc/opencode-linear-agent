@@ -4,6 +4,8 @@ import type {
   LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
 import type { LinearEventMessage } from "@linear-opencode-agent/core";
+import type { TokenStore } from "@linear-opencode-agent/infrastructure";
+import { LinearClientAdapter } from "@linear-opencode-agent/infrastructure";
 
 /**
  * Type guard for AgentSessionEvent
@@ -27,12 +29,14 @@ interface WebhookEnv {
  *
  * This handler responds quickly (<100ms) by:
  * 1. Verifying the webhook signature
- * 2. Enqueuing the event for async processing
- * 3. Returning 200 OK immediately
+ * 2. Posting immediate status activity to Linear
+ * 3. Enqueuing the event for async processing
+ * 4. Returning 200 OK immediately
  */
 export async function handleWebhook(
   request: Request,
   env: WebhookEnv,
+  tokenStore: TokenStore,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -64,15 +68,45 @@ export async function handleWebhook(
 
   // Only handle AgentSessionEvent webhooks
   if (!isAgentSessionEvent(webhookPayload)) {
-    console.info(
-      `[webhook] Ignoring non-AgentSessionEvent: ${webhookPayload.type}`,
-    );
+    console.info({
+      message: "Ignoring non-AgentSessionEvent webhook",
+      webhookType: webhookPayload.type,
+      stage: "webhook",
+    });
     return new Response("OK", { status: 200 });
   }
 
-  console.info(
-    `[webhook] Received ${webhookPayload.action} webhook for session ${webhookPayload.agentSession.id}, enqueueing`,
-  );
+  const sessionId = webhookPayload.agentSession.id;
+  const organizationId = webhookPayload.organizationId;
+  const issueId =
+    webhookPayload.agentSession.issue?.id ??
+    webhookPayload.agentSession.issueId ??
+    "unknown";
+
+  console.info({
+    message: "Webhook received",
+    stage: "webhook",
+    action: webhookPayload.action,
+    linearSessionId: sessionId,
+    issueId,
+    organizationId,
+  });
+
+  // Post immediate status activity to Linear
+  if (organizationId) {
+    const accessToken = await tokenStore.getAccessToken(organizationId);
+    if (accessToken) {
+      const linearAdapter = new LinearClientAdapter(accessToken);
+      await linearAdapter.postStageActivity(sessionId, "webhook_received");
+    } else {
+      console.info({
+        message: "No access token available for webhook activity",
+        stage: "webhook",
+        linearSessionId: sessionId,
+        organizationId,
+      });
+    }
+  }
 
   // Extract worker URL for externalLink
   const workerUrl = new URL(request.url).origin;
@@ -85,6 +119,14 @@ export async function handleWebhook(
 
   await env.AGENT_QUEUE.send(message);
 
-  console.info(`[webhook] Event enqueued successfully`);
+  console.info({
+    message: "Event enqueued successfully",
+    stage: "webhook",
+    action: webhookPayload.action,
+    linearSessionId: sessionId,
+    issueId,
+    organizationId,
+  });
+
   return new Response("OK", { status: 200 });
 }
