@@ -114,7 +114,7 @@ export function getSessionWorkdir(sessionId: string): string {
 export async function getOrInitializeSandbox(
   env: Env,
   organizationId: string,
-  workdir?: string // NEW: optional override for PROJECT_DIR
+  workdir?: string, // NEW: optional override for PROJECT_DIR
 ): Promise<SandboxContext>;
 ```
 
@@ -144,7 +144,7 @@ async function ensureSessionWorktree(
   env: Env,
   linearSessionId: string,
   issueId: string,
-  linearClient: LinearClient
+  linearClient: LinearClient,
 ): Promise<WorktreeResult>;
 ```
 
@@ -198,7 +198,7 @@ interface GitCheckResult {
 }
 
 async function checkGitStatusForCompletion(
-  workdir: string
+  workdir: string,
 ): Promise<GitCheckResult>;
 ```
 
@@ -249,7 +249,7 @@ if (event.type === "session.idle") {
     linearSessionId,
     { type: "thought", body: "Task completed." },
     false,
-    AgentActivitySignal.Stop
+    AgentActivitySignal.Stop,
   );
 }
 ```

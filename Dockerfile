@@ -3,6 +3,10 @@ FROM docker.io/cloudflare/sandbox:0.6.7
 # Add opencode install location to PATH before installation
 ENV PATH="/root/.opencode/bin:${PATH}"
 
+# Set CI=true so tools like SST skip interactive prompts
+# This must be set early so it's available during any RUN commands
+ENV CI=true
+
 # Install OpenCode CLI
 RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
     && bash /tmp/install-opencode.sh \
@@ -14,7 +18,7 @@ ENV COMMAND_TIMEOUT_MS=600000
 
 # Copy plugin source and build plugins
 # Using bun which is available in the sandbox image
-COPY packages/opencode-linear-plugin /tmp/plugin
+COPY packages/plugin /tmp/plugin
 RUN cd /tmp/plugin \
     && bun install \
     && mkdir -p /root/.config/opencode/plugin \

@@ -1,0 +1,18 @@
+# Secrets for local development
+# Copy this file to .dev.vars and fill in your values
+
+# Required: Anthropic API key for OpenCode
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# Required: GitHub token for cloning repositories
+GITHUB_TOKEN="ghp_..."
+
+# Required: Repository URL the agent works on
+REPO_URL="https://github.com/owner/repo"
+
+# Required: Linear OAuth credentials (for token refresh)
+LINEAR_CLIENT_ID="..."
+LINEAR_CLIENT_SECRET="..."
+
+# Required: Admin API key to protect OpenCode UI access
+ADMIN_API_KEY="sk-admin-..."

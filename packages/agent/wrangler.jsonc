@@ -1,0 +1,54 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "linear-opencode-agent-agent",
+  "account_id": "35f1f2ba9dadd4a97e78dbd5aea6aed1",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "35f1f2ba9dadd4a97e78dbd5aea6aed1",
+    "LINEAR_ORGANIZATION_ID": "ba403cd7-a65c-4ee5-b6a1-ce6e482fcc7e",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "142a97b9627c4842b05cf881a3826ba3",
+      "preview_id": "1a426ee934dd4a64bc32487dfa2ca203",
+    },
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "linear-agent-events",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 0,
+      },
+    ],
+  },
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "../../Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 3,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "Sandbox",
+        "name": "Sandbox",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "new_sqlite_classes": ["Sandbox"],
+      "tag": "v1",
+    },
+  ],
+}

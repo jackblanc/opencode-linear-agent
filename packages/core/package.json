@@ -1,0 +1,18 @@
+{
+  "name": "@linear-opencode-agent/core",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@linear/sdk": "^68.1.0",
+    "@opencode-ai/sdk": "^1.0.137"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@linear-opencode-agent/linear",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@linear/sdk": "^68.1.0",
+    "@linear-opencode-agent/core": "workspace:*",
+    "@linear-opencode-agent/infrastructure": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/node": "^25.0.3"
+  }
+}
