@@ -1,10 +1,69 @@
-import type { OpencodeClient } from "@opencode-ai/sdk";
+import type { OpencodeClient, Event as OpencodeEvent } from "@opencode-ai/sdk";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { SessionRepository } from "./session/SessionRepository";
 import type { GitOperations } from "./git/GitOperations";
 import { SessionManager } from "./session/SessionManager";
 import { base64Encode } from "./utils/encode";
+
+/**
+ * Log an OpenCode event to Worker logs for observability
+ */
+function logOpencodeEvent(
+  event: OpencodeEvent,
+  linearSessionId: string,
+  opencodeSessionId: string,
+): void {
+  // Extract relevant properties based on event type
+  const logEntry: Record<string, unknown> = {
+    message: `OpenCode: ${event.type}`,
+    stage: "opencode",
+    eventType: event.type,
+    linearSessionId,
+    opencodeSessionId,
+  };
+
+  // Add event-specific properties
+  if ("properties" in event && event.properties) {
+    const props = event.properties as Record<string, unknown>;
+
+    // Include common useful properties
+    if (props.sessionID) {
+      logEntry.eventSessionId = props.sessionID;
+    }
+    if (props.error) {
+      logEntry.error = props.error;
+    }
+    if (props.status) {
+      logEntry.status = props.status;
+    }
+
+    // For message events, include message info
+    if (props.messageID) {
+      logEntry.messageId = props.messageID;
+    }
+    if (props.partID) {
+      logEntry.partId = props.partID;
+    }
+
+    // For file events
+    if (props.path) {
+      logEntry.filePath = props.path;
+    }
+
+    // For todo events
+    if (props.todos && Array.isArray(props.todos)) {
+      logEntry.todoCount = props.todos.length;
+    }
+  }
+
+  // Use console.info for normal events, console.error for errors
+  if (event.type === "session.error") {
+    console.error(logEntry);
+  } else {
+    console.info(logEntry);
+  }
+}
 
 /**
  * Configuration for the EventProcessor
@@ -162,6 +221,57 @@ export class EventProcessor {
   }
 
   /**
+   * Subscribe to OpenCode event stream and log all events.
+   * Returns when session.idle is received for the target session.
+   */
+  private async subscribeAndWaitForIdle(
+    opencodeSessionId: string,
+    linearSessionId: string,
+  ): Promise<void> {
+    console.info({
+      message: "Subscribing to OpenCode event stream",
+      stage: "processor",
+      linearSessionId,
+      opencodeSessionId,
+    });
+
+    const eventStream = await this.opencodeClient.event.subscribe();
+
+    for await (const event of eventStream.stream) {
+      // Log every event for observability
+      logOpencodeEvent(event, linearSessionId, opencodeSessionId);
+
+      // Check if this is session.idle for our session
+      if (event.type === "session.idle") {
+        const props = event.properties as { sessionID?: string };
+        if (props.sessionID === opencodeSessionId) {
+          console.info({
+            message: "Session idle, completing",
+            stage: "processor",
+            linearSessionId,
+            opencodeSessionId,
+          });
+          break;
+        }
+      }
+
+      // Also break on session.error for our session
+      if (event.type === "session.error") {
+        const props = event.properties as { sessionID?: string };
+        if (props.sessionID === opencodeSessionId) {
+          console.info({
+            message: "Session error received, completing",
+            stage: "processor",
+            linearSessionId,
+            opencodeSessionId,
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  /**
    * Handle new session creation
    */
   private async handleCreated(
@@ -184,19 +294,24 @@ export class EventProcessor {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
-    await this.opencodeClient.session.promptAsync({
-      path: { id: opencodeSessionId },
-      body: {
-        model: {
-          providerID: this.config.providerID,
-          modelID: this.config.modelID,
+    // Send prompt and subscribe to events concurrently
+    // The prompt triggers the AI work, event subscription logs everything
+    await Promise.all([
+      this.opencodeClient.session.prompt({
+        path: { id: opencodeSessionId },
+        body: {
+          model: {
+            providerID: this.config.providerID,
+            modelID: this.config.modelID,
+          },
+          parts: [{ type: "text", text: prompt }],
         },
-        parts: [{ type: "text", text: prompt }],
-      },
-    });
+      }),
+      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId),
+    ]);
 
     console.info({
-      message: "OpenCode prompt started successfully",
+      message: "OpenCode session completed",
       stage: "processor",
       linearSessionId,
       opencodeSessionId,
@@ -251,19 +366,23 @@ export class EventProcessor {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
-    await this.opencodeClient.session.promptAsync({
-      path: { id: opencodeSessionId },
-      body: {
-        model: {
-          providerID: this.config.providerID,
-          modelID: this.config.modelID,
+    // Send prompt and subscribe to events concurrently
+    await Promise.all([
+      this.opencodeClient.session.prompt({
+        path: { id: opencodeSessionId },
+        body: {
+          model: {
+            providerID: this.config.providerID,
+            modelID: this.config.modelID,
+          },
+          parts: [{ type: "text", text: prompt }],
         },
-        parts: [{ type: "text", text: prompt }],
-      },
-    });
+      }),
+      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId),
+    ]);
 
     console.info({
-      message: "Follow-up prompt started successfully",
+      message: "Follow-up prompt completed",
       stage: "processor",
       linearSessionId,
       opencodeSessionId,
