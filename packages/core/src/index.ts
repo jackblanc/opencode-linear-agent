@@ -22,7 +22,15 @@ export type { GitStatus, WorktreeInfo } from "./git/types";
 
 // Linear adapter interface
 export type { LinearAdapter, ActivitySignal } from "./linear/LinearAdapter";
-export type { ActivityContent, PlanItem } from "./linear/types";
+export type {
+  ActivityContent,
+  PlanItem,
+  ProcessingStage,
+} from "./linear/types";
+export { STAGE_MESSAGES } from "./linear/types";
 
 // Shared types
 export type { LinearEventMessage, ExecResult, ExecOptions } from "./types";
+
+// Utilities
+export { base64Encode, base64Decode } from "./utils/encode";

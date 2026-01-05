@@ -50,23 +50,41 @@ export class CloudflareSandbox<TEnv> implements SandboxProvider {
   ): Promise<SandboxContext> {
     const sandbox = this.getSandbox();
 
-    console.info(`[sandbox] Starting container`);
+    console.info({
+      message: "Starting container",
+      stage: "sandbox",
+    });
     await sandbox.start();
-    console.info(`[sandbox] Container is running`);
+
+    console.info({
+      message: "Container is running",
+      stage: "sandbox",
+    });
 
     // Set environment variables
-    console.info(`[sandbox] Setting environment variables`);
+    console.info({
+      message: "Setting environment variables",
+      stage: "sandbox",
+      envVarCount: Object.keys(this.envVars).length,
+    });
     await sandbox.setEnvVars(this.envVars);
 
     // Ensure directory exists
-    console.info(`[sandbox] Ensuring directory exists: ${workdir}`);
+    console.info({
+      message: "Ensuring directory exists",
+      stage: "sandbox",
+      workdir,
+    });
     await sandbox.exec(`mkdir -p ${workdir}`, { timeout: 30000 });
 
     // Create OpenCode client and server
     const port = config?.port ?? OPENCODE_PORT;
-    console.info(
-      `[sandbox] Creating OpenCode client and server on port ${port}`,
-    );
+    console.info({
+      message: "Creating OpenCode client and server",
+      stage: "sandbox",
+      port,
+      workdir,
+    });
 
     const { client, server } = await createOpencode<OpencodeClient>(sandbox, {
       port,
@@ -76,7 +94,12 @@ export class CloudflareSandbox<TEnv> implements SandboxProvider {
 
     this.server = server;
 
-    console.info(`[sandbox] Sandbox initialized successfully`);
+    console.info({
+      message: "Sandbox initialized successfully",
+      stage: "sandbox",
+      port,
+      workdir,
+    });
     return { client, server };
   }
 

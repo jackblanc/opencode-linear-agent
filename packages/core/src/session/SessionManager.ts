@@ -30,15 +30,22 @@ export class SessionManager {
     opencodeSessionId: string;
     existingState: SessionState | null;
   }> {
-    console.info(
-      `[session] Looking up existing session state for ${linearSessionId}`,
-    );
+    console.info({
+      message: "Looking up existing session state",
+      stage: "session",
+      linearSessionId,
+      issueId,
+    });
+
     const existingState = await this.repository.get(linearSessionId);
 
     if (existingState?.opencodeSessionId) {
-      console.info(
-        `[session] Found existing state, attempting to resume OpenCode session ${existingState.opencodeSessionId}`,
-      );
+      console.info({
+        message: "Found existing state, attempting to resume",
+        stage: "session",
+        linearSessionId,
+        opencodeSessionId: existingState.opencodeSessionId,
+      });
 
       try {
         const session = await this.opencodeClient.session.get({
@@ -46,26 +53,40 @@ export class SessionManager {
         });
 
         if (session.data) {
-          console.info(
-            `[session] Successfully resumed session ${session.data.id}`,
-          );
+          console.info({
+            message: "Successfully resumed session",
+            stage: "session",
+            linearSessionId,
+            opencodeSessionId: session.data.id,
+          });
           return { opencodeSessionId: session.data.id, existingState };
         }
-        console.warn(
-          `[session] Session ${existingState.opencodeSessionId} not found, creating new one`,
-        );
+        console.warn({
+          message: "Session not found, creating new one",
+          stage: "session",
+          linearSessionId,
+          opencodeSessionId: existingState.opencodeSessionId,
+        });
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[session] Failed to resume session: ${errorMessage}, creating new one`,
-        );
+        console.warn({
+          message: "Failed to resume session, creating new one",
+          stage: "session",
+          error: errorMessage,
+          linearSessionId,
+          opencodeSessionId: existingState.opencodeSessionId,
+        });
       }
     }
 
-    console.info(
-      `[session] Creating new OpenCode session for Linear session ${linearSessionId}`,
-    );
+    console.info({
+      message: "Creating new OpenCode session",
+      stage: "session",
+      linearSessionId,
+      issueId,
+    });
+
     const session = await this.opencodeClient.session.create({
       body: {
         title: `${LINEAR_SESSION_PREFIX}${linearSessionId}`,
@@ -73,13 +94,20 @@ export class SessionManager {
     });
 
     if (!session.data) {
-      console.error(
-        "[session] OpenCode API returned no data when creating session",
-      );
+      console.error({
+        message: "OpenCode API returned no data when creating session",
+        stage: "session",
+        linearSessionId,
+      });
       throw new Error("Failed to create OpenCode session");
     }
 
-    console.info(`[session] Created OpenCode session ${session.data.id}`);
+    console.info({
+      message: "Created OpenCode session",
+      stage: "session",
+      linearSessionId,
+      opencodeSessionId: session.data.id,
+    });
 
     const newState: SessionState = {
       opencodeSessionId: session.data.id,
@@ -91,7 +119,15 @@ export class SessionManager {
     };
 
     await this.repository.save(newState);
-    console.info(`[session] Saved session state to repository`);
+
+    console.info({
+      message: "Saved session state to repository",
+      stage: "session",
+      linearSessionId,
+      opencodeSessionId: session.data.id,
+      branchName,
+      workdir,
+    });
 
     return { opencodeSessionId: session.data.id, existingState: null };
   }

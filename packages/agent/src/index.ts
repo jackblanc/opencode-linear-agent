@@ -90,7 +90,12 @@ function fixContentType(response: Response, pathname: string): Response {
  */
 async function handleFetch(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  console.info(`[agent] ${request.method} ${url.pathname}`);
+  console.info({
+    message: "HTTP request",
+    stage: "proxy",
+    method: request.method,
+    pathname: url.pathname,
+  });
 
   // Health check endpoint
   if (url.pathname === "/health") {
@@ -160,15 +165,27 @@ async function processMessage(
   const { payload, workerUrl } = message;
   const linearSessionId = payload.agentSession.id;
   const organizationId = payload.organizationId;
+  const issueId =
+    payload.agentSession.issue?.id ?? payload.agentSession.issueId ?? "unknown";
 
   if (!organizationId) {
-    console.error("[agent] No organization ID in webhook payload");
+    console.error({
+      message: "No organization ID in webhook payload",
+      stage: "agent",
+      linearSessionId,
+      issueId,
+    });
     return;
   }
 
-  console.info(
-    `[agent] Processing ${payload.action} event for session ${linearSessionId}`,
-  );
+  console.info({
+    message: "Processing started",
+    stage: "agent",
+    action: payload.action,
+    linearSessionId,
+    issueId,
+    organizationId,
+  });
 
   // Create infrastructure instances
   const kv = new KVStore(env.KV);
@@ -178,14 +195,35 @@ async function processMessage(
   // Get access token (refresh if needed)
   let accessToken = await tokenStore.getAccessToken(organizationId);
   if (!accessToken) {
-    console.info(`[agent] Access token not found, refreshing`);
+    console.info({
+      message: "Access token not found, refreshing",
+      stage: "agent",
+      linearSessionId,
+      organizationId,
+    });
     accessToken = await refreshAccessToken(env, tokenStore, organizationId);
   }
 
   // Create Linear adapter for error reporting FIRST
   const linearAdapter = new LinearClientAdapter(accessToken);
 
+  // Post processing started activity
+  await linearAdapter.postStageActivity(linearSessionId, "processing_started");
+
   try {
+    // Post sandbox initializing activity
+    await linearAdapter.postStageActivity(
+      linearSessionId,
+      "sandbox_initializing",
+    );
+
+    console.info({
+      message: "Initializing sandbox",
+      stage: "agent",
+      linearSessionId,
+      organizationId,
+    });
+
     // Create sandbox provider
     const sandboxProvider = new CloudflareSandbox(env.Sandbox, {
       ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
@@ -203,6 +241,13 @@ async function processMessage(
       workdir,
       getConfig(env),
     );
+
+    console.info({
+      message: "Sandbox initialized",
+      stage: "agent",
+      linearSessionId,
+      workdir,
+    });
 
     // Create git operations
     const gitOperations = new SandboxGitOperations(
@@ -222,14 +267,29 @@ async function processMessage(
 
     await processor.process(payload, workerUrl);
 
-    console.info(
-      `[agent] Successfully processed ${payload.action} event for session ${linearSessionId}`,
-    );
+    console.info({
+      message: "Event processed successfully",
+      stage: "agent",
+      action: payload.action,
+      linearSessionId,
+      issueId,
+      organizationId,
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[agent] Error processing event: ${errorMessage}`);
+    const errorStack = error instanceof Error ? error.stack : undefined;
 
-    // Report error to Linear
+    console.error({
+      message: "Error processing event",
+      stage: "agent",
+      error: errorMessage,
+      stack: errorStack,
+      linearSessionId,
+      issueId,
+      organizationId,
+    });
+
+    // Report error to Linear with full details
     await linearAdapter.postError(linearSessionId, error);
 
     // Re-throw for queue retry
@@ -252,19 +312,32 @@ export default {
     batch: MessageBatch<LinearEventMessage>,
     env: Env,
   ): Promise<void> {
-    console.info(
-      `[agent] Processing batch of ${batch.messages.length} messages`,
-    );
+    console.info({
+      message: "Processing batch",
+      stage: "queue",
+      batchSize: batch.messages.length,
+    });
 
     // Process messages sequentially - each message must complete before the next
     for (const message of batch.messages) {
+      const linearSessionId = message.body.payload.agentSession.id;
       try {
         await processMessage(message.body, env); // eslint-disable-line no-await-in-loop
         message.ack();
+        console.info({
+          message: "Message acknowledged",
+          stage: "queue",
+          linearSessionId,
+        });
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.error(`[agent] Message processing failed: ${errorMessage}`);
+        console.error({
+          message: "Message processing failed, will retry",
+          stage: "queue",
+          error: errorMessage,
+          linearSessionId,
+        });
         // Don't ack - will be retried
         message.retry();
       }

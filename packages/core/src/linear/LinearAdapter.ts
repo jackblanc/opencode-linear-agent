@@ -1,4 +1,4 @@
-import type { ActivityContent, PlanItem } from "./types";
+import type { ActivityContent, PlanItem, ProcessingStage } from "./types";
 
 /**
  * Signal to send with an activity
@@ -17,6 +17,18 @@ export interface LinearAdapter {
     content: ActivityContent,
     ephemeral?: boolean,
     signal?: ActivitySignal,
+  ): Promise<void>;
+
+  /**
+   * Post a processing stage activity (ephemeral thought)
+   *
+   * These are used to give users visibility into where processing
+   * is in the pipeline.
+   */
+  postStageActivity(
+    sessionId: string,
+    stage: ProcessingStage,
+    details?: string,
   ): Promise<void>;
 
   /**

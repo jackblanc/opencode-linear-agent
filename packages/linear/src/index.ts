@@ -17,7 +17,12 @@ import { KVStore, KVTokenStore } from "@linear-opencode-agent/infrastructure";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    console.info(`[linear] ${request.method} ${url.pathname}`);
+    console.info({
+      message: "HTTP request",
+      stage: "linear",
+      method: request.method,
+      pathname: url.pathname,
+    });
 
     // Create infrastructure instances
     const kv = new KVStore(env.KV);
@@ -33,10 +38,14 @@ export default {
       url.pathname === "/webhook/linear" ||
       url.pathname === "/api/webhook/linear"
     ) {
-      return handleWebhook(request, {
-        LINEAR_WEBHOOK_SECRET: env.LINEAR_WEBHOOK_SECRET,
-        AGENT_QUEUE: env.AGENT_QUEUE,
-      });
+      return handleWebhook(
+        request,
+        {
+          LINEAR_WEBHOOK_SECRET: env.LINEAR_WEBHOOK_SECRET,
+          AGENT_QUEUE: env.AGENT_QUEUE,
+        },
+        tokenStore,
+      );
     }
 
     // OAuth authorize
