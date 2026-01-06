@@ -189,6 +189,7 @@ export class EventProcessor {
           opencodeSessionId,
           linearSessionId,
           issueId,
+          workdir,
         );
       } else if (event.action === "prompted") {
         await this.handlePrompted(
@@ -196,6 +197,7 @@ export class EventProcessor {
           opencodeSessionId,
           linearSessionId,
           issueId,
+          workdir,
         );
       }
     } catch (error) {
@@ -226,6 +228,7 @@ export class EventProcessor {
   private async subscribeAndWaitForIdle(
     opencodeSessionId: string,
     linearSessionId: string,
+    workdir: string,
   ): Promise<void> {
     console.info({
       message: "Subscribing to OpenCode event stream",
@@ -234,7 +237,9 @@ export class EventProcessor {
       opencodeSessionId,
     });
 
-    const eventStream = await this.opencodeClient.event.subscribe();
+    const eventStream = await this.opencodeClient.event.subscribe({
+      query: { directory: workdir },
+    });
 
     for await (const event of eventStream.stream) {
       // Log every event for observability
@@ -278,6 +283,7 @@ export class EventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     issueId: string,
+    workdir: string,
   ): Promise<void> {
     const prompt = event.promptContext ?? "Please help with this issue.";
 
@@ -298,6 +304,7 @@ export class EventProcessor {
     await Promise.all([
       this.opencodeClient.session.prompt({
         path: { id: opencodeSessionId },
+        query: { directory: workdir },
         body: {
           model: {
             providerID: this.config.providerID,
@@ -306,7 +313,7 @@ export class EventProcessor {
           parts: [{ type: "text", text: prompt }],
         },
       }),
-      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId),
+      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId, workdir),
     ]);
 
     console.info({
@@ -325,6 +332,7 @@ export class EventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     issueId: string,
+    workdir: string,
   ): Promise<void> {
     // Check for stop signal
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
@@ -338,6 +346,7 @@ export class EventProcessor {
 
       await this.opencodeClient.session.abort({
         path: { id: opencodeSessionId },
+        query: { directory: workdir },
       });
 
       await this.linear.postActivity(
@@ -369,6 +378,7 @@ export class EventProcessor {
     await Promise.all([
       this.opencodeClient.session.prompt({
         path: { id: opencodeSessionId },
+        query: { directory: workdir },
         body: {
           model: {
             providerID: this.config.providerID,
@@ -377,7 +387,7 @@ export class EventProcessor {
           parts: [{ type: "text", text: prompt }],
         },
       }),
-      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId),
+      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId, workdir),
     ]);
 
     console.info({
