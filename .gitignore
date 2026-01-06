@@ -201,3 +201,6 @@ dist
 ### Workspace ###
 packages/*/dist/
 packages/*/.wrangler/
+
+### Local package config ###
+packages/local/config.json

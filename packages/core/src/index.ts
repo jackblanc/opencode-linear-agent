@@ -20,8 +20,9 @@ export type { SessionRepository } from "./session/SessionRepository";
 export type { GitOperations, GitProgressCallback } from "./git/GitOperations";
 export type { GitStatus, WorktreeInfo } from "./git/types";
 
-// Linear adapter interface
+// Linear adapter interface and implementation
 export type { LinearAdapter, ActivitySignal } from "./linear/LinearAdapter";
+export { LinearClientAdapter } from "./linear/LinearClientAdapter";
 export type {
   ActivityContent,
   PlanItem,
@@ -32,6 +33,21 @@ export { STAGE_MESSAGES, GIT_STEP_MESSAGES } from "./linear/types";
 
 // Shared types
 export type { LinearEventMessage, ExecResult, ExecOptions } from "./types";
+
+// Storage interfaces
+export type { KeyValueStore, TokenStore, RefreshTokenData } from "./storage";
+
+// OAuth handlers
+export type { OAuthConfig, OAuthCallbackResult } from "./oauth";
+export { handleAuthorize, handleCallback, refreshAccessToken } from "./oauth";
+
+// Webhook handlers
+export type {
+  EventDispatcher,
+  LinearStatusPoster,
+  LinearStatusPosterFactory,
+} from "./webhook";
+export { handleWebhook } from "./webhook";
 
 // Utilities
 export { base64Encode, base64Decode } from "./utils/encode";

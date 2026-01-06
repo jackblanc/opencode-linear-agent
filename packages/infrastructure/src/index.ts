@@ -36,5 +36,5 @@ export {
   SandboxGitOperations,
 } from "./cloudflare";
 
-// Linear adapter
-export { LinearClientAdapter } from "./LinearClientAdapter";
+// Linear adapter (re-exported from core for backwards compatibility)
+export { LinearClientAdapter } from "@linear-opencode-agent/core";

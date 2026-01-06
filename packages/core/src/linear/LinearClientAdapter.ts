@@ -1,13 +1,12 @@
 import { LinearClient, AgentActivitySignal } from "@linear/sdk";
+import type { LinearAdapter, ActivitySignal } from "./LinearAdapter";
 import type {
-  LinearAdapter,
-  ActivitySignal,
   ActivityContent,
   GitSetupStep,
   PlanItem,
   ProcessingStage,
-} from "@linear-opencode-agent/core";
-import { GIT_STEP_MESSAGES, STAGE_MESSAGES } from "@linear-opencode-agent/core";
+} from "./types";
+import { GIT_STEP_MESSAGES, STAGE_MESSAGES } from "./types";
 
 /**
  * Maps our ActivitySignal type to Linear's AgentActivitySignal

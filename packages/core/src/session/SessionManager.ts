@@ -50,6 +50,7 @@ export class SessionManager {
       try {
         const session = await this.opencodeClient.session.get({
           path: { id: existingState.opencodeSessionId },
+          query: { directory: workdir },
         });
 
         if (session.data) {
@@ -91,6 +92,7 @@ export class SessionManager {
       body: {
         title: `${LINEAR_SESSION_PREFIX}${linearSessionId}`,
       },
+      query: { directory: workdir },
     });
 
     if (!session.data) {
