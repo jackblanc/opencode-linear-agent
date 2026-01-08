@@ -296,10 +296,12 @@ export class SSEEventHandler {
   private async handleTextPart(part: TextPart): Promise<void> {
     const { id, text, time } = part;
 
-    // Skip if already sent
+    // Skip if already sent - check and add BEFORE async operation to prevent race condition
+    // where the same event arrives twice before the first postActivity completes
     if (this.sentTextParts.has(id)) {
       return;
     }
+    this.sentTextParts.add(id);
 
     // Skip empty text
     if (!text.trim()) {
@@ -324,8 +326,6 @@ export class SSEEventHandler {
       { type: "response", body: text },
       false, // persistent
     );
-
-    this.sentTextParts.add(id);
   }
 
   /**
