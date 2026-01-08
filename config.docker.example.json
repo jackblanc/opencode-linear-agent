@@ -1,0 +1,24 @@
+{
+  "port": 3000,
+  "tailscaleHostname": "your-hostname.your-tailnet.ts.net",
+  "opencode": {
+    "url": "http://opencode:4096"
+  },
+  "linear": {
+    "clientId": "YOUR_LINEAR_CLIENT_ID",
+    "clientSecret": "YOUR_LINEAR_CLIENT_SECRET",
+    "webhookSecret": "YOUR_LINEAR_WEBHOOK_SECRET",
+    "organizationId": "YOUR_LINEAR_ORGANIZATION_ID"
+  },
+  "github": {
+    "token": "YOUR_GITHUB_TOKEN"
+  },
+  "repo": {
+    "localPath": "/workspace/repo",
+    "remoteUrl": "https://github.com/owner/repo"
+  },
+  "paths": {
+    "worktrees": "/workspace/worktrees",
+    "data": "/data"
+  }
+}

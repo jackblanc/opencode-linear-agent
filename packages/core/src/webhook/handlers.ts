@@ -40,6 +40,7 @@ export async function handleWebhook(
   tokenStore: TokenStore,
   dispatcher: EventDispatcher,
   statusPosterFactory?: LinearStatusPosterFactory,
+  allowedOrganizationId?: string,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -113,6 +114,17 @@ export async function handleWebhook(
     webhookPayload.agentSession.issue?.id ??
     webhookPayload.agentSession.issueId ??
     "unknown";
+
+  // Check organization ID allowlist if configured
+  if (allowedOrganizationId && organizationId !== allowedOrganizationId) {
+    console.warn({
+      message: "Webhook from unauthorized organization",
+      stage: "webhook",
+      organizationId,
+      allowedOrganizationId,
+    });
+    return new Response("Unauthorized organization", { status: 403 });
+  }
 
   console.info({
     message: "Webhook received",

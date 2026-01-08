@@ -146,14 +146,19 @@ function createServer(
         );
       }
 
-      // Linear webhook
-      if (pathname === "/api/webhook/linear") {
+      // Linear webhook (support both paths for consistency with Cloudflare worker)
+      if (
+        pathname === "/api/webhook/linear" ||
+        pathname === "/webhook/linear"
+      ) {
         return respond(
           await handleWebhook(
             request,
             config.linear.webhookSecret,
             tokenStore,
             dispatcher,
+            undefined, // statusPosterFactory
+            config.linear.organizationId, // only accept webhooks from this org
           ),
         );
       }
