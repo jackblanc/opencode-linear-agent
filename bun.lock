@@ -34,6 +34,7 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20260103.0",
+        "bun-types": "^1.2.1",
       },
     },
     "packages/infrastructure": {
