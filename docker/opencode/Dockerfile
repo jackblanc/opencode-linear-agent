@@ -43,9 +43,10 @@ ENV PATH="/home/jack.blanc/.opencode/bin:$PATH"
 ENV CI=true
 ENV COMMAND_TIMEOUT_MS=600000
 
-# Copy config
+# Copy config and plugins
 COPY opencode.json /home/jack.blanc/.config/opencode/opencode.json
 COPY AGENTS.md /home/jack.blanc/.config/opencode/AGENTS.md
+COPY plugin/ /home/jack.blanc/.config/opencode/plugin/
 
 WORKDIR /home/jack.blanc/projects
 EXPOSE 4096
