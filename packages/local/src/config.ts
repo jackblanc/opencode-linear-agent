@@ -29,6 +29,8 @@ export interface Config {
     clientSecret: string;
     webhookSecret: string;
     organizationId: string;
+    /** IP addresses allowed to send webhooks (Linear's IPs) */
+    webhookIps: string[];
   };
   github: {
     token: string;
@@ -105,6 +107,20 @@ function validateConfig(config: unknown): config is Config {
     typeof linear.organizationId !== "string"
   ) {
     return false;
+  }
+
+  // Check webhookIps (required array of strings)
+  if (!Array.isArray(linear.webhookIps) || linear.webhookIps.length === 0) {
+    console.error(
+      "linear.webhookIps must be a non-empty array of IP addresses",
+    );
+    return false;
+  }
+  for (const ip of linear.webhookIps) {
+    if (typeof ip !== "string") {
+      console.error("linear.webhookIps must contain only strings");
+      return false;
+    }
   }
 
   // Check github

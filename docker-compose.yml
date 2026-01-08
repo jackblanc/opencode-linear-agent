@@ -30,16 +30,16 @@ services:
       - linear-agent
 
   # OpenCode server - AI coding agent
-  # NOT exposed publicly - only accessible within Docker network
-  # For local debugging, use: docker compose exec opencode opencode --remote http://localhost:4096
+  # Port 4096 exposed to localhost only for UI access
+  # NOT exposed via Tailscale Funnel - only accessible from your machine
   #
   # Uses /home/jack.blanc paths to match work Linux machine
   opencode:
     build:
       context: ./docker/opencode
       dockerfile: Dockerfile
-    # No ports exposed to host - internal only for security
-    # The linear-webhook container accesses it via http://opencode:4096
+    ports:
+      - "127.0.0.1:4096:4096" # Localhost only - access OpenCode UI at http://localhost:4096
     volumes:
       # Mount worktrees - paths match between containers
       - worktrees:/home/jack.blanc/worktrees
