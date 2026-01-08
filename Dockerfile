@@ -16,14 +16,7 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
 # Set higher command timeout for long-running AI operations (10 minutes)
 ENV COMMAND_TIMEOUT_MS=600000
 
-# Copy plugin source and build plugins
-# Using bun which is available in the sandbox image
-COPY packages/plugin /tmp/plugin
-RUN cd /tmp/plugin \
-    && bun install \
-    && mkdir -p /root/.config/opencode/plugin \
-    && bun build src/index.ts --outdir /root/.config/opencode/plugin --outfile linear-agent.js --target bun --format esm \
-    && rm -rf /tmp/plugin
+# No plugin needed - all Linear integration is handled via SSE in the worker
 
 # Expose OpenCode server port
 EXPOSE 4096

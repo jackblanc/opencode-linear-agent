@@ -11,6 +11,9 @@
 export { EventProcessor } from "./EventProcessor";
 export type { EventProcessorConfig } from "./EventProcessor";
 
+// SSE event handler
+export { SSEEventHandler } from "./SSEEventHandler";
+
 // Session management
 export { SessionManager } from "./session/SessionManager";
 export type { SessionState } from "./session/SessionState";

@@ -1,6 +1,6 @@
 # Agent Guidelines for Linear OpenCode Agent
 
-This document provides coding agents with essential information for working on this Cloudflare Workers + OpenCode project.
+This document provides coding agents with essential information for working on this project.
 
 ## LLM-Friendly Documentation
 
@@ -16,14 +16,55 @@ When fetching external documentation, use LLM-optimized formats:
 
 ## Project Overview
 
-This is a Cloudflare Worker that integrates OpenCode (AI coding agent) with Cloudflare's Sandbox SDK, providing:
+This is a Linear AI agent that integrates OpenCode (AI coding agent) to handle delegated issues. It supports two deployment modes:
 
-- OpenCode Web UI for interactive AI-powered coding (protected by API key)
-- Programmatic API for session management
-- Secure, isolated code execution environment via Cloudflare Sandbox containers
-- Linear integration via webhook handling and plugin
+1. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
+2. **Local Docker Compose** (development) - Uses Docker containers with Tailscale Funnel for public webhook access
 
-**Stack**: TypeScript, Cloudflare Workers, Durable Objects, Sandbox containers, Bun workspaces
+**Key Features:**
+
+- Responds to Linear issue delegations and @mentions
+- Streams real-time progress as Linear activities
+- Creates isolated git worktrees per session
+- Supports Claude Max OAuth for AI operations
+
+**Stack**: TypeScript, Bun workspaces, Docker, Tailscale, Linear SDK, OpenCode SDK
+
+---
+
+## Architecture
+
+### SSE-Based Event Handling
+
+The project uses a pure SSE/SDK approach (no plugins):
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Webhook Server (linear-webhook container)                │
+│                                                          │
+│  - Receives Linear webhooks                              │
+│  - Verifies signatures + org ID                          │
+│  - Creates git worktrees                                 │
+│  - Manages OpenCode sessions via SDK                     │
+│                                                          │
+│  SSEEventHandler                                         │
+│  - message.part.updated → Post tool activities to Linear │
+│  - todo.updated → Sync to Linear agent plan              │
+│  - permission.updated → Auto-approve all                 │
+│  - session.idle → Signal completion                      │
+└──────────────────────────────────────────────────────────┘
+         │                              │
+         ▼                              ▼
+    Linear API                   OpenCode Server
+                                 (opencode container)
+```
+
+### Security Layers
+
+1. **Webhook signature verification** - Linear SDK verifies HMAC signatures
+2. **Organization ID allowlist** - Rejects webhooks from other Linear orgs
+3. **Tailscale Funnel** - Public endpoint only exposed via Tailscale (not raw internet)
+4. **Session isolation** - Each session runs in its own git worktree
 
 ---
 
@@ -32,51 +73,165 @@ This is a Cloudflare Worker that integrates OpenCode (AI coding agent) with Clou
 ```
 linear-opencode-agent/
 ├── packages/
-│   ├── worker/                              # Cloudflare Worker
-│   │   ├── src/
-│   │   │   ├── index.ts                    # Request routing, auth checks
-│   │   │   ├── auth.ts                     # Basic Auth validation helper
-│   │   │   ├── oauth.ts                    # Linear OAuth flow
-│   │   │   ├── webhook.ts                  # Linear webhook handler
-│   │   │   └── config.ts                   # OpenCode configuration
-│   │   ├── wrangler.jsonc                  # Cloudflare Workers config
-│   │   ├── package.json                    # Worker dependencies
-│   │   ├── tsconfig.json                   # Extends root config
-│   │   └── worker-configuration.d.ts       # Generated Cloudflare types
+│   ├── core/                    # Platform-agnostic core logic
+│   │   └── src/
+│   │       ├── EventProcessor.ts      # Orchestrates webhook → session → SSE
+│   │       ├── SSEEventHandler.ts     # Handles OpenCode SSE events
+│   │       ├── session/
+│   │       │   └── SessionManager.ts  # Session lifecycle management
+│   │       ├── linear/
+│   │       │   ├── LinearAdapter.ts   # Linear API interface
+│   │       │   └── types.ts           # ActivityContent, PlanItem, etc.
+│   │       └── webhook/
+│   │           └── handlers.ts        # Webhook verification + dispatch
 │   │
-│   └── opencode-linear-plugin/              # Plugin package
-│       ├── src/
-│       │   └── index.ts                    # Linear agent plugin using @linear/sdk
-│       ├── dist/                           # Build output (gitignored)
-│       ├── package.json                    # Plugin dependencies
-│       └── tsconfig.json                   # Extends root config
+│   ├── local/                   # Local development server
+│   │   ├── src/
+│   │   │   ├── index.ts              # HTTP server + routing
+│   │   │   ├── config.ts             # Configuration loader
+│   │   │   └── git/
+│   │   │       └── LocalGitOperations.ts  # Git worktree management
+│   │   └── Dockerfile                # Bun-based webhook server image
+│   │
+│   ├── linear/                  # Cloudflare Worker entry point
+│   ├── infrastructure/          # Cloudflare-specific implementations
+│   └── agent/                   # Agent configuration
 │
-├── package.json                            # Root workspace configuration
-├── tsconfig.json                           # Base TypeScript configuration
-├── Dockerfile                              # Sandbox container with OpenCode + plugins
-├── bun.lock
-├── .gitignore
-├── .dev.vars.example                       # Environment variable template
-├── AGENTS.md                               # This file
-└── README.md
+├── docker/
+│   └── opencode/
+│       └── Dockerfile           # OpenCode server image
+│
+├── docker-compose.yml           # Local development stack
+├── tailscale-serve.json         # Tailscale Funnel config
+├── config.docker.json           # Docker-specific config (gitignored secrets!)
+├── .env                         # Environment variables (gitignored)
+├── .env.example                 # Environment template
+└── plan.md                      # Architecture migration plan
+```
+
+---
+
+## Local Development with Docker Compose
+
+### Prerequisites
+
+- Docker & Docker Compose
+- Tailscale account with Funnel enabled
+- Linear OAuth app configured
+- OpenCode with Claude Max OAuth (or Anthropic API key)
+
+### Quick Start
+
+1. **Copy environment template:**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Configure `.env`:**
+
+   ```bash
+   ANTHROPIC_API_KEY=sk-ant-...  # Or use Claude Max OAuth
+   GITHUB_TOKEN=ghp_...
+   REPO_PATH=~/projects/your-repo
+   TS_AUTHKEY=tskey-auth-...     # From Tailscale admin console
+   TAILSCALE_HOSTNAME=linear-agent
+   ```
+
+3. **Create `config.docker.json`** (copy from example and fill in Linear secrets):
+
+   ```json
+   {
+     "port": 3000,
+     "tailscaleHostname": "your-hostname.your-tailnet.ts.net",
+     "opencode": { "url": "http://opencode:4096" },
+     "linear": {
+       "clientId": "your-client-id",
+       "clientSecret": "your-client-secret",
+       "webhookSecret": "lin_wh_...",
+       "organizationId": "your-org-id"
+     },
+     "github": { "token": "ghp_..." },
+     "repo": {
+       "localPath": "/workspace/repo",
+       "remoteUrl": "https://github.com/owner/repo"
+     },
+     "paths": {
+       "worktrees": "/workspace/worktrees",
+       "data": "/data"
+     }
+   }
+   ```
+
+4. **Start the stack:**
+
+   ```bash
+   docker compose up -d
+   ```
+
+5. **Copy OpenCode auth (for Claude Max):**
+
+   ```bash
+   docker compose cp ~/.local/share/opencode/auth.json opencode:/root/.local/share/opencode/auth.json
+   docker compose restart opencode
+   ```
+
+6. **Get your public webhook URL:**
+
+   ```bash
+   docker compose exec tailscale tailscale funnel status
+   ```
+
+7. **Configure Linear webhook** to point to: `https://your-hostname.ts.net/webhook/linear`
+
+### Container Architecture
+
+| Container        | Purpose                         | Ports        |
+| ---------------- | ------------------------------- | ------------ |
+| `linear-webhook` | Webhook server, session manager | 3000 (local) |
+| `opencode`       | AI coding agent                 | 4096 (local) |
+| `tailscale`      | Exposes webhook via Funnel      | 443 (public) |
+
+### Useful Commands
+
+```bash
+# View all logs
+docker compose logs -f
+
+# View specific container
+docker compose logs -f linear-webhook
+
+# Restart after config changes
+docker compose restart linear-webhook
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# Connect to OpenCode TUI from host
+opencode --remote http://localhost:4096
+
+# Check Tailscale status
+docker compose exec tailscale tailscale status
+```
+
+### Troubleshooting
+
+**"Invalid webhook signature"**: Check `config.docker.json` has correct `webhookSecret` from Linear
+
+**"Unauthorized organization"**: Verify `organizationId` matches your Linear workspace
+
+**"ENOENT: git"**: Rebuild containers - `docker compose up -d --build`
+
+**OpenCode auth expired**: Re-copy auth.json and restart:
+
+```bash
+docker compose cp ~/.local/share/opencode/auth.json opencode:/root/.local/share/opencode/auth.json
+docker compose restart opencode
 ```
 
 ---
 
 ## Build, Lint & Test Commands
-
-### Development
-
-```bash
-bun install            # Install all workspace dependencies
-bun run dev            # Start local dev server (builds Docker on first run)
-```
-
-### Building
-
-```bash
-bun run build          # Build the plugin package
-```
 
 ### Type Checking
 
@@ -105,54 +260,43 @@ bun run check          # Run typecheck + lint:check + format:check
 bun run fix            # Run lint:fix + format:fix
 ```
 
-### Deployment
+### Deployment (Cloudflare Workers)
 
-**Automatic**: Pushing to `master` triggers GitHub Actions to build and deploy automatically. No manual deployment needed.
+**Automatic**: Pushing to `master` triggers GitHub Actions to build and deploy automatically.
 
 **Manual** (if needed):
 
 ```bash
-bun run deploy         # Build plugin and deploy to Cloudflare Workers
-```
-
-### Package-specific commands
-
-```bash
-bun run --filter @linear-opencode-agent/worker dev       # Run worker dev server
-bun run --filter @linear-opencode-agent/worker deploy    # Deploy worker only
-bun run --filter opencode-linear-plugin build             # Build plugin only
+bun run deploy         # Deploy to Cloudflare Workers
 ```
 
 ---
 
 ## Environment Variables
 
-### Required Variables
+### Required for Local Development
 
-| Variable                | Purpose                                  | Example                         |
-| ----------------------- | ---------------------------------------- | ------------------------------- |
-| `ANTHROPIC_API_KEY`     | API key for OpenCode AI operations       | `sk-ant-...`                    |
-| `LINEAR_CLIENT_ID`      | Linear OAuth app client ID               | `lin_api_...`                   |
-| `LINEAR_CLIENT_SECRET`  | Linear OAuth app client secret           | `lin_api_...`                   |
-| `LINEAR_WEBHOOK_SECRET` | Webhook signing secret from Linear       | `...`                           |
-| `GITHUB_TOKEN`          | Token for cloning repositories           | `ghp_...`                       |
-| `ADMIN_API_KEY`         | Protects OpenCode UI and admin endpoints | `sk-admin-xxxxxxxxxxxx`         |
-| `REPO_URL`              | Repository the agent works on            | `https://github.com/owner/repo` |
+| Variable       | Purpose                              | Example                   |
+| -------------- | ------------------------------------ | ------------------------- |
+| `REPO_PATH`    | Local path to repo for agent to work | `~/projects/reservations` |
+| `TS_AUTHKEY`   | Tailscale auth key for Funnel        | `tskey-auth-...`          |
+| `GITHUB_TOKEN` | Token for git operations             | `ghp_...`                 |
 
-### Local Development
+### Optional
 
-Create a `.dev.vars` file in the `packages/worker/` directory (or root) with your secrets.
+| Variable             | Purpose                           | Example        |
+| -------------------- | --------------------------------- | -------------- |
+| `ANTHROPIC_API_KEY`  | API key (if not using Claude Max) | `sk-ant-...`   |
+| `TAILSCALE_HOSTNAME` | Custom hostname for Funnel        | `linear-agent` |
 
-### Production
+### Config File Secrets (config.docker.json)
 
-Set secrets via wrangler:
+These are in the config file, not environment variables:
 
-```bash
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put ADMIN_API_KEY
-wrangler secret put REPO_URL
-# ... etc
-```
+- `linear.clientId` - Linear OAuth app client ID
+- `linear.clientSecret` - Linear OAuth app client secret
+- `linear.webhookSecret` - Webhook signing secret from Linear
+- `linear.organizationId` - Your Linear organization ID (for security)
 
 ---
 
@@ -174,28 +318,6 @@ The project uses oxlint with aggressive rules:
 - `suspicious: all` - Suspicious code patterns
 - `perf: all` - Performance rules
 
-### Imports & Module Organization
-
-**Import order** (follow existing patterns):
-
-1. External packages (e.g., `@cloudflare/sandbox`)
-2. Specific named imports grouped logically
-3. Type imports using `import type`
-4. Re-exports at module boundaries
-
-**Example**:
-
-```typescript
-import { getSandbox } from "@cloudflare/sandbox";
-import {
-  createOpencodeServer,
-  proxyToOpencode,
-} from "@cloudflare/sandbox/opencode";
-import type { OpencodeClient } from "@opencode-ai/sdk";
-
-export { Sandbox } from "@cloudflare/sandbox";
-```
-
 ### Naming Conventions
 
 - **Variables & Functions**: camelCase
@@ -207,53 +329,7 @@ export { Sandbox } from "@cloudflare/sandbox";
 
 - Always handle errors in async operations
 - Use structured error responses: `Response.json({ error: "..." }, { status: 400 })`
-- Avoid throwing unhandled errors in Worker fetch handlers
-
----
-
-## API Endpoints
-
-### Public Endpoints
-
-| Endpoint           | Method | Description                         |
-| ------------------ | ------ | ----------------------------------- |
-| `/health`          | GET    | Health check                        |
-| `/oauth/authorize` | GET    | Start Linear OAuth flow             |
-| `/oauth/callback`  | GET    | OAuth redirect (CSRF protected)     |
-| `/webhook/linear`  | POST   | Linear webhook (signature verified) |
-
-### Protected Endpoints (require `?key=ADMIN_API_KEY`)
-
-| Endpoint     | Method | Description        |
-| ------------ | ------ | ------------------ |
-| `/`          | GET    | Info page          |
-| `/opencode`  | GET    | OpenCode Web UI    |
-| `/session/*` | \*     | Session management |
-| `/event/*`   | \*     | Event streaming    |
-
----
-
-## Common Tasks
-
-### Adding a new endpoint
-
-1. Add route logic in `packages/worker/src/index.ts` fetch handler
-2. Parse URL pathname: `const url = new URL(request.url)`
-3. Add auth check if needed: `if (!validateApiKey(request, env)) return unauthorizedResponse()`
-4. Return appropriate Response object
-5. Run `bun run check` before committing
-
-### Updating the plugin
-
-1. Edit `packages/opencode-linear-plugin/src/index.ts`
-2. Run `bun run build` to rebuild
-3. Test locally with `bun run dev`
-
-### Regenerating Cloudflare types
-
-```bash
-cd packages/worker && bun run cf-typegen
-```
+- Avoid throwing unhandled errors in fetch handlers
 
 ---
 
@@ -261,34 +337,15 @@ cd packages/worker && bun run cf-typegen
 
 Before committing changes, ensure:
 
-1. `bun run typecheck` passes
-2. `bun run lint:check` passes
-3. `bun run format:check` passes
-4. No secrets in `.dev.vars` (should be gitignored)
-5. Plugin is built if changed: `bun run build`
-
-Or simply run:
-
-```bash
-bun run check  # Runs all three checks
-```
-
----
-
-## Troubleshooting
-
-**Type errors**: Run `cd packages/worker && bun run cf-typegen` to regenerate types
-**Lint errors**: Run `bun run lint:fix` to auto-fix
-**Format errors**: Run `bun run format:fix` to auto-format
-**Container build slow**: First run builds Docker image (2-3 min), subsequent runs are fast
-**Dev server issues**: Check `.dev.vars` exists with all required variables
-**Plugin not updating**: Ensure you run `bun run build` after plugin changes
+1. `bun run check` passes (typecheck + lint + format)
+2. No secrets in committed files (check `config.docker.json` is gitignored)
+3. Docker containers still work: `docker compose up -d --build`
 
 ---
 
 ## External References
 
-All external documentation should be fetched in LLM-friendly formats. See the "LLM-Friendly Documentation" section at the top of this file for format conventions.
+All external documentation should be fetched in LLM-friendly formats.
 
 ### Linear Documentation
 
@@ -312,21 +369,12 @@ All external documentation should be fetched in LLM-friendly formats. See the "L
 
 ### Cloudflare Documentation
 
-**General:**
-
 - https://developers.cloudflare.com/llms.txt - Documentation directory
 - https://developers.cloudflare.com/workers/prompt.txt - Workers guide for LLMs
-
-**Services used in this project:**
-
-- https://developers.cloudflare.com/sandbox/index.md - Sandbox SDK (container execution)
-- https://developers.cloudflare.com/containers/index.md - Container bindings
-- https://developers.cloudflare.com/kv/index.md - KV storage (OAuth tokens, session state)
-- https://developers.cloudflare.com/workers/index.md - Workers platform
-- https://developers.cloudflare.com/durable-objects/index.md - Durable Objects
+- https://developers.cloudflare.com/sandbox/index.md - Sandbox SDK
 
 ### OpenCode Documentation
 
 - https://opencode.ai/docs/sdk/ - OpenCode SDK
 - https://opencode.ai/docs/server/ - OpenCode Server
-- https://opencode.ai/docs/plugins/ - OpenCode Plugins
+- https://opencode.ai/docs/providers/ - Provider configuration (Claude Max, etc.)

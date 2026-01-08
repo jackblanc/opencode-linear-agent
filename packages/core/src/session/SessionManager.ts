@@ -3,11 +3,6 @@ import type { SessionRepository } from "./SessionRepository";
 import type { SessionState } from "./SessionState";
 
 /**
- * Prefix used in OpenCode session titles to identify Linear sessions
- */
-const LINEAR_SESSION_PREFIX = "linear:";
-
-/**
  * Manages the lifecycle of OpenCode sessions linked to Linear sessions
  */
 export class SessionManager {
@@ -88,9 +83,11 @@ export class SessionManager {
       issueId,
     });
 
+    // Use a descriptive title - no longer need the prefix hack since
+    // we track the mapping in the repository, not via session title parsing
     const session = await this.opencodeClient.session.create({
       body: {
-        title: `${LINEAR_SESSION_PREFIX}${linearSessionId}`,
+        title: `Linear Issue ${issueId}`,
       },
       query: { directory: workdir },
     });

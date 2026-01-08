@@ -4,6 +4,7 @@ import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { SessionRepository } from "./session/SessionRepository";
 import type { GitOperations } from "./git/GitOperations";
 import { SessionManager } from "./session/SessionManager";
+import { SSEEventHandler } from "./SSEEventHandler";
 import { base64Encode } from "./utils/encode";
 
 /**
@@ -222,8 +223,8 @@ export class EventProcessor {
   }
 
   /**
-   * Subscribe to OpenCode event stream and log all events.
-   * Returns when session.idle is received for the target session.
+   * Subscribe to OpenCode event stream, process events via SSEEventHandler,
+   * and return when session completes (idle or error).
    */
   private async subscribeAndWaitForIdle(
     opencodeSessionId: string,
@@ -241,36 +242,30 @@ export class EventProcessor {
       query: { directory: workdir },
     });
 
+    // Create the SSE event handler to process events and post to Linear
+    const handler = new SSEEventHandler(
+      this.linear,
+      linearSessionId,
+      opencodeSessionId,
+      this.opencodeClient,
+    );
+
     for await (const event of eventStream.stream) {
       // Log every event for observability
       logOpencodeEvent(event, linearSessionId, opencodeSessionId);
 
-      // Check if this is session.idle for our session
-      if (event.type === "session.idle") {
-        const props = event.properties as { sessionID?: string };
-        if (props.sessionID === opencodeSessionId) {
-          console.info({
-            message: "Session idle, completing",
-            stage: "processor",
-            linearSessionId,
-            opencodeSessionId,
-          });
-          break;
-        }
-      }
+      // Process the event via handler (posts activities to Linear, handles permissions)
+      const result = await handler.handleEvent(event);
 
-      // Also break on session.error for our session
-      if (event.type === "session.error") {
-        const props = event.properties as { sessionID?: string };
-        if (props.sessionID === opencodeSessionId) {
-          console.info({
-            message: "Session error received, completing",
-            stage: "processor",
-            linearSessionId,
-            opencodeSessionId,
-          });
-          break;
-        }
+      // Break if handler signals completion (session.idle or session.error)
+      if (result === "break") {
+        console.info({
+          message: "Session completed",
+          stage: "processor",
+          linearSessionId,
+          opencodeSessionId,
+        });
+        break;
       }
     }
   }
