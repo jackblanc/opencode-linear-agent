@@ -10,6 +10,19 @@ import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { PlanItem } from "./linear/types";
 
 /**
+ * Prefix used by the commit-guard plugin to identify its errors
+ */
+const COMMIT_GUARD_PREFIX = "[COMMIT_GUARD]";
+
+/**
+ * Result from handling an SSE event
+ */
+export type SSEEventResult =
+  | { action: "continue" }
+  | { action: "break" }
+  | { action: "retry"; reason: string };
+
+/**
  * Tool name mapping for friendly action names
  */
 const TOOL_ACTION_MAP: Record<string, { action: string; pastTense: string }> = {
@@ -134,44 +147,43 @@ export class SSEEventHandler {
   /**
    * Handle an SSE event from OpenCode
    *
-   * @returns "continue" to keep processing events, "break" to stop
+   * @returns SSEEventResult indicating whether to continue, break, or retry
    */
-  async handleEvent(event: OpencodeEvent): Promise<"continue" | "break"> {
+  async handleEvent(event: OpencodeEvent): Promise<SSEEventResult> {
     // Handle specific event types we care about
     // Other event types (message.updated, session.created, etc.) are logged but not acted upon
     if (event.type === "message.part.updated") {
       await this.handlePartUpdated(event.properties);
-      return "continue";
+      return { action: "continue" };
     }
 
     if (event.type === "todo.updated") {
       await this.handleTodoUpdated(event.properties);
-      return "continue";
+      return { action: "continue" };
     }
 
     if (event.type === "permission.updated") {
       await this.handlePermissionUpdated(event.properties);
-      return "continue";
+      return { action: "continue" };
     }
 
     if (event.type === "session.idle") {
       if (event.properties.sessionID === this.opencodeSessionId) {
         await this.handleSessionIdle();
-        return "break";
+        return { action: "break" };
       }
-      return "continue";
+      return { action: "continue" };
     }
 
     if (event.type === "session.error") {
       if (event.properties.sessionID === this.opencodeSessionId) {
-        await this.handleSessionError(event.properties);
-        return "break";
+        return await this.handleSessionError(event.properties);
       }
-      return "continue";
+      return { action: "continue" };
     }
 
     // All other event types - continue without action
-    return "continue";
+    return { action: "continue" };
   }
 
   /**
@@ -412,6 +424,9 @@ export class SSEEventHandler {
 
   /**
    * Handle session.error - report error to Linear
+   *
+   * If the error is from the commit-guard plugin, returns a retry signal
+   * so the processor can re-prompt the agent with the error context.
    */
   private async handleSessionError(properties: {
     sessionID?: string;
@@ -419,7 +434,7 @@ export class SSEEventHandler {
       name?: string;
       data?: { message?: string };
     };
-  }): Promise<void> {
+  }): Promise<SSEEventResult> {
     const { error } = properties;
 
     let errorMessage = "Unknown error";
@@ -429,6 +444,29 @@ export class SSEEventHandler {
       errorMessage = error.name;
     }
 
+    // Check if this is a commit guard error - these should trigger retry
+    if (errorMessage.startsWith(COMMIT_GUARD_PREFIX)) {
+      console.info({
+        message: "Commit guard triggered, signaling retry",
+        stage: "sse-handler",
+        linearSessionId: this.linearSessionId,
+        opencodeSessionId: this.opencodeSessionId,
+      });
+
+      // Post the error to Linear as a thought (not a fatal error)
+      await this.linear.postActivity(
+        this.linearSessionId,
+        {
+          type: "thought",
+          body: errorMessage.replace(COMMIT_GUARD_PREFIX, "").trim(),
+        },
+        false,
+      );
+
+      return { action: "retry", reason: errorMessage };
+    }
+
+    // Regular error - post and break
     console.error({
       message: "Session error",
       stage: "sse-handler",
@@ -438,5 +476,6 @@ export class SSEEventHandler {
     });
 
     await this.linear.postError(this.linearSessionId, new Error(errorMessage));
+    return { action: "break" };
   }
 }

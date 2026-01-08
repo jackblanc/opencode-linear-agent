@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import"],
+  "ignorePatterns": ["docker/**"],
   "categories": {
     "correctness": "deny",
     "suspicious": "deny",
@@ -10,6 +11,8 @@
     "nursery": "deny"
   },
   "rules": {
+    // Disable no-await-in-loop - we have legitimate sequential retry loops
+    "eslint/no-await-in-loop": "off",
     // Export/Import Control - CRITICAL for project requirements
 
     "eslint-plugin-import/no-commonjs": "error",

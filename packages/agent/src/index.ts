@@ -322,7 +322,7 @@ export default {
     for (const message of batch.messages) {
       const linearSessionId = message.body.payload.agentSession.id;
       try {
-        await processMessage(message.body, env); // eslint-disable-line no-await-in-loop
+        await processMessage(message.body, env);
         message.ack();
         console.info({
           message: "Message acknowledged",

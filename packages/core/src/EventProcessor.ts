@@ -4,8 +4,13 @@ import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { SessionRepository } from "./session/SessionRepository";
 import type { GitOperations } from "./git/GitOperations";
 import { SessionManager } from "./session/SessionManager";
-import { SSEEventHandler } from "./SSEEventHandler";
+import { SSEEventHandler, type SSEEventResult } from "./SSEEventHandler";
 import { base64Encode } from "./utils/encode";
+
+/**
+ * Maximum number of retry attempts when commit guard blocks the agent
+ */
+const MAX_COMMIT_GUARD_RETRIES = 3;
 
 /**
  * Log an OpenCode event to Worker logs for observability
@@ -228,13 +233,15 @@ export class EventProcessor {
 
   /**
    * Subscribe to OpenCode event stream, process events via SSEEventHandler,
-   * and return when session completes (idle or error).
+   * and return when session completes (idle, error, or retry needed).
+   *
+   * @returns The final SSEEventResult indicating how the session ended
    */
-  private async subscribeAndWaitForIdle(
+  private async subscribeAndWaitForCompletion(
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
-  ): Promise<void> {
+  ): Promise<SSEEventResult> {
     console.info({
       message: "Subscribing to OpenCode event stream",
       stage: "processor",
@@ -254,6 +261,8 @@ export class EventProcessor {
       this.opencodeClient,
     );
 
+    let finalResult: SSEEventResult = { action: "break" };
+
     for await (const event of eventStream.stream) {
       // Log every event for observability
       logOpencodeEvent(event, linearSessionId, opencodeSessionId);
@@ -261,17 +270,152 @@ export class EventProcessor {
       // Process the event via handler (posts activities to Linear, handles permissions)
       const result = await handler.handleEvent(event);
 
-      // Break if handler signals completion (session.idle or session.error)
-      if (result === "break") {
+      // Break if handler signals completion (session.idle, session.error, or retry)
+      if (result.action === "break" || result.action === "retry") {
         console.info({
-          message: "Session completed",
+          message:
+            result.action === "retry"
+              ? "Session needs retry (commit guard)"
+              : "Session completed",
           stage: "processor",
           linearSessionId,
           opencodeSessionId,
         });
+        finalResult = result;
         break;
       }
     }
+
+    return finalResult;
+  }
+
+  /**
+   * Execute a single prompt iteration and return the result
+   */
+  private async executePromptIteration(
+    opcodeSessionId: string,
+    linearSessionId: string,
+    workdir: string,
+    prompt: string,
+  ): Promise<SSEEventResult> {
+    // Post sending prompt stage activity
+    await this.linear.postStageActivity(linearSessionId, "sending_prompt");
+
+    // Send prompt and subscribe to events concurrently
+    const [, result] = await Promise.all([
+      this.opencodeClient.session.prompt({
+        path: { id: opcodeSessionId },
+        query: { directory: workdir },
+        body: {
+          model: {
+            providerID: this.config.providerID,
+            modelID: this.config.modelID,
+          },
+          parts: [{ type: "text", text: prompt }],
+        },
+      }),
+      this.subscribeAndWaitForCompletion(
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+      ),
+    ]);
+
+    return result;
+  }
+
+  /**
+   * Send a prompt and wait for completion, with retry loop for commit guard
+   */
+  private async promptWithRetry(
+    opcodeSessionId: string,
+    linearSessionId: string,
+    workdir: string,
+    initialPrompt: string,
+  ): Promise<void> {
+    // First iteration with initial prompt
+    let result = await this.executePromptIteration(
+      opcodeSessionId,
+      linearSessionId,
+      workdir,
+      initialPrompt,
+    );
+
+    // If no retry needed, we're done
+    if (result.action !== "retry") {
+      console.info({
+        message: "OpenCode session completed",
+        stage: "processor",
+        linearSessionId,
+        opcodeSessionId,
+      });
+      return;
+    }
+
+    // Handle retries
+    for (
+      let retryCount = 1;
+      retryCount <= MAX_COMMIT_GUARD_RETRIES;
+      retryCount++
+    ) {
+      console.info({
+        message: "Commit guard triggered, retrying",
+        stage: "processor",
+        linearSessionId,
+        opcodeSessionId,
+        retryCount,
+        maxRetries: MAX_COMMIT_GUARD_RETRIES,
+      });
+
+      // Build retry prompt with the error context
+      const retryPrompt = `${result.reason}
+
+---
+
+Please address the issues above. This is retry ${retryCount} of ${MAX_COMMIT_GUARD_RETRIES}.
+
+Remember:
+1. Fix any failing tests - run \`bun run check\` to verify
+2. Commit all your changes with a descriptive message
+3. Add any untracked files to git or .gitignore
+
+Once everything passes, you can complete your work.`;
+
+      result = await this.executePromptIteration(
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+        retryPrompt,
+      );
+
+      // If this iteration succeeded, we're done
+      if (result.action !== "retry") {
+        console.info({
+          message: "OpenCode session completed after retry",
+          stage: "processor",
+          linearSessionId,
+          opcodeSessionId,
+          retryCount,
+        });
+        return;
+      }
+    }
+
+    // Max retries exceeded
+    console.error({
+      message: "Max commit guard retries exceeded",
+      stage: "processor",
+      linearSessionId,
+      opcodeSessionId,
+      retryCount: MAX_COMMIT_GUARD_RETRIES,
+    });
+
+    await this.linear.postError(
+      linearSessionId,
+      new Error(
+        `Commit guard failed after ${MAX_COMMIT_GUARD_RETRIES} attempts. Last error:\n\n${result.reason}`,
+      ),
+    );
   }
 
   /**
@@ -301,32 +445,13 @@ export class EventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
-    // Post sending prompt stage activity
-    await this.linear.postStageActivity(linearSessionId, "sending_prompt");
-
-    // Send prompt and subscribe to events concurrently
-    // The prompt triggers the AI work, event subscription logs everything
-    await Promise.all([
-      this.opencodeClient.session.prompt({
-        path: { id: opcodeSessionId },
-        query: { directory: workdir },
-        body: {
-          model: {
-            providerID: this.config.providerID,
-            modelID: this.config.modelID,
-          },
-          parts: [{ type: "text", text: prompt }],
-        },
-      }),
-      this.subscribeAndWaitForIdle(opcodeSessionId, linearSessionId, workdir),
-    ]);
-
-    console.info({
-      message: "OpenCode session completed",
-      stage: "processor",
-      linearSessionId,
+    // Send prompt with retry loop for commit guard
+    await this.promptWithRetry(
       opcodeSessionId,
-    });
+      linearSessionId,
+      workdir,
+      prompt,
+    );
   }
 
   /**
@@ -383,30 +508,12 @@ export class EventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
-    // Post sending prompt stage activity
-    await this.linear.postStageActivity(linearSessionId, "sending_prompt");
-
-    // Send prompt and subscribe to events concurrently
-    await Promise.all([
-      this.opencodeClient.session.prompt({
-        path: { id: opcodeSessionId },
-        query: { directory: workdir },
-        body: {
-          model: {
-            providerID: this.config.providerID,
-            modelID: this.config.modelID,
-          },
-          parts: [{ type: "text", text: prompt }],
-        },
-      }),
-      this.subscribeAndWaitForIdle(opcodeSessionId, linearSessionId, workdir),
-    ]);
-
-    console.info({
-      message: "Follow-up prompt completed",
-      stage: "processor",
-      linearSessionId,
+    // Send prompt with retry loop for commit guard
+    await this.promptWithRetry(
       opcodeSessionId,
-    });
+      linearSessionId,
+      workdir,
+      prompt,
+    );
   }
 }
