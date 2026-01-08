@@ -20,9 +20,6 @@
     "linear": {
       "type": "local",
       "command": ["bun", "x", "linear-mcp"],
-      "environment": {
-        "LINEAR_API_KEY": "{env:LINEAR_API_KEY}"
-      },
       "enabled": true
     },
     "context7": {

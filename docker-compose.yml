@@ -11,17 +11,17 @@ services:
       - ./config.docker.json:/app/packages/local/config.json:ro
       # Persist data (tokens, sessions)
       - linear-data:/data
-      # Mount all repositories from ~/projects - must match opencode container
-      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/workspace/repos/cyrus
-      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/workspace/repos/linear-opencode-agent
-      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/workspace/repos/moneydb
-      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/workspace/repos/opencode
-      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/workspace/repos/reservations
-      - ${REPO_PATH_SST:-~/projects/sst}:/workspace/repos/sst
-      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/workspace/repos/weather-bot
-      - ${REPO_PATH_WEBSITE:-~/projects/website}:/workspace/repos/website
+      # Mount all repositories - paths match /home/jack.blanc/projects in opencode container
+      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/jack.blanc/projects/cyrus
+      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/jack.blanc/projects/linear-opencode-agent
+      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/jack.blanc/projects/moneydb
+      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/jack.blanc/projects/opencode
+      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/jack.blanc/projects/reservations
+      - ${REPO_PATH_SST:-~/projects/sst}:/home/jack.blanc/projects/sst
+      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/jack.blanc/projects/weather-bot
+      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/jack.blanc/projects/website
       # Worktrees directory for session isolation
-      - worktrees:/workspace/worktrees
+      - worktrees:/home/jack.blanc/worktrees
     environment:
       - NODE_ENV=production
     depends_on:
@@ -33,40 +33,32 @@ services:
   # NOT exposed publicly - only accessible within Docker network
   # For local debugging, use: docker compose exec opencode opencode --remote http://localhost:4096
   #
-  # Option 1 (recommended): Build from ~/environment Nix flake:
-  #   cd ~/environment && nix build .#sandbox && docker load < result
-  #   Then set OPENCODE_IMAGE=opencode-sandbox:latest in .env
-  #
-  # Option 2: Build from Dockerfile (fallback):
-  #   Uses ./docker/opencode/Dockerfile
+  # Uses /home/jack.blanc paths to match work Linux machine
   opencode:
-    image: ${OPENCODE_IMAGE:-}
     build:
       context: ./docker/opencode
       dockerfile: Dockerfile
     # No ports exposed to host - internal only for security
     # The linear-webhook container accesses it via http://opencode:4096
     volumes:
-      # Mount worktrees at same path as linear-webhook for consistency
-      - worktrees:/workspace/worktrees
-      # Mount all repositories from ~/projects
-      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/workspace/repos/cyrus
-      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/workspace/repos/linear-opencode-agent
-      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/workspace/repos/moneydb
-      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/workspace/repos/opencode
-      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/workspace/repos/reservations
-      - ${REPO_PATH_SST:-~/projects/sst}:/workspace/repos/sst
-      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/workspace/repos/weather-bot
-      - ${REPO_PATH_WEBSITE:-~/projects/website}:/workspace/repos/website
+      # Mount worktrees - paths match between containers
+      - worktrees:/home/jack.blanc/worktrees
+      # Mount all repositories from ~/projects to /home/jack.blanc/projects
+      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/jack.blanc/projects/cyrus
+      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/jack.blanc/projects/linear-opencode-agent
+      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/jack.blanc/projects/moneydb
+      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/jack.blanc/projects/opencode
+      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/jack.blanc/projects/reservations
+      - ${REPO_PATH_SST:-~/projects/sst}:/home/jack.blanc/projects/sst
+      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/jack.blanc/projects/weather-bot
+      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/jack.blanc/projects/website
       # Persistent storage for OpenCode data (logs, sessions, etc.)
-      - opencode-data:/root/.local/share/opencode
+      - opencode-data:/home/jack.blanc/.local/share/opencode
     environment:
       # Optional: Anthropic API key (not needed if using Claude Max OAuth)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # GitHub token for git operations
       - GITHUB_TOKEN=${GITHUB_TOKEN}
-      # Linear API key for MCP server (allows agent to update issues)
-      - LINEAR_API_KEY=${LINEAR_API_KEY}
     networks:
       - linear-agent
 
