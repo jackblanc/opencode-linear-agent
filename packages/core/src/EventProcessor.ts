@@ -162,43 +162,47 @@ export class EventProcessor {
       );
 
       // Get or create OpenCode session
-      const { opencodeSessionId } =
-        await this.sessionManager.getOrCreateSession(
-          linearSessionId,
-          issueId,
-          branchName,
-          workdir,
-        );
+      const sessionResult = await this.sessionManager.getOrCreateSession(
+        linearSessionId,
+        issueId,
+        branchName,
+        workdir,
+      );
+      const opcodeSessionId = sessionResult.opcodeSessionId;
 
       console.info({
         message: "OpenCode session ready",
         stage: "processor",
         linearSessionId,
-        opencodeSessionId,
+        opcodeSessionId,
         workdir,
+        isNewSession: sessionResult.isNewSession,
+        hasPreviousContext: !!sessionResult.previousContext,
       });
 
       // Set external link to OpenCode UI
       // Format: /{base64_encoded_workdir}/session/{sessionId}
       const encodedWorkdir = base64Encode(workdir);
-      const externalLink = `${workerUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
+      const externalLink = `${workerUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
       await this.linear.setExternalLink(linearSessionId, externalLink);
 
       if (event.action === "created") {
         await this.handleCreated(
           event,
-          opencodeSessionId,
+          opcodeSessionId,
           linearSessionId,
           issueId,
           workdir,
+          sessionResult.previousContext,
         );
       } else if (event.action === "prompted") {
         await this.handlePrompted(
           event,
-          opencodeSessionId,
+          opcodeSessionId,
           linearSessionId,
           issueId,
           workdir,
+          sessionResult.previousContext,
         );
       }
     } catch (error) {
@@ -275,20 +279,26 @@ export class EventProcessor {
    */
   private async handleCreated(
     event: AgentSessionEventWebhookPayload,
-    opencodeSessionId: string,
+    opcodeSessionId: string,
     linearSessionId: string,
     issueId: string,
     workdir: string,
+    previousContext?: string,
   ): Promise<void> {
-    const prompt = event.promptContext ?? "Please help with this issue.";
+    const basePrompt = event.promptContext ?? "Please help with this issue.";
+    // Inject previous context if we had to recreate the session
+    const prompt = previousContext
+      ? `${previousContext}${basePrompt}`
+      : basePrompt;
 
     console.info({
       message: "Starting new session with prompt",
       stage: "processor",
       linearSessionId,
-      opencodeSessionId,
+      opcodeSessionId,
       issueId,
       promptLength: prompt.length,
+      hasPreviousContext: !!previousContext,
     });
 
     // Post sending prompt stage activity
@@ -298,7 +308,7 @@ export class EventProcessor {
     // The prompt triggers the AI work, event subscription logs everything
     await Promise.all([
       this.opencodeClient.session.prompt({
-        path: { id: opencodeSessionId },
+        path: { id: opcodeSessionId },
         query: { directory: workdir },
         body: {
           model: {
@@ -308,14 +318,14 @@ export class EventProcessor {
           parts: [{ type: "text", text: prompt }],
         },
       }),
-      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId, workdir),
+      this.subscribeAndWaitForIdle(opcodeSessionId, linearSessionId, workdir),
     ]);
 
     console.info({
       message: "OpenCode session completed",
       stage: "processor",
       linearSessionId,
-      opencodeSessionId,
+      opcodeSessionId,
     });
   }
 
@@ -324,10 +334,11 @@ export class EventProcessor {
    */
   private async handlePrompted(
     event: AgentSessionEventWebhookPayload,
-    opencodeSessionId: string,
+    opcodeSessionId: string,
     linearSessionId: string,
     issueId: string,
     workdir: string,
+    previousContext?: string,
   ): Promise<void> {
     // Check for stop signal
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
@@ -335,12 +346,12 @@ export class EventProcessor {
         message: "Stop signal received, aborting session",
         stage: "processor",
         linearSessionId,
-        opencodeSessionId,
+        opcodeSessionId,
         issueId,
       });
 
       await this.opencodeClient.session.abort({
-        path: { id: opencodeSessionId },
+        path: { id: opcodeSessionId },
         query: { directory: workdir },
       });
 
@@ -352,18 +363,24 @@ export class EventProcessor {
       return;
     }
 
-    const prompt =
+    const basePrompt =
       event.agentActivity?.content?.body ??
       event.promptContext ??
       "Please continue.";
+
+    // Inject previous context if we had to recreate the session (e.g., after server restart)
+    const prompt = previousContext
+      ? `${previousContext}${basePrompt}`
+      : basePrompt;
 
     console.info({
       message: "Sending follow-up prompt",
       stage: "processor",
       linearSessionId,
-      opencodeSessionId,
+      opcodeSessionId,
       issueId,
       promptLength: prompt.length,
+      hasPreviousContext: !!previousContext,
     });
 
     // Post sending prompt stage activity
@@ -372,7 +389,7 @@ export class EventProcessor {
     // Send prompt and subscribe to events concurrently
     await Promise.all([
       this.opencodeClient.session.prompt({
-        path: { id: opencodeSessionId },
+        path: { id: opcodeSessionId },
         query: { directory: workdir },
         body: {
           model: {
@@ -382,14 +399,14 @@ export class EventProcessor {
           parts: [{ type: "text", text: prompt }],
         },
       }),
-      this.subscribeAndWaitForIdle(opencodeSessionId, linearSessionId, workdir),
+      this.subscribeAndWaitForIdle(opcodeSessionId, linearSessionId, workdir),
     ]);
 
     console.info({
       message: "Follow-up prompt completed",
       stage: "processor",
       linearSessionId,
-      opencodeSessionId,
+      opcodeSessionId,
     });
   }
 }
