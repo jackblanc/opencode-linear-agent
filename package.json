@@ -8,10 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --filter @linear-opencode-agent/plugin build",
     "dev:linear": "bun run --filter @linear-opencode-agent/linear dev",
     "dev:agent": "bun run --filter @linear-opencode-agent/agent dev",
-    "deploy": "bun run build && bun run deploy:all",
     "deploy:all": "bun run --filter @linear-opencode-agent/linear deploy && bun run --filter @linear-opencode-agent/agent deploy",
     "typecheck": "bun run --filter '*' typecheck",
     "lint:check": "oxlint --report-unused-disable-directives --deny-warnings --type-aware --type-check",
