@@ -6,6 +6,16 @@ import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 
 /**
+ * Repository configuration
+ */
+export interface RepoConfig {
+  /** Local path to the repository (e.g., ~/projects/reservations) */
+  localPath: string;
+  /** Remote URL for git operations (e.g., https://github.com/owner/repo) */
+  remoteUrl: string;
+}
+
+/**
  * Configuration structure
  */
 export interface Config {
@@ -23,10 +33,12 @@ export interface Config {
   github: {
     token: string;
   };
-  repo: {
-    localPath: string;
-    remoteUrl: string;
-  };
+  /** @deprecated Use `repos` instead. Single repo config for backwards compatibility. */
+  repo?: RepoConfig;
+  /** Multiple repository configurations, keyed by GitHub URL pattern */
+  repos?: Record<string, RepoConfig>;
+  /** Default repo key to use when no GitHub link is found on issue */
+  defaultRepo?: string;
   paths: {
     worktrees: string;
     data: string;
@@ -101,14 +113,40 @@ function validateConfig(config: unknown): config is Config {
     return false;
   }
 
-  // Check repo
+  // Check repo(s) - support both single `repo` and multiple `repos`
   const repo = getObject(config, "repo");
-  if (
-    !repo ||
-    typeof repo.localPath !== "string" ||
-    typeof repo.remoteUrl !== "string"
-  ) {
+  const repos = getObject(config, "repos");
+
+  if (!repo && !repos) {
+    // At least one must be present
     return false;
+  }
+
+  if (repo) {
+    // Validate single repo format
+    if (
+      typeof repo.localPath !== "string" ||
+      typeof repo.remoteUrl !== "string"
+    ) {
+      return false;
+    }
+  }
+
+  if (repos) {
+    // Validate multi-repo format
+    for (const [key, repoConfig] of Object.entries(repos)) {
+      if (!isObject(repoConfig)) {
+        console.error(`Invalid repo config for key: ${key}`);
+        return false;
+      }
+      if (
+        typeof repoConfig.localPath !== "string" ||
+        typeof repoConfig.remoteUrl !== "string"
+      ) {
+        console.error(`Missing localPath or remoteUrl for repo: ${key}`);
+        return false;
+      }
+    }
   }
 
   // Check paths
@@ -173,18 +211,38 @@ export async function loadConfig(): Promise<Config> {
     );
   }
 
-  // Expand paths
+  // Expand paths in repo configs
   const config: Config = {
     ...rawConfig,
-    repo: {
-      ...rawConfig.repo,
-      localPath: expandPath(rawConfig.repo.localPath),
-    },
     paths: {
       worktrees: expandPath(rawConfig.paths.worktrees),
       data: expandPath(rawConfig.paths.data),
     },
   };
+
+  // Expand single repo path (backward compat)
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
+  if (rawConfig.repo) {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
+    config.repo = {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
+      localPath: expandPath(rawConfig.repo.localPath),
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
+      remoteUrl: rawConfig.repo.remoteUrl,
+    };
+  }
+
+  // Expand multi-repo paths
+  if (rawConfig.repos) {
+    config.repos = {};
+    for (const [key, repoConfig] of Object.entries(rawConfig.repos)) {
+      const rc = repoConfig as { localPath: string; remoteUrl: string };
+      config.repos[key] = {
+        localPath: expandPath(rc.localPath),
+        remoteUrl: rc.remoteUrl,
+      };
+    }
+  }
 
   return config;
 }
