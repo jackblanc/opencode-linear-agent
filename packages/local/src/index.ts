@@ -13,6 +13,7 @@
  */
 
 import { createOpencodeClient } from "@opencode-ai/sdk";
+import { LinearClient } from "@linear/sdk";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import {
   EventProcessor,
@@ -26,10 +27,32 @@ import {
   type OAuthConfig,
   type TokenStore,
 } from "@linear-opencode-agent/core";
-import { loadConfig, getWorkerUrl, type Config } from "./config";
+import {
+  loadConfig,
+  getWorkerUrl,
+  type Config,
+  type RepoConfig,
+} from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { LocalGitOperations } from "./git";
+import { RepoResolver } from "./RepoResolver";
 import { join } from "node:path";
+
+/**
+ * Create GitOperations for a specific repo
+ */
+function createGitOperations(
+  repoConfig: RepoConfig,
+  worktreesPath: string,
+  githubToken: string,
+): LocalGitOperations {
+  return new LocalGitOperations(
+    repoConfig.localPath,
+    worktreesPath,
+    githubToken,
+    repoConfig.remoteUrl,
+  );
+}
 
 /**
  * Create a direct event dispatcher that processes events immediately
@@ -39,7 +62,6 @@ function createDirectDispatcher(
   config: Config,
   tokenStore: TokenStore,
   sessionRepository: FileSessionRepository,
-  gitOperations: LocalGitOperations,
 ): EventDispatcher {
   const opencodeClient = createOpencodeClient({
     baseUrl: config.opencode.url,
@@ -51,6 +73,8 @@ function createDirectDispatcher(
       workerUrl: string,
     ): Promise<void> {
       const organizationId = event.organizationId;
+      const issueId =
+        event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
 
       // Get or refresh access token
       let accessToken = await tokenStore.getAccessToken(organizationId);
@@ -72,6 +96,35 @@ function createDirectDispatcher(
           organizationId,
         );
       }
+
+      // Create Linear client for repo resolution
+      const linearClient = new LinearClient({ accessToken });
+
+      // Resolve which repository to use for this issue
+      const repoResolver = RepoResolver.fromConfig(linearClient, config);
+      const resolved = await repoResolver.resolve(issueId);
+
+      if (!resolved) {
+        throw new Error(
+          `Could not resolve repository for issue ${issueId}. ` +
+            `Add a GitHub link to the issue or configure a default repo.`,
+        );
+      }
+
+      console.info({
+        message: "Resolved repository for issue",
+        stage: "dispatcher",
+        issueId,
+        repoKey: resolved.key,
+        repoUrl: resolved.config.remoteUrl,
+      });
+
+      // Create GitOperations for the resolved repo
+      const gitOperations = createGitOperations(
+        resolved.config,
+        config.paths.worktrees,
+        config.github.token,
+      );
 
       // Create Linear adapter
       const linearAdapter = new LinearClientAdapter(accessToken);
@@ -196,6 +249,20 @@ OAuth Start URL:
 }
 
 /**
+ * Get list of configured repos for logging
+ */
+function getConfiguredRepos(config: Config): string[] {
+  if (config.repos) {
+    return Object.keys(config.repos);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
+  if (config.repo) {
+    return ["default (single repo)"];
+  }
+  return [];
+}
+
+/**
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
@@ -207,13 +274,15 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   // Load configuration
   const config = await loadConfig();
 
+  const configuredRepos = getConfiguredRepos(config);
   console.info({
     message: "Configuration loaded",
     stage: "startup",
     port: config.port,
     tailscaleHostname: config.tailscaleHostname,
     opencodeUrl: config.opencode.url,
-    repoPath: config.repo.localPath,
+    configuredRepos,
+    defaultRepo: config.defaultRepo,
     worktreesPath: config.paths.worktrees,
   });
 
@@ -231,27 +300,11 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     dataPath,
   });
 
-  // Initialize git operations
-  const gitOperations = new LocalGitOperations(
-    config.repo.localPath,
-    config.paths.worktrees,
-    config.github.token,
-    config.repo.remoteUrl,
-  );
-
-  console.info({
-    message: "Git operations initialized",
-    stage: "startup",
-    repoPath: config.repo.localPath,
-    worktreesPath: config.paths.worktrees,
-  });
-
-  // Create event dispatcher
+  // Create event dispatcher (git operations created per-request based on issue)
   const dispatcher = createDirectDispatcher(
     config,
     tokenStore,
     sessionRepository,
-    gitOperations,
   );
 
   // Start server

@@ -11,8 +11,15 @@ services:
       - ./config.docker.json:/app/packages/local/config.json:ro
       # Persist data (tokens, sessions)
       - linear-data:/data
-      # Mount local repo for git operations (read-write for worktree creation)
-      - ${REPO_PATH:-~/projects/reservations}:/workspace/repo
+      # Mount all repositories from ~/projects - must match opencode container
+      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/workspace/repos/cyrus
+      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/workspace/repos/linear-opencode-agent
+      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/workspace/repos/moneydb
+      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/workspace/repos/opencode
+      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/workspace/repos/reservations
+      - ${REPO_PATH_SST:-~/projects/sst}:/workspace/repos/sst
+      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/workspace/repos/weather-bot
+      - ${REPO_PATH_WEBSITE:-~/projects/website}:/workspace/repos/website
       # Worktrees directory for session isolation
       - worktrees:/workspace/worktrees
     environment:
@@ -22,18 +29,27 @@ services:
     networks:
       - linear-agent
 
-  # OpenCode server - AI coding agent (internal only, not exposed publicly)
+  # OpenCode server - AI coding agent
+  # NOT exposed publicly - only accessible within Docker network
+  # For local debugging, use: docker compose exec opencode opencode --remote http://localhost:4096
   opencode:
     build:
       context: ./docker/opencode
       dockerfile: Dockerfile
-    ports:
-      - "4096:4096" # Expose for local debugging
+    # No ports exposed to host - internal only for security
+    # The linear-webhook container accesses it via http://opencode:4096
     volumes:
       # Mount worktrees at same path as linear-webhook for consistency
       - worktrees:/workspace/worktrees
-      # Mount local repo as reference (read-write for git operations)
-      - ${REPO_PATH:-~/projects/reservations}:/workspace/repo
+      # Mount all repositories from ~/projects
+      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/workspace/repos/cyrus
+      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/workspace/repos/linear-opencode-agent
+      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/workspace/repos/moneydb
+      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/workspace/repos/opencode
+      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/workspace/repos/reservations
+      - ${REPO_PATH_SST:-~/projects/sst}:/workspace/repos/sst
+      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/workspace/repos/weather-bot
+      - ${REPO_PATH_WEBSITE:-~/projects/website}:/workspace/repos/website
       # Persistent storage for OpenCode data (logs, sessions, etc.)
       - opencode-data:/root/.local/share/opencode
     environment:
