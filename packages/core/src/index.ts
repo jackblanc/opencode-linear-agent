@@ -34,6 +34,10 @@ export type {
 } from "./linear/types";
 export { STAGE_MESSAGES, GIT_STEP_MESSAGES } from "./linear/types";
 
+// Label parsing
+export { parseRepoLabel } from "./linear/label-parser";
+export type { ParsedRepoLabel, LinearLabelLike } from "./linear/label-parser";
+
 // Shared types
 export type { LinearEventMessage, ExecResult, ExecOptions } from "./types";
 
