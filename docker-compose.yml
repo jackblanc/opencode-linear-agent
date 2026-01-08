@@ -32,7 +32,15 @@ services:
   # OpenCode server - AI coding agent
   # NOT exposed publicly - only accessible within Docker network
   # For local debugging, use: docker compose exec opencode opencode --remote http://localhost:4096
+  #
+  # Option 1 (recommended): Build from ~/environment Nix flake:
+  #   cd ~/environment && nix build .#sandbox && docker load < result
+  #   Then set OPENCODE_IMAGE=opencode-sandbox:latest in .env
+  #
+  # Option 2: Build from Dockerfile (fallback):
+  #   Uses ./docker/opencode/Dockerfile
   opencode:
+    image: ${OPENCODE_IMAGE:-}
     build:
       context: ./docker/opencode
       dockerfile: Dockerfile
@@ -55,8 +63,10 @@ services:
     environment:
       # Optional: Anthropic API key (not needed if using Claude Max OAuth)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      # Optional: GitHub token for git operations
+      # GitHub token for git operations
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # Linear API key for MCP server (allows agent to update issues)
+      - LINEAR_API_KEY=${LINEAR_API_KEY}
     networks:
       - linear-agent
 

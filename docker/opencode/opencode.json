@@ -1,0 +1,34 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "system",
+  "model": "anthropic/claude-sonnet-4-20250514",
+  "autoupdate": false,
+  "share": "disabled",
+  "formatter": {
+    "prettier": {
+      "disabled": false
+    }
+  },
+  "permission": {
+    "external_directory": "allow",
+    "bash": "allow",
+    "edit": "allow",
+    "write": "allow",
+    "read": "allow"
+  },
+  "mcp": {
+    "linear": {
+      "type": "local",
+      "command": ["bun", "x", "linear-mcp"],
+      "environment": {
+        "LINEAR_API_KEY": "{env:LINEAR_API_KEY}"
+      },
+      "enabled": true
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    }
+  }
+}
