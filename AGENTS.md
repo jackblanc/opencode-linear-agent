@@ -16,17 +16,18 @@ When fetching external documentation, use LLM-optimized formats:
 
 ## Project Overview
 
-This is a Linear AI agent that integrates OpenCode (AI coding agent) to handle delegated issues. It supports two deployment modes:
+This is a Linear AI agent that integrates OpenCode to handle delegated issues. It supports two deployment modes:
 
-1. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
-2. **Local Docker Compose** (development) - Uses Docker containers with Tailscale Funnel for public webhook access
+1. **Local Docker Compose** (development) - Uses Docker containers with Tailscale Funnel for public webhook access
+2. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
 
 **Key Features:**
 
 - Responds to Linear issue delegations and @mentions
 - Streams real-time progress as Linear activities
+- Resolves repository from GitHub links in issues
 - Creates isolated git worktrees per session
-- Supports Claude Max OAuth for AI operations
+- Uses OAuth for both Claude Max and Linear MCP (no API keys)
 
 **Stack**: TypeScript, Bun workspaces, Docker, Tailscale, Linear SDK, OpenCode SDK
 
@@ -44,6 +45,7 @@ The project uses a pure SSE/SDK approach (no plugins):
 │                                                          │
 │  - Receives Linear webhooks                              │
 │  - Verifies signatures + org ID                          │
+│  - Resolves repo from issue GitHub links                 │
 │  - Creates git worktrees                                 │
 │  - Manages OpenCode sessions via SDK                     │
 │                                                          │
@@ -58,6 +60,17 @@ The project uses a pure SSE/SDK approach (no plugins):
     Linear API                   OpenCode Server
                                  (opencode container)
 ```
+
+### Container Paths
+
+The opencode container uses `/home/jack.blanc` as HOME to match work Linux machine paths:
+
+| Path                                      | Purpose                    |
+| ----------------------------------------- | -------------------------- |
+| `/home/jack.blanc/projects/<repo>`        | Mounted repositories       |
+| `/home/jack.blanc/worktrees/<session-id>` | Git worktrees per session  |
+| `/home/jack.blanc/.config/opencode/`      | OpenCode configuration     |
+| `/home/jack.blanc/.local/share/opencode/` | OpenCode data (auth, logs) |
 
 ### Security Layers
 
@@ -89,6 +102,7 @@ linear-opencode-agent/
 │   │   ├── src/
 │   │   │   ├── index.ts              # HTTP server + routing
 │   │   │   ├── config.ts             # Configuration loader
+│   │   │   ├── RepoResolver.ts       # Resolve repo from GitHub links
 │   │   │   └── git/
 │   │   │       └── LocalGitOperations.ts  # Git worktree management
 │   │   └── Dockerfile                # Bun-based webhook server image
@@ -99,14 +113,18 @@ linear-opencode-agent/
 │
 ├── docker/
 │   └── opencode/
-│       └── Dockerfile           # OpenCode server image
+│       ├── Dockerfile           # OpenCode server image (Debian-based)
+│       ├── opencode.json        # OpenCode config with Linear + Context7 MCPs
+│       └── AGENTS.md            # Agent instructions for sandbox
+│
+├── scripts/
+│   └── rebuild-opencode.sh      # Rebuild container + copy auth files
 │
 ├── docker-compose.yml           # Local development stack
 ├── tailscale-serve.json         # Tailscale Funnel config
 ├── config.docker.json           # Docker-specific config (gitignored secrets!)
 ├── .env                         # Environment variables (gitignored)
-├── .env.example                 # Environment template
-└── plan.md                      # Architecture migration plan
+└── .env.example                 # Environment template
 ```
 
 ---
@@ -118,7 +136,7 @@ linear-opencode-agent/
 - Docker & Docker Compose
 - Tailscale account with Funnel enabled
 - Linear OAuth app configured
-- OpenCode with Claude Max OAuth (or Anthropic API key)
+- OpenCode with Claude Max OAuth authenticated locally
 
 ### Quick Start
 
@@ -131,14 +149,12 @@ linear-opencode-agent/
 2. **Configure `.env`:**
 
    ```bash
-   ANTHROPIC_API_KEY=sk-ant-...  # Or use Claude Max OAuth
    GITHUB_TOKEN=ghp_...
-   REPO_PATH=~/projects/your-repo
    TS_AUTHKEY=tskey-auth-...     # From Tailscale admin console
    TAILSCALE_HOSTNAME=linear-agent
    ```
 
-3. **Create `config.docker.json`** (copy from example and fill in Linear secrets):
+3. **Create `config.docker.json`** with Linear secrets and repo mappings:
 
    ```json
    {
@@ -152,12 +168,14 @@ linear-opencode-agent/
        "organizationId": "your-org-id"
      },
      "github": { "token": "ghp_..." },
-     "repo": {
-       "localPath": "/workspace/repo",
-       "remoteUrl": "https://github.com/owner/repo"
+     "repos": {
+       "my-repo": {
+         "localPath": "/home/jack.blanc/projects/my-repo",
+         "remoteUrl": "https://github.com/owner/my-repo"
+       }
      },
      "paths": {
-       "worktrees": "/workspace/worktrees",
+       "worktrees": "/home/jack.blanc/worktrees",
        "data": "/data"
      }
    }
@@ -169,32 +187,41 @@ linear-opencode-agent/
    docker compose up -d
    ```
 
-5. **Copy OpenCode auth (for Claude Max):**
+5. **Authenticate OpenCode (first time only on host):**
 
    ```bash
-   docker compose cp ~/.local/share/opencode/auth.json opencode:/root/.local/share/opencode/auth.json
-   docker compose restart opencode
+   opencode                    # Follow OAuth prompts for Claude Max
+   opencode mcp auth linear    # Authenticate Linear MCP
    ```
 
-6. **Get your public webhook URL:**
+6. **Rebuild and copy auth:**
+
+   ```bash
+   ./scripts/rebuild-opencode.sh
+   ```
+
+7. **Get your public webhook URL:**
 
    ```bash
    docker compose exec tailscale tailscale funnel status
    ```
 
-7. **Configure Linear webhook** to point to: `https://your-hostname.ts.net/webhook/linear`
+8. **Configure Linear webhook** to point to: `https://your-hostname.ts.net/webhook/linear`
 
 ### Container Architecture
 
-| Container        | Purpose                         | Ports        |
-| ---------------- | ------------------------------- | ------------ |
-| `linear-webhook` | Webhook server, session manager | 3000 (local) |
-| `opencode`       | AI coding agent                 | 4096 (local) |
-| `tailscale`      | Exposes webhook via Funnel      | 443 (public) |
+| Container        | Purpose                         | Ports           |
+| ---------------- | ------------------------------- | --------------- |
+| `linear-webhook` | Webhook server, session manager | 3000 (local)    |
+| `opencode`       | AI coding agent                 | 4096 (internal) |
+| `tailscale`      | Exposes webhook via Funnel      | 443 (public)    |
 
 ### Useful Commands
 
 ```bash
+# Rebuild OpenCode container and copy auth
+./scripts/rebuild-opencode.sh
+
 # View all logs
 docker compose logs -f
 
@@ -207,11 +234,8 @@ docker compose restart linear-webhook
 # Rebuild after code changes
 docker compose up -d --build
 
-# Connect to OpenCode TUI from host
-opencode --remote http://localhost:4096
-
 # Check Tailscale status
-docker compose exec tailscale tailscale status
+docker compose exec tailscale tailscale funnel status
 ```
 
 ### Troubleshooting
@@ -222,11 +246,10 @@ docker compose exec tailscale tailscale status
 
 **"ENOENT: git"**: Rebuild containers - `docker compose up -d --build`
 
-**OpenCode auth expired**: Re-copy auth.json and restart:
+**OpenCode auth expired**: Re-run the rebuild script:
 
 ```bash
-docker compose cp ~/.local/share/opencode/auth.json opencode:/root/.local/share/opencode/auth.json
-docker compose restart opencode
+./scripts/rebuild-opencode.sh
 ```
 
 ---
@@ -276,11 +299,10 @@ bun run deploy         # Deploy to Cloudflare Workers
 
 ### Required for Local Development
 
-| Variable       | Purpose                              | Example                   |
-| -------------- | ------------------------------------ | ------------------------- |
-| `REPO_PATH`    | Local path to repo for agent to work | `~/projects/reservations` |
-| `TS_AUTHKEY`   | Tailscale auth key for Funnel        | `tskey-auth-...`          |
-| `GITHUB_TOKEN` | Token for git operations             | `ghp_...`                 |
+| Variable       | Purpose                       | Example          |
+| -------------- | ----------------------------- | ---------------- |
+| `TS_AUTHKEY`   | Tailscale auth key for Funnel | `tskey-auth-...` |
+| `GITHUB_TOKEN` | Token for git operations      | `ghp_...`        |
 
 ### Optional
 
