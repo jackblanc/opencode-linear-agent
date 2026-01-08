@@ -1,320 +1,241 @@
 # Linear OpenCode Agent
 
-An AI coding agent for Linear task management, powered by OpenCode and running on Cloudflare Workers with Sandbox containers.
+An AI coding agent for Linear that uses OpenCode to handle delegated issues. Supports two deployment modes:
+
+1. **Local Docker Compose** - Uses Docker containers with Tailscale Funnel for public webhook access
+2. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
 
 ## Features
 
-- **Linear Agent Mode Integration**: Respond to agent delegations and @mentions in Linear
-- **Real-time Streaming**: Stream OpenCode's work progress directly to Linear activities
-- **Repository Cloning**: Automatically clone GitHub repos for context
-- **Session Persistence**: Maintain conversation history across multiple interactions
-- **Agent Plans**: Sync OpenCode's todo list to Linear's agent plans
-- **Stop Signal Support**: Handle user requests to halt work gracefully
-- **Cloudflare Sandbox Integration**: Secure, isolated code execution environment
+- **Linear Agent Integration**: Responds to issue delegations and @mentions
+- **Real-time Streaming**: Streams OpenCode's work progress as Linear activities
+- **Multi-Repo Support**: Automatically resolves repository from GitHub links in issues
+- **Session Isolation**: Each session runs in its own git worktree
+- **OAuth Authentication**: Uses Claude Max OAuth and Linear MCP OAuth (no API keys needed)
+- **Agent Plans**: Syncs OpenCode's todo list to Linear's agent plan UI
 
-## How It Works
+## Quick Start (Local Development)
 
-When a user delegates an issue or mentions the agent in Linear:
+### Prerequisites
 
-1. **Webhook Received**: Linear sends `AgentSessionEvent` to `/webhook/linear`
-2. **Immediate Acknowledgment**: Agent responds within 10 seconds (per Linear requirements)
-3. **Repository Setup**: Clones the target repo into a sandboxed environment
-4. **OpenCode Session**: Creates or resumes an OpenCode session for the Linear conversation
-5. **Real-time Streaming**: OpenCode's work is streamed as Linear activities:
-   - Thoughts (ephemeral) - Internal reasoning and planning
-   - Actions - Tool invocations (file reads, edits, bash commands)
-   - Responses - Final outputs and summaries
-   - Errors - Failures and error messages
-6. **Plan Updates**: OpenCode's todo list syncs to Linear's agent plan UI
-7. **Conversation History**: Follow-up prompts continue the same OpenCode session
+- Docker & Docker Compose
+- Tailscale account with Funnel enabled
+- Linear OAuth app configured
+- OpenCode with Claude Max OAuth authenticated locally
+
+### Setup
+
+1. **Clone and install:**
+
+   ```bash
+   git clone https://github.com/jackblanc/linear-opencode-agent
+   cd linear-opencode-agent
+   bun install
+   ```
+
+2. **Copy environment template:**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Configure `.env`:**
+
+   ```bash
+   GITHUB_TOKEN=ghp_...
+   TS_AUTHKEY=tskey-auth-...     # From Tailscale admin console
+   TAILSCALE_HOSTNAME=linear-agent
+   ```
+
+4. **Create `config.docker.json`:**
+
+   ```json
+   {
+     "port": 3000,
+     "tailscaleHostname": "your-hostname.your-tailnet.ts.net",
+     "opencode": { "url": "http://opencode:4096" },
+     "linear": {
+       "clientId": "your-client-id",
+       "clientSecret": "your-client-secret",
+       "webhookSecret": "lin_wh_...",
+       "organizationId": "your-org-id"
+     },
+     "github": { "token": "ghp_..." },
+     "repos": {
+       "my-repo": {
+         "localPath": "/home/jack.blanc/projects/my-repo",
+         "remoteUrl": "https://github.com/owner/my-repo"
+       }
+     },
+     "paths": {
+       "worktrees": "/home/jack.blanc/worktrees",
+       "data": "/data"
+     }
+   }
+   ```
+
+5. **Start the stack:**
+
+   ```bash
+   docker compose up -d
+   ```
+
+6. **Authenticate OpenCode (first time only):**
+
+   Run on your host machine to authenticate Claude Max and Linear MCP:
+
+   ```bash
+   opencode  # Follow OAuth prompts for Claude Max
+   opencode mcp auth linear  # Authenticate Linear MCP
+   ```
+
+7. **Copy auth to container and rebuild:**
+
+   ```bash
+   ./scripts/rebuild-opencode.sh
+   ```
+
+8. **Get your public webhook URL:**
+
+   ```bash
+   docker compose exec tailscale tailscale funnel status
+   ```
+
+9. **Configure Linear webhook** to point to: `https://your-hostname.ts.net/webhook/linear`
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           LINEAR                                        │
-│  User delegates/mentions agent → AgentSessionEvent webhook              │
-│  ← AgentActivity (thought/action/response/error/elicitation)            │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    CLOUDFLARE WORKER (webhook.ts)                       │
-│                                                                         │
-│  1. Receive AgentSessionEvent                                           │
-│  2. Get/Create Sandbox (keyed by Linear agentSession.id)                │
-│  3. Clone repo into sandbox (https://github.com/sst/opencode)           │
-│  4. Create/Resume OpenCode session                                      │
-│  5. Forward promptContext to OpenCode                                   │
-│  6. Stream OpenCode Parts → Linear AgentActivity                        │
-│  7. Sync todos to agent plan                                            │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    CLOUDFLARE SANDBOX (Durable Object)                  │
-│                                                                         │
-│  - OpenCode server running inside container                             │
-│  - Project cloned to /home/user/project                                 │
-│  - Session persisted across interactions                                │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ Webhook Server (linear-webhook container)                │
+│                                                          │
+│  - Receives Linear webhooks                              │
+│  - Verifies signatures + org ID                          │
+│  - Resolves repo from issue GitHub links                 │
+│  - Creates git worktrees per session                     │
+│  - Manages OpenCode sessions via SDK                     │
+│                                                          │
+│  SSEEventHandler                                         │
+│  - message.part.updated → Post tool activities to Linear │
+│  - todo.updated → Sync to Linear agent plan              │
+│  - permission.updated → Auto-approve all                 │
+│  - session.idle → Signal completion                      │
+└──────────────────────────────────────────────────────────┘
+         │                              │
+         ▼                              ▼
+    Linear API                   OpenCode Server
+                                 (opencode container)
+                                 /home/jack.blanc/...
 ```
 
-**Components:**
+### Container Architecture
 
-- **Cloudflare Worker**: Handles webhooks and manages OpenCode integration
-- **Sandbox Container**: Runs OpenCode server with pre-installed CLI
-- **Anthropic Claude**: Powers the AI coding capabilities via OpenCode
-- **Linear SDK**: Sends agent activities and updates plans
-- **KV Storage**: Persists session state between interactions
+| Container        | Purpose                         | Ports           |
+| ---------------- | ------------------------------- | --------------- |
+| `linear-webhook` | Webhook server, session manager | 3000 (local)    |
+| `opencode`       | AI coding agent                 | 4096 (internal) |
+| `tailscale`      | Exposes webhook via Funnel      | 443 (public)    |
 
-## Setup
+### Security
 
-### Prerequisites
-
-- [Bun](https://bun.sh) or Node.js installed
-- [Wrangler](https://developers.cloudflare.com/workers/wrangler/) CLI
-- Anthropic API key
-- Linear OAuth app credentials
-- GitHub token (for cloning repos)
-
-### Installation
-
-1. Install dependencies:
-
-```bash
-bun install
-```
-
-2. Create a `.dev.vars` file:
-
-```bash
-cp .dev.vars.example .dev.vars
-```
-
-3. Configure your `.dev.vars` file with required secrets:
-
-```env
-# Anthropic API key for OpenCode
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Linear OAuth Config
-LINEAR_CLIENT_ID=lin_api_...
-LINEAR_CLIENT_SECRET=lin_api_...
-
-# Linear webhook secret (get from Linear app settings)
-LINEAR_WEBHOOK_SECRET=...
-
-# GitHub token for cloning repos
-GITHUB_TOKEN=ghp_...
-```
-
-### Setting Up Linear OAuth App
-
-1. Go to [Linear Settings → API](https://linear.app/settings/api)
-2. Create a new OAuth application
-3. Set the callback URL to `https://your-worker.workers.dev/oauth/callback`
-4. Enable **Agent Session Events** in webhook categories
-5. Copy the client ID, secret, and webhook secret to `.dev.vars`
-
-### Local Development
-
-```bash
-bun run dev
-```
-
-The first run will build the Docker container (2-3 minutes). Subsequent runs are faster.
-
-Once running, the worker will be available at `http://localhost:8787`
-
-## Endpoints
-
-### OAuth Flow
-
-```bash
-GET /oauth/authorize
-# Initiates OAuth flow to connect Linear workspace
-
-GET /oauth/callback
-# Handles OAuth callback from Linear
-```
-
-### Webhooks
-
-```bash
-POST /webhook/linear
-# Receives AgentSessionEvent webhooks from Linear
-# Automatically handles agent delegations and mentions
-```
-
-### Health Check
-
-```bash
-GET /health
-# Returns worker health status
-```
+1. **Webhook signature verification** - Linear SDK verifies HMAC signatures
+2. **Organization ID allowlist** - Rejects webhooks from other Linear orgs
+3. **Tailscale Funnel** - Public endpoint only exposed via Tailscale
+4. **Session isolation** - Each session runs in its own git worktree
 
 ## Usage
 
-### 1. Connect Linear Workspace
+1. Create a Linear issue
+2. Add a GitHub link to the repository (in description or as attachment)
+3. Assign/delegate the issue to "OpenCode Agent (Local)"
+4. The agent will:
+   - Clone the repository to a worktree
+   - Analyze the issue
+   - Stream progress as Linear activities
+   - Update its plan as it works
 
-1. Navigate to `https://your-worker.workers.dev/oauth/authorize`
-2. Authorize the app with your Linear workspace
-3. You'll be redirected back after authorization
-
-### 2. Configure Linear Webhook
-
-1. In Linear app settings, set webhook URL to:
-   ```
-   https://your-worker.workers.dev/webhook/linear
-   ```
-2. Ensure **Agent Session Events** category is enabled
-
-### 3. Use the Agent
-
-In Linear, you can now:
-
-- **Delegate an issue** to the agent
-- **@mention the agent** in issue comments
-- **Send follow-up prompts** to continue the conversation
-- **Request stop** to halt ongoing work
-
-The agent will:
-
-- Clone the repository (currently using `https://github.com/sst/opencode` as placeholder)
-- Analyze the issue context
-- Stream its work progress as Linear activities
-- Update its plan as it works
-- Respond to your messages in real-time
-
-## Deployment
-
-### Set Production Secrets
+## Scripts
 
 ```bash
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put LINEAR_CLIENT_ID
-wrangler secret put LINEAR_CLIENT_SECRET
-wrangler secret put LINEAR_WEBHOOK_SECRET
-wrangler secret put GITHUB_TOKEN
+# Rebuild and restart OpenCode container (copies auth files)
+./scripts/rebuild-opencode.sh
+
+# View logs
+docker compose logs -f linear-webhook
+docker compose logs -f opencode
+
+# Check Tailscale status
+docker compose exec tailscale tailscale funnel status
 ```
 
-### Create KV Namespaces
+## Project Structure
+
+```
+linear-opencode-agent/
+├── packages/
+│   ├── core/                    # Platform-agnostic core logic
+│   │   └── src/
+│   │       ├── EventProcessor.ts      # Orchestrates webhook → session → SSE
+│   │       ├── SSEEventHandler.ts     # Handles OpenCode SSE events
+│   │       ├── session/               # Session lifecycle management
+│   │       ├── linear/                # Linear API interface
+│   │       └── webhook/               # Webhook verification + dispatch
+│   │
+│   ├── local/                   # Local development server
+│   │   ├── src/
+│   │   │   ├── index.ts              # HTTP server + routing
+│   │   │   ├── config.ts             # Configuration loader
+│   │   │   ├── RepoResolver.ts       # Resolve repo from issue links
+│   │   │   └── git/                  # Git worktree management
+│   │   └── Dockerfile
+│   │
+│   ├── linear/                  # Cloudflare Worker entry point
+│   └── infrastructure/          # Cloudflare-specific implementations
+│
+├── docker/
+│   └── opencode/
+│       ├── Dockerfile           # OpenCode server image
+│       ├── opencode.json        # OpenCode config with MCPs
+│       └── AGENTS.md            # Agent instructions
+│
+├── scripts/
+│   └── rebuild-opencode.sh      # Rebuild + copy auth
+│
+├── docker-compose.yml           # Local development stack
+├── config.docker.json           # Docker config (gitignored)
+└── .env                         # Environment variables (gitignored)
+```
+
+## Development
 
 ```bash
-# Create KV namespace for Linear tokens
-wrangler kv:namespace create LINEAR_TOKENS
+# Type check
+bun run typecheck
 
-# Create KV namespace for OAuth states
-wrangler kv:namespace create OAUTH_STATES
+# Lint
+bun run lint:check
+bun run lint:fix
+
+# Format
+bun run format:check
+bun run format:fix
+
+# All checks
+bun run check
 ```
 
-Update `wrangler.jsonc` with the namespace IDs.
+## Deployment (Cloudflare Workers)
 
-### Deploy
+Pushing to `master` triggers GitHub Actions to deploy automatically.
+
+Manual deployment:
 
 ```bash
 bun run deploy
 ```
 
-After first deployment, wait 2-3 minutes for container provisioning.
-
-## Project Structure
-
-```
-├── src/
-│   ├── index.ts           # Main worker entry point
-│   ├── webhook.ts         # Linear webhook handler & OpenCode integration
-│   ├── oauth.ts           # Linear OAuth flow handlers
-│   ├── mapping.ts         # OpenCode Part → Linear Activity mapping
-│   └── types.ts           # Type definitions and utilities
-├── Dockerfile             # OpenCode-enabled Sandbox container
-├── wrangler.jsonc         # Cloudflare Workers configuration
-├── .dev.vars.example      # Environment variable template
-├── AGENTS.md              # Agent guidelines for AI assistants
-└── package.json           # Dependencies
-```
-
-## How It Works
-
-### OpenCode → Linear Activity Mapping
-
-| OpenCode Part Type     | Linear Activity Type   | Ephemeral | Description        |
-| ---------------------- | ---------------------- | --------- | ------------------ |
-| `TextPart`             | `response`             | No        | Final AI output    |
-| `ReasoningPart`        | `thought`              | Yes       | Internal reasoning |
-| `ToolPart` (running)   | `action` (no result)   | Yes       | Tool in progress   |
-| `ToolPart` (completed) | `action` (with result) | No        | Tool finished      |
-| `ToolPart` (error)     | `error`                | No        | Tool failed        |
-| `StepStartPart`        | `thought`              | Yes       | Starting work      |
-| `SubtaskPart`          | `thought`              | No        | Delegating subtask |
-
-### Tool Name Mapping
-
-| OpenCode Tool | Linear Action          | Parameter Example  |
-| ------------- | ---------------------- | ------------------ |
-| `Read`        | "Reading" / "Read"     | `src/index.ts`     |
-| `Edit`        | "Editing" / "Edited"   | `src/webhook.ts`   |
-| `Write`       | "Creating" / "Created" | `new-file.ts`      |
-| `Bash`        | "Running" / "Ran"      | `npm install`      |
-| `Glob`        | "Searching files"      | `**/*.ts`          |
-| `Grep`        | "Searching code"       | `function.*export` |
-| `Task`        | "Delegating task"      | Task description   |
-
-### Session Lifecycle
-
-1. **Create Action** (`AgentSessionEvent.action = "create"`):
-   - Create Cloudflare Sandbox with Linear session ID
-   - Clone repository into `/home/user/project`
-   - Initialize OpenCode with Anthropic provider
-   - Create new OpenCode session
-   - Send initial prompt with full issue context
-   - Stream responses as Linear activities
-
-2. **Prompted Action** (`AgentSessionEvent.action = "prompted"`):
-   - Resume existing OpenCode session
-   - Check for stop signal
-   - Send user's message to OpenCode
-   - Stream responses as Linear activities
-   - Update agent plan from OpenCode todos
-
-## Updating
-
-To update dependencies and Docker images, see [UPDATING.md](./UPDATING.md) for detailed instructions.
-
-Quick update:
-
-```bash
-# Update all dependencies
-bun update
-
-# Don't forget to update Dockerfile version to match!
-# Example: FROM docker.io/cloudflare/sandbox:0.6.8-opencode
-```
-
-## Current Limitations & Future Work
-
-- **Repository**: Currently hardcoded to `https://github.com/sst/opencode`
-  - [ ] Make repository dynamic based on Linear issue context
-  - [ ] Support multiple repos per workspace
-- **Authentication**: Basic OAuth flow implemented
-  - [ ] Add user-specific scopes and permissions
-  - [ ] Implement token refresh
-- **Error Handling**: Basic error reporting
-  - [ ] Improve error recovery and retry logic
-  - [ ] Better timeout handling for long-running operations
-- **Performance**: First interaction clones repo
-  - [ ] Cache cloned repos between sessions
-  - [ ] Implement incremental updates (git pull)
-- **Features**:
-  - [ ] Support file attachments from Linear issues
-  - [ ] Implement agent signals (auth, select)
-  - [ ] Add MCP server integration for Linear context
-  - [ ] Support multi-turn planning mode
-
 ## References
 
-- [Cloudflare Sandbox SDK](https://developers.cloudflare.com/sandbox/)
+- [Linear Agent Documentation](https://linear.app/developers/agents)
 - [OpenCode Documentation](https://opencode.ai/docs)
-- [Linear API](https://developers.linear.app/)
-- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
+- [Cloudflare Sandbox SDK](https://developers.cloudflare.com/sandbox/)
