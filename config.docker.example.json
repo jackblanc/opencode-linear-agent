@@ -8,7 +8,15 @@
     "clientId": "YOUR_LINEAR_CLIENT_ID",
     "clientSecret": "YOUR_LINEAR_CLIENT_SECRET",
     "webhookSecret": "YOUR_LINEAR_WEBHOOK_SECRET",
-    "organizationId": "YOUR_LINEAR_ORGANIZATION_ID"
+    "organizationId": "YOUR_LINEAR_ORGANIZATION_ID",
+    "webhookIps": [
+      "35.231.147.226",
+      "35.243.134.228",
+      "34.140.253.14",
+      "34.38.87.206",
+      "34.134.222.122",
+      "35.222.25.142"
+    ]
   },
   "github": {
     "token": "YOUR_GITHUB_TOKEN"

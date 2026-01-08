@@ -39,6 +39,30 @@ import { RepoResolver } from "./RepoResolver";
 import { join } from "node:path";
 
 /**
+ * Extract client IP from request headers
+ * Tailscale Funnel sets X-Forwarded-For header
+ */
+function getClientIp(request: Request): string | null {
+  // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const firstIp = xff.split(",")[0].trim();
+    return firstIp || null;
+  }
+  return null;
+}
+
+/**
+ * Check if an IP is in the allowlist
+ */
+function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
+  if (!ip) {
+    return false;
+  }
+  return allowlist.includes(ip);
+}
+
+/**
  * Create GitOperations for a specific repo
  */
 function createGitOperations(
@@ -165,6 +189,8 @@ function createServer(
       const url = new URL(request.url);
       const pathname = url.pathname;
 
+      const clientIp = getClientIp(request);
+
       // Helper to log and return response
       const respond = (response: Response): Response => {
         console.info({
@@ -173,19 +199,10 @@ function createServer(
           method: request.method,
           pathname,
           status: response.status,
+          clientIp,
         });
         return response;
       };
-
-      // Health check
-      if (pathname === "/health") {
-        return respond(
-          Response.json({
-            status: "ok",
-            timestamp: new Date().toISOString(),
-          }),
-        );
-      }
 
       // OAuth authorize - start the OAuth flow
       if (pathname === "/api/oauth/authorize") {
@@ -204,6 +221,17 @@ function createServer(
         pathname === "/api/webhook/linear" ||
         pathname === "/webhook/linear"
       ) {
+        // IP allowlist check - only Linear's servers can call this endpoint
+        if (!isAllowedIp(clientIp, config.linear.webhookIps)) {
+          console.warn({
+            message: "Webhook request from unauthorized IP",
+            stage: "server",
+            clientIp,
+            allowedIps: config.linear.webhookIps,
+          });
+          return respond(new Response("Forbidden", { status: 403 }));
+        }
+
         return respond(
           await handleWebhook(
             request,
@@ -212,33 +240,6 @@ function createServer(
             dispatcher,
             undefined, // statusPosterFactory
             config.linear.organizationId, // only accept webhooks from this org
-          ),
-        );
-      }
-
-      // Info page
-      if (pathname === "/") {
-        const workerUrl = getWorkerUrl(config);
-        return respond(
-          new Response(
-            `Linear OpenCode Agent (Local)
-
-Endpoints:
-  GET  /health               - Health check
-  GET  /api/oauth/authorize  - Start Linear OAuth flow
-  GET  /api/oauth/callback   - OAuth callback (used by Linear)
-  POST /api/webhook/linear   - Linear webhook endpoint
-
-Webhook URL for Linear:
-  ${workerUrl}/api/webhook/linear
-
-OAuth Start URL:
-  ${workerUrl}/api/oauth/authorize
-`,
-            {
-              status: 200,
-              headers: { "Content-Type": "text/plain" },
-            },
           ),
         );
       }
