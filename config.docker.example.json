@@ -1,6 +1,6 @@
 {
   "port": 3000,
-  "tailscaleHostname": "your-hostname.your-tailnet.ts.net",
+  "publicHostname": "your-tunnel-hostname.example.com",
   "opencode": {
     "url": "http://opencode:4096"
   },

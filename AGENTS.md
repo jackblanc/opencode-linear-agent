@@ -18,7 +18,7 @@ When fetching external documentation, use LLM-optimized formats:
 
 This is a Linear AI agent that integrates OpenCode to handle delegated issues. It supports two deployment modes:
 
-1. **Local Docker Compose** (development) - Uses Docker containers with Tailscale Funnel for public webhook access
+1. **Local Docker Compose** (development) - Uses Docker containers with Cloudflare Tunnel for public webhook access
 2. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
 
 **Key Features:**
@@ -28,8 +28,9 @@ This is a Linear AI agent that integrates OpenCode to handle delegated issues. I
 - Resolves repository from GitHub links in issues
 - Creates isolated git worktrees per session
 - Uses OAuth for both Claude Max and Linear MCP (no API keys)
+- IP allowlisting via Cloudflare Access for webhook security
 
-**Stack**: TypeScript, Bun workspaces, Docker, Tailscale, Linear SDK, OpenCode SDK
+**Stack**: TypeScript, Bun workspaces, Docker, Cloudflare Tunnel, Linear SDK, OpenCode SDK
 
 ---
 
@@ -76,8 +77,19 @@ The opencode container uses `/home/jack.blanc` as HOME to match work Linux machi
 
 1. **Webhook signature verification** - Linear SDK verifies HMAC signatures
 2. **Organization ID allowlist** - Rejects webhooks from other Linear orgs
-3. **Tailscale Funnel** - Public endpoint only exposed via Tailscale (not raw internet)
+3. **Cloudflare Tunnel + Access** - Public endpoint with IP allowlisting restricted to Linear's webhook IPs
 4. **Session isolation** - Each session runs in its own git worktree
+
+**Linear Webhook IP Addresses** (for Cloudflare Access allowlist):
+
+- 35.231.147.226
+- 35.243.134.228
+- 34.140.253.14
+- 34.38.87.206
+- 34.134.222.122
+- 35.222.25.142
+
+_Note: Linear may update this list occasionally. Check [Linear's webhook documentation](https://linear.app/developers/webhooks) for updates._
 
 ---
 
@@ -121,7 +133,7 @@ linear-opencode-agent/
 │   └── rebuild-opencode.sh      # Rebuild container + copy auth files
 │
 ├── docker-compose.yml           # Local development stack
-├── tailscale-serve.json         # Tailscale Funnel config
+├── cloudflare-tunnel-setup.md   # Guide for setting up Cloudflare Tunnel
 ├── config.docker.json           # Docker-specific config (gitignored secrets!)
 ├── .env                         # Environment variables (gitignored)
 └── .env.example                 # Environment template
@@ -134,7 +146,8 @@ linear-opencode-agent/
 ### Prerequisites
 
 - Docker & Docker Compose
-- Tailscale account with Funnel enabled
+- Cloudflare account with a domain managed by Cloudflare
+- `cloudflared` CLI installed locally
 - Linear OAuth app configured
 - OpenCode with Claude Max OAuth authenticated locally
 
@@ -146,20 +159,25 @@ linear-opencode-agent/
    cp .env.example .env
    ```
 
-2. **Configure `.env`:**
+2. **Set up Cloudflare Tunnel:**
+
+   Follow the detailed guide in [cloudflare-tunnel-setup.md](./cloudflare-tunnel-setup.md) to:
+   - Create a Cloudflare Tunnel
+   - Get your tunnel token
+   - Configure Cloudflare Access with Linear's IP allowlist
+
+3. **Configure `.env`:**
 
    ```bash
    GITHUB_TOKEN=ghp_...
-   TS_AUTHKEY=tskey-auth-...     # From Tailscale admin console
-   TAILSCALE_HOSTNAME=linear-agent
+   TUNNEL_TOKEN=eyJhIjoiY...     # From Cloudflare Tunnel setup
    ```
 
-3. **Create `config.docker.json`** with Linear secrets and repo mappings:
+4. **Create `config.docker.json`** with Linear secrets and repo mappings:
 
    ```json
    {
      "port": 3000,
-     "tailscaleHostname": "your-hostname.your-tailnet.ts.net",
      "opencode": { "url": "http://opencode:4096" },
      "linear": {
        "clientId": "your-client-id",
@@ -181,12 +199,6 @@ linear-opencode-agent/
    }
    ```
 
-4. **Start the stack:**
-
-   ```bash
-   docker compose up -d
-   ```
-
 5. **Authenticate OpenCode (first time only on host):**
 
    ```bash
@@ -200,13 +212,13 @@ linear-opencode-agent/
    ./scripts/rebuild-opencode.sh
    ```
 
-7. **Get your public webhook URL:**
+7. **Start the stack:**
 
    ```bash
-   docker compose exec tailscale tailscale funnel status
+   docker compose up -d
    ```
 
-8. **Configure Linear webhook** to point to: `https://your-hostname.ts.net/webhook/linear`
+8. **Configure Linear webhook** to point to your Cloudflare Tunnel URL (e.g., `https://linear-webhook.yourdomain.com/webhook/linear`)
 
 ### Container Architecture
 
@@ -214,7 +226,7 @@ linear-opencode-agent/
 | ---------------- | ------------------------------- | --------------- |
 | `linear-webhook` | Webhook server, session manager | 3000 (local)    |
 | `opencode`       | AI coding agent                 | 4096 (internal) |
-| `tailscale`      | Exposes webhook via Funnel      | 443 (public)    |
+| `cloudflared`    | Exposes webhook via tunnel      | N/A (outbound)  |
 
 ### Useful Commands
 
@@ -234,8 +246,8 @@ docker compose restart linear-webhook
 # Rebuild after code changes
 docker compose up -d --build
 
-# Check Tailscale status
-docker compose exec tailscale tailscale funnel status
+# Check Cloudflare Tunnel status
+docker compose logs cloudflared
 ```
 
 ### Troubleshooting
@@ -299,17 +311,16 @@ bun run deploy         # Deploy to Cloudflare Workers
 
 ### Required for Local Development
 
-| Variable       | Purpose                       | Example          |
-| -------------- | ----------------------------- | ---------------- |
-| `TS_AUTHKEY`   | Tailscale auth key for Funnel | `tskey-auth-...` |
-| `GITHUB_TOKEN` | Token for git operations      | `ghp_...`        |
+| Variable       | Purpose                  | Example        |
+| -------------- | ------------------------ | -------------- |
+| `TUNNEL_TOKEN` | Cloudflare Tunnel token  | `eyJhIjoiY...` |
+| `GITHUB_TOKEN` | Token for git operations | `ghp_...`      |
 
 ### Optional
 
-| Variable             | Purpose                           | Example        |
-| -------------------- | --------------------------------- | -------------- |
-| `ANTHROPIC_API_KEY`  | API key (if not using Claude Max) | `sk-ant-...`   |
-| `TAILSCALE_HOSTNAME` | Custom hostname for Funnel        | `linear-agent` |
+| Variable            | Purpose                           | Example      |
+| ------------------- | --------------------------------- | ------------ |
+| `ANTHROPIC_API_KEY` | API key (if not using Claude Max) | `sk-ant-...` |
 
 ### Config File Secrets (config.docker.json)
 

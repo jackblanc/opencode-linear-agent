@@ -84,6 +84,13 @@ export async function handleWebhook(
       signature,
       parsed.webhookTimestamp,
     );
+
+    // Log the full webhook payload for debugging
+    console.info({
+      message: "Webhook verified successfully",
+      stage: "webhook",
+      webhookPayload: JSON.stringify(webhookPayload, null, 2),
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
