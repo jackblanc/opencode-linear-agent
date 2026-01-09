@@ -7,6 +7,8 @@ import type { Plugin } from "@opencode-ai/plugin";
  * 1. All tests pass (bun run check)
  * 2. All changes are committed (no uncommitted changes)
  * 3. No untracked files exist (or they're in .gitignore)
+ * 4. Changes are pushed to remote
+ * 5. Pull request is created
  *
  * When any check fails, throws an error with the [COMMIT_GUARD] prefix
  * so the outer system can detect it and re-prompt the agent.
@@ -54,7 +56,36 @@ export const CommitGuardPlugin: Plugin = async ({ $ }) => {
           );
         }
 
-        // Step 4: Get current git status for context
+        // Step 4: Check if branch is pushed to remote
+        const currentBranch =
+          await $`git rev-parse --abbrev-ref HEAD`.text().then((s) => s.trim());
+        const localCommit = await $`git rev-parse HEAD`.text().then((s) =>
+          s.trim(),
+        );
+        const remoteCommit =
+          await $`git rev-parse origin/${currentBranch}`.nothrow().text().then(
+            (s) => s.trim(),
+          );
+
+        if (!remoteCommit || localCommit !== remoteCommit) {
+          errors.push(
+            `## Branch Not Pushed\n\nYour branch \`${currentBranch}\` is not pushed to remote or is behind.\n\nPush your changes:\n\`\`\`bash\ngit push -u origin ${currentBranch}\n\`\`\``,
+          );
+        }
+
+        // Step 5: Check if PR exists for this branch
+        const prCheckResult =
+          await $`gh pr list --head ${currentBranch} --json number`.nothrow();
+        if (prCheckResult.exitCode === 0) {
+          const prs = JSON.parse(prCheckResult.stdout.toString());
+          if (!Array.isArray(prs) || prs.length === 0) {
+            errors.push(
+              `## No Pull Request\n\nNo pull request exists for branch \`${currentBranch}\`.\n\nCreate a PR:\n\`\`\`bash\ngh pr create --fill\n\`\`\`\n\nOr with custom title/body:\n\`\`\`bash\ngh pr create --title "..." --body "..."\n\`\`\``,
+            );
+          }
+        }
+
+        // Step 6: Get current git status for context
         if (errors.length > 0) {
           const statusOutput = await $`git status --short`.text();
 
@@ -67,7 +98,9 @@ export const CommitGuardPlugin: Plugin = async ({ $ }) => {
             "1. Fix any failing tests and ensure `bun run check` passes",
             "2. Stage and commit all your changes with a descriptive commit message",
             "3. Either commit or .gitignore any untracked files",
-            "\nOnce everything passes and is committed, you may stop.",
+            "4. Push your branch to remote: `git push -u origin <branch>`",
+            "5. Create a pull request: `gh pr create --fill`",
+            "\nOnce everything passes, is committed, pushed, and a PR is created, you may stop.",
           ].join("\n");
 
           throw new Error(errorMessage);
