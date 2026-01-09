@@ -125,8 +125,11 @@ export class EventProcessor {
     workerUrl: string,
   ): Promise<void> {
     const linearSessionId = event.agentSession.id;
+    // Use identifier (e.g., "CODE-29") instead of id (UUID)
     const issueId =
-      event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
+      event.agentSession.issue?.identifier ??
+      event.agentSession.issueId ??
+      "unknown";
 
     console.info({
       message: "Processing event",
