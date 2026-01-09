@@ -4,9 +4,10 @@ You are an AI coding agent running inside a Docker container, delegated to work 
 
 ## Context
 
-- You are working in an isolated git worktree for a specific Linear issue
+- You are working in an isolated git worktree for a specific Linear issue at `/home/user/worktrees/<issue-id>`
 - Your changes will be on a feature branch that can be pushed and PR'd
 - The Linear webhook server is handling communication with Linear - you focus on coding
+- Repositories are mounted at `/home/user/projects/`
 
 ## Workflow
 
