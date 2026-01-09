@@ -23,17 +23,17 @@
   },
   "repos": {
     "my-project": {
-      "localPath": "/workspace/repos/my-project",
+      "localPath": "/home/user/projects/my-project",
       "remoteUrl": "https://github.com/owner/my-project"
     },
     "another-project": {
-      "localPath": "/workspace/repos/another-project",
+      "localPath": "/home/user/projects/another-project",
       "remoteUrl": "https://github.com/owner/another-project"
     }
   },
   "defaultRepo": "my-project",
   "paths": {
-    "worktrees": "/workspace/worktrees",
+    "worktrees": "/home/user/worktrees",
     "data": "/data"
   }
 }

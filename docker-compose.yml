@@ -11,17 +11,17 @@ services:
       - ./config.docker.json:/app/packages/local/config.json:ro
       # Persist data (tokens, sessions)
       - linear-data:/data
-      # Mount all repositories - paths match /home/jack.blanc/projects in opencode container
-      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/jack.blanc/projects/cyrus
-      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/jack.blanc/projects/linear-opencode-agent
-      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/jack.blanc/projects/moneydb
-      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/jack.blanc/projects/opencode
-      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/jack.blanc/projects/reservations
-      - ${REPO_PATH_SST:-~/projects/sst}:/home/jack.blanc/projects/sst
-      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/jack.blanc/projects/weather-bot
-      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/jack.blanc/projects/website
+      # Mount all repositories - paths match /home/user/projects in opencode container
+      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/user/projects/cyrus
+      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/user/projects/linear-opencode-agent
+      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/user/projects/moneydb
+      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/user/projects/opencode
+      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/user/projects/reservations
+      - ${REPO_PATH_SST:-~/projects/sst}:/home/user/projects/sst
+      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/user/projects/weather-bot
+      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/user/projects/website
       # Worktrees directory for session isolation
-      - worktrees:/home/jack.blanc/worktrees
+      - worktrees:/home/user/worktrees
     environment:
       - NODE_ENV=production
     depends_on:
@@ -31,29 +31,29 @@ services:
 
   # OpenCode server - AI coding agent
   # Port 4096 exposed to localhost only for UI access
-  # NOT exposed via Tailscale Funnel - only accessible from your machine
-  #
-  # Uses /home/jack.blanc paths to match work Linux machine
+  # Uses pre-built environment image from GHCR (requires docker login ghcr.io)
   opencode:
-    build:
-      context: ./docker/opencode
-      dockerfile: Dockerfile
+    image: ghcr.io/jackblanc/environment:main-personal-linux
     ports:
       - "127.0.0.1:4096:4096" # Localhost only - access OpenCode UI at http://localhost:4096
     volumes:
       # Mount worktrees - paths match between containers
-      - worktrees:/home/jack.blanc/worktrees
-      # Mount all repositories from ~/projects to /home/jack.blanc/projects
-      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/jack.blanc/projects/cyrus
-      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/jack.blanc/projects/linear-opencode-agent
-      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/jack.blanc/projects/moneydb
-      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/jack.blanc/projects/opencode
-      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/jack.blanc/projects/reservations
-      - ${REPO_PATH_SST:-~/projects/sst}:/home/jack.blanc/projects/sst
-      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/jack.blanc/projects/weather-bot
-      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/jack.blanc/projects/website
+      - worktrees:/home/user/worktrees
+      # Mount all repositories from ~/projects to /home/user/projects
+      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/user/projects/cyrus
+      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/user/projects/linear-opencode-agent
+      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/user/projects/moneydb
+      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/user/projects/opencode
+      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/user/projects/reservations
+      - ${REPO_PATH_SST:-~/projects/sst}:/home/user/projects/sst
+      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/user/projects/weather-bot
+      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/user/projects/website
       # Persistent storage for OpenCode data (logs, sessions, etc.)
-      - opencode-data:/home/jack.blanc/.local/share/opencode
+      - opencode-data:/home/user/.local/share/opencode
+      # Mount linear-opencode-agent specific config files
+      - ./docker/opencode/opencode.json:/home/user/.config/opencode/opencode.json:ro
+      - ./docker/opencode/AGENTS.md:/home/user/AGENTS.md:ro
+      - ./docker/opencode/plugin:/home/user/.config/opencode/plugin:ro
     environment:
       # Optional: Anthropic API key (not needed if using Claude Max OAuth)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
