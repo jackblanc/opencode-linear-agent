@@ -5,6 +5,7 @@ import type {
   GitSetupStep,
   PlanItem,
   ProcessingStage,
+  SignalMetadata,
 } from "./types";
 import { GIT_STEP_MESSAGES, STAGE_MESSAGES } from "./types";
 
@@ -12,10 +13,22 @@ import { GIT_STEP_MESSAGES, STAGE_MESSAGES } from "./types";
  * Maps our ActivitySignal type to Linear's AgentActivitySignal
  */
 function mapSignal(signal?: ActivitySignal): AgentActivitySignal | undefined {
-  if (signal === "stop") {
-    return AgentActivitySignal.Stop;
+  if (!signal) {
+    return undefined;
   }
-  return undefined;
+
+  switch (signal) {
+    case "stop":
+      return AgentActivitySignal.Stop;
+    case "continue":
+      return AgentActivitySignal.Continue;
+    case "auth":
+      return AgentActivitySignal.Auth;
+    case "select":
+      return AgentActivitySignal.Select;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -119,9 +132,14 @@ export class LinearClientAdapter implements LinearAdapter {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
 
-    // Build the error body with full details
-    const errorBody = errorStack
-      ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${errorStack}\n\`\`\``
+    // Truncate stack traces to first 20 lines to avoid excessive payload size
+    const truncatedStack = errorStack
+      ? errorStack.split("\n").slice(0, 20).join("\n")
+      : undefined;
+
+    // Build the error body with truncated details
+    const errorBody = truncatedStack
+      ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${truncatedStack}\n\`\`\``
       : `**Error:** ${errorMessage}`;
 
     try {
@@ -144,6 +162,36 @@ export class LinearClientAdapter implements LinearAdapter {
         linearSessionId: sessionId,
         originalError: errorMessage,
         reportError: reportErrorMessage,
+      });
+    }
+  }
+
+  async postElicitation(
+    sessionId: string,
+    body: string,
+    signal: "auth" | "select",
+    metadata?: SignalMetadata,
+  ): Promise<void> {
+    try {
+      await this.client.createAgentActivity({
+        agentSessionId: sessionId,
+        content: {
+          type: "elicitation",
+          body,
+          signalMetadata: metadata,
+        },
+        signal: mapSignal(signal),
+        ephemeral: false,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error({
+        message: "Failed to send elicitation",
+        stage: "linear",
+        linearSessionId: sessionId,
+        signal,
+        error: errorMessage,
       });
     }
   }

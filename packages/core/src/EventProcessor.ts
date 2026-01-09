@@ -424,6 +424,20 @@ Once everything passes, you can complete your work.`;
   }
 
   /**
+   * Post initial plan to Linear
+   */
+  private async postInitialPlan(linearSessionId: string): Promise<void> {
+    await this.linear.updatePlan(linearSessionId, [
+      { content: "Understanding the issue", status: "inProgress" },
+      { content: "Analyzing codebase", status: "pending" },
+      { content: "Planning implementation", status: "pending" },
+      { content: "Implementing changes", status: "pending" },
+      { content: "Running tests", status: "pending" },
+      { content: "Committing and creating PR", status: "pending" },
+    ]);
+  }
+
+  /**
    * Handle new session creation
    */
   private async handleCreated(
@@ -449,6 +463,9 @@ Once everything passes, you can complete your work.`;
       promptLength: prompt.length,
       hasPreviousContext: !!previousContext,
     });
+
+    // Post initial plan
+    await this.postInitialPlan(linearSessionId);
 
     // Send prompt with retry loop for commit guard
     await this.promptWithRetry(

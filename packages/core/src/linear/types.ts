@@ -1,13 +1,82 @@
 /**
- * Activity content for Linear
+ * Metadata for auth signal
  */
-export interface ActivityContent {
-  type: "thought" | "action" | "response" | "error" | "elicitation";
+export interface AuthSignalMetadata {
+  url: string;
+  userId?: string;
+  providerName?: string;
+}
+
+/**
+ * Metadata for select signal
+ */
+export interface SelectSignalMetadata {
+  options: string[];
+}
+
+/**
+ * Signal metadata for elicitation activities
+ */
+export type SignalMetadata = AuthSignalMetadata | SelectSignalMetadata;
+
+/**
+ * Base activity content for Linear
+ */
+interface BaseActivityContent {
   body?: string;
-  action?: string;
+}
+
+/**
+ * Thought activity - internal reasoning, ephemeral progress updates
+ */
+export interface ThoughtActivity extends BaseActivityContent {
+  type: "thought";
+}
+
+/**
+ * Action activity - tool invocations with optional results
+ */
+export interface ActionActivity extends BaseActivityContent {
+  type: "action";
+  action: string;
   parameter?: string;
   result?: string;
 }
+
+/**
+ * Response activity - completed work, final outputs
+ */
+export interface ResponseActivity extends BaseActivityContent {
+  type: "response";
+  body: string;
+}
+
+/**
+ * Error activity - failures with context
+ */
+export interface ErrorActivity extends BaseActivityContent {
+  type: "error";
+  body: string;
+}
+
+/**
+ * Elicitation activity - requesting user input/clarification
+ */
+export interface ElicitationActivity extends BaseActivityContent {
+  type: "elicitation";
+  body: string;
+  signalMetadata?: SignalMetadata;
+}
+
+/**
+ * Activity content for Linear - discriminated union
+ */
+export type ActivityContent =
+  | ThoughtActivity
+  | ActionActivity
+  | ResponseActivity
+  | ErrorActivity
+  | ElicitationActivity;
 
 /**
  * Plan item for Linear session
