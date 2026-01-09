@@ -188,9 +188,10 @@ export class EventProcessor {
       // Set external link to OpenCode UI
       // Format: /{base64_encoded_workdir}/session/{sessionId}
       // For local development, use localhost:4096 instead of the public webhook URL
-      const opcodeBaseUrl = workerUrl.includes('localhost') || workerUrl.includes('127.0.0.1')
-        ? 'http://localhost:4096'
-        : workerUrl;
+      const opcodeBaseUrl =
+        workerUrl.includes("localhost") || workerUrl.includes("127.0.0.1")
+          ? "http://localhost:4096"
+          : workerUrl;
       const encodedWorkdir = base64Encode(workdir);
       const externalLink = `${opcodeBaseUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
       await this.linear.setExternalLink(linearSessionId, externalLink);

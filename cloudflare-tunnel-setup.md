@@ -35,7 +35,7 @@ This will:
 Create `~/.cloudflared/config.yml`:
 
 ```yaml
-tunnel: 0d2577f8-b7f6-4839-a22a-990529fe9dac  # Your tunnel ID
+tunnel: 0d2577f8-b7f6-4839-a22a-990529fe9dac # Your tunnel ID
 credentials-file: /Users/jackblanc/.cloudflared/0d2577f8-b7f6-4839-a22a-990529fe9dac.json
 
 ingress:
@@ -204,13 +204,13 @@ With this setup, you have multiple security layers:
 
 ## Files and Configuration
 
-| File                                    | Description                      |
-| --------------------------------------- | -------------------------------- |
-| `~/.cloudflared/config.yml`             | Tunnel configuration             |
-| `~/.cloudflared/<TUNNEL_ID>.json`       | Tunnel credentials (keep secret) |
-| `docker-compose.yml`                    | Mounts config and credentials    |
-| `config.docker.json`                    | Linear OAuth and webhook secrets |
-| `.env`                                  | Environment variables (optional) |
+| File                              | Description                      |
+| --------------------------------- | -------------------------------- |
+| `~/.cloudflared/config.yml`       | Tunnel configuration             |
+| `~/.cloudflared/<TUNNEL_ID>.json` | Tunnel credentials (keep secret) |
+| `docker-compose.yml`              | Mounts config and credentials    |
+| `config.docker.json`              | Linear OAuth and webhook secrets |
+| `.env`                            | Environment variables (optional) |
 
 ## Alternative: Using Nix Environment
 

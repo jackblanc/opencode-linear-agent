@@ -97,10 +97,14 @@ export class LocalGitOperations implements GitOperations {
    */
   private getSessionWorkdir(sessionId: string, issueId?: string): string {
     // Extract repo name from remote URL (e.g., "reservations" from "https://github.com/jackblanc/reservations")
-    const repoName = this.remoteUrl.split('/').pop()?.replace(/\.git$/, '') || 'unknown';
+    const repoName =
+      this.remoteUrl
+        .split("/")
+        .pop()
+        ?.replace(/\.git$/, "") ?? "unknown";
 
     // If we have an issue ID, use it in the path, otherwise fall back to session ID
-    const dirName = issueId || sessionId;
+    const dirName = issueId ?? sessionId;
 
     return join(this.worktreesPath, repoName, dirName);
   }
