@@ -82,8 +82,8 @@ export interface EventProcessorConfig {
 }
 
 const DEFAULT_CONFIG: EventProcessorConfig = {
-  providerID: "anthropic",
-  modelID: "claude-sonnet-4-20250514",
+  providerID: "opencode",
+  modelID: "minimax-m2.1-free",
 };
 
 /**
@@ -187,8 +187,12 @@ export class EventProcessor {
 
       // Set external link to OpenCode UI
       // Format: /{base64_encoded_workdir}/session/{sessionId}
+      // For local development, use localhost:4096 instead of the public webhook URL
+      const opcodeBaseUrl = workerUrl.includes('localhost') || workerUrl.includes('127.0.0.1')
+        ? 'http://localhost:4096'
+        : workerUrl;
       const encodedWorkdir = base64Encode(workdir);
-      const externalLink = `${workerUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
+      const externalLink = `${opcodeBaseUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
       await this.linear.setExternalLink(linearSessionId, externalLink);
 
       if (event.action === "created") {

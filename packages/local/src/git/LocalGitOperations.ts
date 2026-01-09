@@ -93,9 +93,16 @@ export class LocalGitOperations implements GitOperations {
 
   /**
    * Get the working directory for a specific session
+   * Format: /worktrees/{repo}/{issue-id}
    */
-  private getSessionWorkdir(sessionId: string): string {
-    return join(this.worktreesPath, sessionId);
+  private getSessionWorkdir(sessionId: string, issueId?: string): string {
+    // Extract repo name from remote URL (e.g., "reservations" from "https://github.com/jackblanc/reservations")
+    const repoName = this.remoteUrl.split('/').pop()?.replace(/\.git$/, '') || 'unknown';
+
+    // If we have an issue ID, use it in the path, otherwise fall back to session ID
+    const dirName = issueId || sessionId;
+
+    return join(this.worktreesPath, repoName, dirName);
   }
 
   /**
@@ -149,7 +156,7 @@ export class LocalGitOperations implements GitOperations {
     existingBranch?: string,
     onProgress?: GitProgressCallback,
   ): Promise<WorktreeInfo> {
-    const workdir = this.getSessionWorkdir(sessionId);
+    const workdir = this.getSessionWorkdir(sessionId, issueId);
     const branchName =
       existingBranch ?? `linear-opencode-agent/${issueId}/${sessionId}`;
 
