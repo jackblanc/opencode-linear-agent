@@ -71,6 +71,7 @@ services:
     volumes:
       - ~/.cloudflared/config.yml:/etc/cloudflared/config.yml:ro
       - ~/.cloudflared/0d2577f8-b7f6-4839-a22a-990529fe9dac.json:/etc/cloudflared/credentials.json:ro
+      - ~/.cloudflared/cert.pem:/etc/cloudflared/cert.pem:ro
     networks:
       - linear-agent
 
