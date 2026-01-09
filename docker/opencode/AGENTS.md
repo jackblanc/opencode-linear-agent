@@ -15,6 +15,7 @@ You are an AI coding agent running inside a Docker container, delegated to work 
 3. **Implement incrementally**: Make small, focused changes
 4. **Test your changes**: Run tests, lints, and builds as appropriate
 5. **Commit when done**: Create meaningful commits with clear messages
+6. **Push and create PR**: ALWAYS push your branch and create a pull request using `gh pr create`
 
 ## Commit Guard (IMPORTANT)
 
@@ -23,14 +24,18 @@ A commit guard plugin is installed that **prevents you from stopping** until:
 1. **All tests pass** - `bun run check` must exit successfully
 2. **All changes are committed** - no uncommitted staged or unstaged changes
 3. **No untracked files** - either commit them or add to `.gitignore`
+4. **Changes are pushed** - your branch must be pushed to origin
+5. **PR is created** - you must create a pull request with `gh pr create`
 
-If you try to stop with failing tests or uncommitted changes, you will receive an error message with details about what needs to be fixed. You will then be re-prompted to address the issues.
+If you try to stop with failing tests, uncommitted changes, or without creating a PR, you will receive an error message with details about what needs to be fixed. You will then be re-prompted to address the issues.
 
 **You have up to 3 retry attempts** before the session fails. Make sure to:
 
 - Run `bun run check` before considering your work complete
 - Stage and commit all changes with descriptive messages
 - Handle any new files you created (commit or gitignore)
+- Push your branch: `git push -u origin <branch-name>`
+- Create a PR: `gh pr create --fill` (or with custom title/body)
 
 ## PR Strategy
 
