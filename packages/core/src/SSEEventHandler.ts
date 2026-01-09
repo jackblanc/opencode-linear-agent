@@ -450,18 +450,19 @@ export class SSEEventHandler {
       return;
     }
 
+    const plan: PlanItem[] = todos.map((todo) => ({
+      content: todo.content,
+      status: mapTodoStatus(todo.status),
+    }));
+
     console.info({
       message: "Syncing todos to plan",
       stage: "sse-handler",
       linearSessionId: this.linearSessionId,
       opencodeSessionId: this.opencodeSessionId,
       todoCount: todos.length,
+      plan: JSON.stringify(plan),
     });
-
-    const plan: PlanItem[] = todos.map((todo) => ({
-      content: todo.content,
-      status: mapTodoStatus(todo.status),
-    }));
 
     await this.linear.updatePlan(this.linearSessionId, plan);
   }
