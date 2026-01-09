@@ -8,19 +8,17 @@ This guide walks through setting up a Cloudflare Tunnel to expose the Linear web
 - `cloudflared` CLI installed locally ([download here](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/))
 - Docker and Docker Compose installed
 
-## Step 1: Authenticate with Cloudflare
+## Quick Setup
 
-Run the following command to authenticate `cloudflared` with your Cloudflare account:
+### Step 1: Authenticate with Cloudflare
 
 ```bash
 cloudflared tunnel login
 ```
 
-This will open a browser window where you can authorize cloudflared to access your Cloudflare account.
+This opens a browser window to authorize cloudflared.
 
-## Step 2: Create a Tunnel
-
-Create a new tunnel with a descriptive name:
+### Step 2: Create a Tunnel
 
 ```bash
 cloudflared tunnel create linear-webhook
@@ -28,96 +26,86 @@ cloudflared tunnel create linear-webhook
 
 This will:
 
-- Create a new tunnel in your Cloudflare account
-- Generate a credentials file at `~/.cloudflared/<TUNNEL_ID>.json`
-- Display the tunnel ID and credentials file path
+- Create a tunnel in your Cloudflare account
+- Generate credentials at `~/.cloudflared/<TUNNEL_ID>.json`
+- Display the tunnel ID (save this!)
 
-**Save the tunnel ID** - you'll need it in the next step.
+### Step 3: Create Configuration File
 
-## Step 3: Get Your Tunnel Token
+Create `~/.cloudflared/config.yml`:
 
-You can use either a token-based or file-based approach. For Docker Compose, we recommend the **token-based approach**:
+```yaml
+tunnel: 0d2577f8-b7f6-4839-a22a-990529fe9dac  # Your tunnel ID
+credentials-file: /Users/jackblanc/.cloudflared/0d2577f8-b7f6-4839-a22a-990529fe9dac.json
 
-### Option A: Token-Based (Recommended for Docker)
+ingress:
+  - hostname: linear-webhook.yourdomain.com
+    service: http://linear-webhook:3000
+  - service: http_status:404
+```
+
+Replace:
+
+- Tunnel ID with yours from step 2
+- Username in the credentials path
+- `yourdomain.com` with your actual domain
+
+### Step 4: Configure Public Hostname in Dashboard
 
 1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
 2. Navigate to **Networks** > **Tunnels**
-3. Find your `linear-webhook` tunnel
-4. Click **Configure**
-5. In the **Public Hostname** tab, click **Add a public hostname**:
-   - **Subdomain**: `linear-webhook` (or your preferred subdomain)
-   - **Domain**: Select your domain
-   - **Service**: `http://linear-webhook:3000`
-6. Save the configuration
-7. Go back to the tunnel overview and copy the **tunnel token** from the install command
+3. Click on your `linear-webhook` tunnel
+4. Click **Configure** tab
+5. In **Public Hostname** tab, click **Add a public hostname**:
+   - **Subdomain**: `linear-webhook`
+   - **Domain**: `yourdomain.com` (select from dropdown)
+   - **Service Type**: HTTP
+   - **URL**: `linear-webhook:3000`
+6. Click **Save hostname**
 
-The token will look like: `eyJhIjoiY...` (a long base64-encoded string)
+### Step 5: Start Docker Compose
 
-Add this to your `.env` file:
+The `docker-compose.yml` is already configured to use your config file:
 
 ```bash
-TUNNEL_TOKEN=eyJhIjoiY...
+docker compose up -d
 ```
 
-### Option B: File-Based (Alternative)
+### Step 6: Verify Tunnel Connection
 
-If you prefer using a credentials file instead:
+```bash
+# Check cloudflared logs
+docker compose logs -f cloudflared
 
-1. Copy the credentials file to your project:
+# You should see:
+# "Connection registered"
+# "Registered tunnel connection"
+```
 
-   ```bash
-   cp ~/.cloudflared/<TUNNEL_ID>.json ./cloudflared-credentials.json
-   ```
+## Configure Cloudflare Access for IP Allowlisting
 
-2. Create a `cloudflared-config.yml` file:
+Add IP-level access control to restrict webhook access to Linear's IPs only:
 
-   ```yaml
-   tunnel: <TUNNEL_ID>
-   credentials-file: /etc/cloudflared/credentials.json
-
-   ingress:
-     - hostname: linear-webhook.yourdomain.com
-       service: http://linear-webhook:3000
-     - service: http_status:404 # Fallback rule (required)
-   ```
-
-3. Update `docker-compose.yml` to use the config file instead of token:
-   ```yaml
-   cloudflared:
-     image: cloudflare/cloudflared:latest
-     restart: unless-stopped
-     command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
-     volumes:
-       - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
-       - ./cloudflared-credentials.json:/etc/cloudflared/credentials.json:ro
-     networks:
-       - linear-agent
-   ```
-
-## Step 4: Configure Cloudflare Access for IP Allowlisting
-
-Now that your tunnel is set up, add IP restrictions via Cloudflare Access:
+### Step 1: Create Access Application
 
 1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
 2. Navigate to **Access** > **Applications**
 3. Click **Add an application** > **Self-hosted**
-4. Configure the application:
+4. Configure:
    - **Application name**: `Linear Webhook`
-   - **Session duration**: 24 hours (or your preference)
-   - **Application domain**: Select the domain and subdomain you configured (e.g., `linear-webhook.yourdomain.com`)
+   - **Session duration**: 24 hours
+   - **Application domain**: `linear-webhook.yourdomain.com`
 
-5. Add an **Allow** policy:
+### Step 2: Add Allow Policy
+
+1. Click **Add a policy**
+2. Configure:
    - **Policy name**: `Linear Webhook IPs`
    - **Action**: Allow
-   - **Configure rules**:
-     - **Selector**: IP ranges
-     - **Value**: Add Linear's webhook IP addresses (see below)
-
-6. Save the policy
-
-### Linear Webhook IP Addresses
-
-Add these IP addresses to your Cloudflare Access policy:
+3. Under **Configure rules**:
+   - Click **Add rule**
+   - Select **IP ranges**
+   - Add Linear's webhook IP addresses (one per line):
 
 ```
 35.231.147.226
@@ -128,104 +116,113 @@ Add these IP addresses to your Cloudflare Access policy:
 35.222.25.142
 ```
 
-**Note**: Linear may occasionally update this list. Check [Linear's webhook documentation](https://linear.app/developers/webhooks) periodically for updates.
+4. Click **Save policy**
+5. Click **Save application**
 
-### Additional Security (Optional)
+Source: [Linear webhook documentation](https://linear.app/developers/webhooks)
 
-You can add additional policies to strengthen security:
+## Update Linear Webhook Configuration
 
-- **Service Tokens**: Generate a service token for additional authentication
-- **Geolocation restrictions**: Restrict to specific countries
-- **Device posture**: Require specific device configurations (if using Cloudflare WARP)
+Configure your Linear webhook to use the tunnel URL:
 
-## Step 5: Update Linear Webhook Configuration
-
-Update your Linear webhook URL to point to your Cloudflare Tunnel domain:
-
-```
-https://linear-webhook.yourdomain.com/webhook/linear
-```
-
-Configure this in your Linear workspace:
-
-1. Go to **Settings** > **Integrations** > **Webhooks**
-2. Create or update your webhook with the new URL
-3. The webhook secret should match the `LINEAR_WEBHOOK_SECRET` in your `config.docker.json`
-
-## Step 6: Start the Services
-
-With your `TUNNEL_TOKEN` configured in `.env`, start the Docker Compose stack:
-
-```bash
-docker compose up -d
-```
+1. Go to your Linear workspace **Settings** > **Integrations** > **Webhooks**
+2. Create or update webhook with URL: `https://linear-webhook.yourdomain.com/webhook/linear`
+3. The webhook secret should match `LINEAR_WEBHOOK_SECRET` in your `config.docker.json`
 
 ## Verification
 
-Check that the tunnel is running and connected:
+### Test Tunnel Connection
 
 ```bash
-# View cloudflared logs
+# Check if tunnel is running
+docker compose ps cloudflared
+
+# View tunnel logs
 docker compose logs -f cloudflared
 
-# You should see:
-# "Connection <UUID> registered"
-# "Registered tunnel connection"
-```
-
-Test the webhook endpoint:
-
-```bash
+# Test webhook endpoint (may be blocked by Access if not from Linear IPs)
 curl https://linear-webhook.yourdomain.com/health
 ```
 
-You should receive a response (or be blocked by Cloudflare Access if testing from an IP not in the allowlist).
+### Test from Linear
+
+Trigger a test webhook from Linear to verify:
+
+1. Webhook reaches your server
+2. Cloudflare Access allows Linear's IPs
+3. OpenCode sessions start correctly
 
 ## Troubleshooting
 
 ### Tunnel not connecting
 
-- Verify `TUNNEL_TOKEN` is correct in `.env`
-- Check cloudflared logs: `docker compose logs cloudflared`
-- Ensure the tunnel is active in Cloudflare Dashboard
+**Check credentials path:**
+
+```bash
+# Verify files exist
+ls -la ~/.cloudflared/config.yml
+ls -la ~/.cloudflared/*.json
+```
+
+**Check config syntax:**
+
+```bash
+# Validate YAML syntax
+cat ~/.cloudflared/config.yml
+```
+
+**View logs:**
+
+```bash
+docker compose logs cloudflared
+```
 
 ### Cloudflare Access blocking all traffic
 
 - Verify IP addresses are correctly configured in the Access policy
-- Check that the policy action is set to "Allow"
-- Ensure the application domain matches your tunnel hostname
+- Check that policy action is set to "Allow"
+- Ensure application domain matches your tunnel hostname exactly
 
 ### Webhooks not received
 
 - Verify Linear webhook URL is correct
-- Check webhook signature verification in `config.docker.json`
-- Review `linear-webhook` container logs: `docker compose logs linear-webhook`
+- Check webhook signature in `config.docker.json`
+- Review `linear-webhook` container logs:
+  ```bash
+  docker compose logs linear-webhook
+  ```
 
 ## Security Layers
 
-With this setup, you now have multiple security layers:
+With this setup, you have multiple security layers:
 
-1. **IP Allowlisting** - Only Linear's IPs can reach the webhook endpoint
-2. **Webhook Signature Verification** - HMAC-SHA256 signature validation
+1. **IP Allowlisting** - Only Linear's IPs can reach the webhook endpoint (Cloudflare Access)
+2. **Webhook Signature Verification** - HMAC-SHA256 signature validation (Linear SDK)
 3. **Organization ID Allowlist** - Only your Linear workspace can trigger actions
 4. **Cloudflare DDoS Protection** - Built-in protection against attacks
+5. **Session Isolation** - Each OpenCode session runs in isolated git worktree
 
-## Migrating from Tailscale Funnel
+## Files and Configuration
 
-If you're migrating from the previous Tailscale Funnel setup:
+| File                                    | Description                      |
+| --------------------------------------- | -------------------------------- |
+| `~/.cloudflared/config.yml`             | Tunnel configuration             |
+| `~/.cloudflared/<TUNNEL_ID>.json`       | Tunnel credentials (keep secret) |
+| `docker-compose.yml`                    | Mounts config and credentials    |
+| `config.docker.json`                    | Linear OAuth and webhook secrets |
+| `.env`                                  | Environment variables (optional) |
 
-1. Remove Tailscale-specific environment variables from `.env`:
-   - `TS_AUTHKEY`
-   - `TAILSCALE_HOSTNAME`
+## Alternative: Using Nix Environment
 
-2. Add Cloudflare tunnel token:
+If you set up the Nix environment integration (`~/environment`), you can run the tunnel natively on macOS without Docker:
 
-   ```bash
-   TUNNEL_TOKEN=eyJhIjoiY...
-   ```
+```bash
+# Source environment
+source ~/environment/.env.cloudflared
 
-3. The `tailscale-serve.json` file is no longer needed and can be removed
+# Rebuild home-manager (enables launchd service)
+cd ~/environment
+home-manager switch
+```
 
-4. Update Linear webhook URL from Tailscale domain to Cloudflare domain
-
-5. Restart services: `docker compose down && docker compose up -d`
+The tunnel will auto-start on login. See `~/environment/docs/cloudflare-tunnel.md` for details.
