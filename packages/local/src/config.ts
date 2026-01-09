@@ -20,7 +20,8 @@ export interface RepoConfig {
  */
 export interface Config {
   port: number;
-  tailscaleHostname: string;
+  /** Public hostname for this service (e.g., via Cloudflare Tunnel) */
+  publicHostname: string;
   opencode: {
     url: string;
   };
@@ -87,7 +88,7 @@ function validateConfig(config: unknown): config is Config {
   if (typeof config.port !== "number") {
     return false;
   }
-  if (typeof config.tailscaleHostname !== "string") {
+  if (typeof config.publicHostname !== "string") {
     return false;
   }
 
@@ -265,8 +266,8 @@ export async function loadConfig(): Promise<Config> {
 
 /**
  * Get the worker URL from config
- * Tailscale Funnel serves on standard HTTPS port 443, so no port needed
+ * Public hostname serves on standard HTTPS port 443, so no port needed
  */
 export function getWorkerUrl(config: Config): string {
-  return `https://${config.tailscaleHostname}`;
+  return `https://${config.publicHostname}`;
 }
