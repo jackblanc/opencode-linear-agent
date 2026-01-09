@@ -176,13 +176,21 @@ export class LocalGitOperations implements GitOperations {
     // Step 1: Ensure main repo exists
     await this.ensureRepoCloned(this.remoteUrl, onProgress);
 
-    // Step 2: Check if worktree already exists
+    // Step 2: Check if worktree already exists and is valid
     await onProgress?.("checking_worktree");
 
     const worktreeGit = Bun.file(join(workdir, ".git"));
-    if (await worktreeGit.exists()) {
+    const worktreeDirExists = await worktreeGit.exists();
+
+    // Check if worktree is registered with git
+    const listResult = await exec(["git", "worktree", "list", "--porcelain"], {
+      cwd: this.repoPath,
+    });
+    const isWorktreeRegistered = listResult.stdout.includes(workdir);
+
+    if (worktreeDirExists && isWorktreeRegistered) {
       console.info({
-        message: "Worktree already exists",
+        message: "Worktree already exists and is valid",
         stage: "git",
         workdir,
         branchName,
@@ -190,11 +198,38 @@ export class LocalGitOperations implements GitOperations {
       return { workdir, branchName };
     }
 
+    // Handle corrupted states
+    if (worktreeDirExists && !isWorktreeRegistered) {
+      console.warn({
+        message: "Worktree directory exists but is not registered, removing",
+        stage: "git",
+        workdir,
+      });
+      const { rm } = await import("node:fs/promises");
+      await rm(workdir, { recursive: true, force: true });
+    }
+
+    if (!worktreeDirExists && isWorktreeRegistered) {
+      console.warn({
+        message: "Worktree is registered but directory missing, pruning",
+        stage: "git",
+        workdir,
+      });
+      await exec(["git", "worktree", "prune"], { cwd: this.repoPath });
+    }
+
     // Step 3: Create worktrees directory
     await mkdir(this.worktreesPath, { recursive: true });
 
-    // Step 4: Fetch latest from remote
+    // Step 4: Check if branch exists locally or on remote
     await onProgress?.("checking_branch");
+
+    // Check if branch exists locally
+    const localBranchResult = await exec(
+      ["git", "rev-parse", "--verify", `refs/heads/${branchName}`],
+      { cwd: this.repoPath },
+    );
+    const branchExistsLocally = localBranchResult.exitCode === 0;
 
     // Check if branch exists on remote
     const fetchResult = await exec(["git", "fetch", "origin", branchName], {
@@ -203,24 +238,36 @@ export class LocalGitOperations implements GitOperations {
     const branchExistsOnRemote = fetchResult.exitCode === 0;
 
     console.info({
-      message: "Checked branch existence on remote",
+      message: "Checked branch existence",
       stage: "git",
       branchName,
+      existsLocally: branchExistsLocally,
       existsOnRemote: branchExistsOnRemote,
     });
 
     // Step 5: Create worktree
     await onProgress?.("creating_worktree");
 
-    if (branchExistsOnRemote) {
+    if (branchExistsLocally) {
       console.info({
-        message: "Resuming from existing remote branch",
+        message: "Checking out existing local branch",
+        stage: "git",
+        branchName,
+      });
+      await execWithLogging(
+        ["git", "worktree", "add", workdir, branchName],
+        "worktree-add-local",
+        { cwd: this.repoPath },
+      );
+    } else if (branchExistsOnRemote) {
+      console.info({
+        message: "Checking out existing remote branch",
         stage: "git",
         branchName,
       });
       await execWithLogging(
         ["git", "worktree", "add", workdir, `origin/${branchName}`],
-        "worktree-add-existing",
+        "worktree-add-remote",
         { cwd: this.repoPath },
       );
     } else {

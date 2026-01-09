@@ -57,15 +57,16 @@ export const CommitGuardPlugin: Plugin = async ({ $ }) => {
         }
 
         // Step 4: Check if branch is pushed to remote
-        const currentBranch =
-          await $`git rev-parse --abbrev-ref HEAD`.text().then((s) => s.trim());
-        const localCommit = await $`git rev-parse HEAD`.text().then((s) =>
-          s.trim(),
-        );
-        const remoteCommit =
-          await $`git rev-parse origin/${currentBranch}`.nothrow().text().then(
-            (s) => s.trim(),
-          );
+        const currentBranch = await $`git rev-parse --abbrev-ref HEAD`
+          .text()
+          .then((s) => s.trim());
+        const localCommit = await $`git rev-parse HEAD`
+          .text()
+          .then((s) => s.trim());
+        const remoteCommit = await $`git rev-parse origin/${currentBranch}`
+          .nothrow()
+          .text()
+          .then((s) => s.trim());
 
         if (!remoteCommit || localCommit !== remoteCommit) {
           errors.push(

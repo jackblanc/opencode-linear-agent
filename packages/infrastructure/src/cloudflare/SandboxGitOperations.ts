@@ -182,22 +182,55 @@ export class SandboxGitOperations implements GitOperations {
     // Step 1: Ensure main repo is cloned
     await this.ensureRepoCloned(this.repoUrl, onProgress);
 
-    // Step 2: Check if worktree already exists
+    // Step 2: Check if worktree already exists and is valid
     await onProgress?.("checking_worktree");
 
-    const worktreeExists = await this.sandbox.exists(
+    const worktreeDirExists = await this.sandbox.exists(
       this.organizationId,
       `${workdir}/.git`,
     );
 
-    if (worktreeExists) {
+    // Check if worktree is registered with git
+    const listResult = await this.sandbox.exec(
+      this.organizationId,
+      `cd ${REPO_DIR} && git worktree list --porcelain`,
+      { timeout: 30000 },
+    );
+    const isWorktreeRegistered = listResult.stdout.includes(workdir);
+
+    if (worktreeDirExists && isWorktreeRegistered) {
       console.info({
-        message: "Worktree already exists",
+        message: "Worktree already exists and is valid",
         stage: "git",
         workdir,
         branchName,
       });
       return { workdir, branchName };
+    }
+
+    // Handle corrupted states
+    if (worktreeDirExists && !isWorktreeRegistered) {
+      console.warn({
+        message: "Worktree directory exists but is not registered, removing",
+        stage: "git",
+        workdir,
+      });
+      await this.sandbox.exec(this.organizationId, `rm -rf ${workdir}`, {
+        timeout: 30000,
+      });
+    }
+
+    if (!worktreeDirExists && isWorktreeRegistered) {
+      console.warn({
+        message: "Worktree is registered but directory missing, pruning",
+        stage: "git",
+        workdir,
+      });
+      await this.sandbox.exec(
+        this.organizationId,
+        `cd ${REPO_DIR} && git worktree prune`,
+        { timeout: 30000 },
+      );
     }
 
     // Step 3: Create sessions directory
@@ -209,29 +242,52 @@ export class SandboxGitOperations implements GitOperations {
       "worktree-mkdir",
     );
 
-    // Step 4: Check if branch exists on remote
+    // Step 4: Check if branch exists locally or on remote
     await onProgress?.("checking_branch");
 
-    const branchExistsResult = await this.sandbox.exec(
+    // Check if branch exists locally
+    const localBranchResult = await this.sandbox.exec(
+      this.organizationId,
+      `cd ${REPO_DIR} && git rev-parse --verify refs/heads/${branchName} 2>/dev/null && echo "exists" || echo "new"`,
+      { timeout: 30000 },
+    );
+    const branchExistsLocally = localBranchResult.stdout.trim() === "exists";
+
+    // Check if branch exists on remote
+    const remoteBranchResult = await this.sandbox.exec(
       this.organizationId,
       `cd ${REPO_DIR} && git fetch origin ${branchName} 2>/dev/null && echo "exists" || echo "new"`,
       { timeout: 60000 },
     );
-    const branchExists = branchExistsResult.stdout.trim() === "exists";
+    const branchExistsOnRemote = remoteBranchResult.stdout.trim() === "exists";
 
     console.info({
-      message: "Checked branch existence on remote",
+      message: "Checked branch existence",
       stage: "git",
       branchName,
-      existsOnRemote: branchExists,
+      existsLocally: branchExistsLocally,
+      existsOnRemote: branchExistsOnRemote,
     });
 
     // Step 5: Create worktree
     await onProgress?.("creating_worktree");
 
-    if (branchExists) {
+    if (branchExistsLocally) {
       console.info({
-        message: "Resuming from existing remote branch",
+        message: "Checking out existing local branch",
+        stage: "git",
+        branchName,
+      });
+      await execWithLogging(
+        this.sandbox,
+        this.organizationId,
+        `cd ${REPO_DIR} && git worktree add ${workdir} ${branchName}`,
+        60000,
+        "worktree-add-local",
+      );
+    } else if (branchExistsOnRemote) {
+      console.info({
+        message: "Checking out existing remote branch",
         stage: "git",
         branchName,
       });
@@ -240,7 +296,7 @@ export class SandboxGitOperations implements GitOperations {
         this.organizationId,
         `cd ${REPO_DIR} && git worktree add ${workdir} origin/${branchName}`,
         60000,
-        "worktree-add-existing",
+        "worktree-add-remote",
       );
     } else {
       console.info({
