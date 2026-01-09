@@ -125,6 +125,52 @@ function truncateOutput(output: string): string {
 }
 
 /**
+ * Get contextual thought message for tool execution
+ */
+function getToolThought(
+  toolName: string,
+  input: Record<string, unknown>,
+): string | null {
+  const toolLower = toolName.toLowerCase();
+  const command = getString(input, "command");
+
+  // Bash commands
+  if (toolLower === "bash" && command) {
+    if (command.includes("test") || command.includes("bun run check")) {
+      return "Running tests to verify changes...";
+    }
+    if (command.includes("gh pr create")) {
+      return "Creating pull request...";
+    }
+    if (command.includes("git commit")) {
+      return "Committing changes...";
+    }
+    if (command.includes("git push")) {
+      return "Pushing changes to remote...";
+    }
+    if (command.includes("npm install") || command.includes("bun install")) {
+      return "Installing dependencies...";
+    }
+  }
+
+  // Search operations
+  if (toolLower === "grep") {
+    return "Searching codebase...";
+  }
+
+  if (toolLower === "glob") {
+    return "Finding relevant files...";
+  }
+
+  // Task delegation
+  if (toolLower === "task") {
+    return "Delegating subtask...";
+  }
+
+  return null;
+}
+
+/**
  * Handles SSE events from OpenCode and posts activities to Linear.
  *
  * This replaces the plugin-based approach with a pure SDK/SSE approach,
@@ -136,6 +182,22 @@ export class SSEEventHandler {
 
   /** Track tool parts we've seen in running state */
   private runningTools = new Set<string>();
+
+  /** Track files modified during session */
+  private filesModified = new Set<string>();
+
+  /** Track PR URL if created */
+  private prUrl: string | null = null;
+
+  /** Track test results */
+  private testsRan = false;
+  private testsPassed = false;
+
+  /** Track agent's last text response */
+  private agentFinalMessage: string | null = null;
+
+  /** Track if session had errors that might need user intervention */
+  private hadErrors = false;
 
   constructor(
     private readonly linear: LinearAdapter,
@@ -221,6 +283,16 @@ export class SSEEventHandler {
       }
       this.runningTools.add(id);
 
+      // Post contextual thought if this is a meaningful operation
+      const thought = getToolThought(tool, state.input);
+      if (thought) {
+        await this.linear.postActivity(
+          this.linearSessionId,
+          { type: "thought", body: thought },
+          true, // ephemeral - will be replaced by the action result
+        );
+      }
+
       console.info({
         message: "Tool starting",
         stage: "sse-handler",
@@ -241,6 +313,36 @@ export class SSEEventHandler {
     } else if (state.status === "completed") {
       // Clean up running state tracking
       this.runningTools.delete(id);
+
+      // Track file modifications
+      const toolLower = tool.toLowerCase();
+      if (toolLower === "edit" || toolLower === "write") {
+        const filePath =
+          getString(state.input, "filePath") ?? getString(state.input, "path");
+        if (filePath) {
+          this.filesModified.add(filePath);
+        }
+      }
+
+      // Track PR creation
+      if (toolLower === "bash") {
+        const command = getString(state.input, "command");
+        if (command?.includes("gh pr create")) {
+          // Extract PR URL from output (gh pr create outputs the URL)
+          const urlMatch = state.output.match(
+            /https:\/\/github\.com\/[^\s]+\/pull\/\d+/,
+          );
+          if (urlMatch) {
+            this.prUrl = urlMatch[0];
+          }
+        }
+        // Track test execution
+        if (command?.includes("test") || command?.includes("bun run check")) {
+          this.testsRan = true;
+          this.testsPassed =
+            !state.output.includes("FAIL") && !state.output.includes("Error");
+        }
+      }
 
       console.info({
         message: "Tool completed",
@@ -264,6 +366,9 @@ export class SSEEventHandler {
     } else if (state.status === "error") {
       // Clean up running state tracking
       this.runningTools.delete(id);
+
+      // Track errors for continue signal logic
+      this.hadErrors = true;
 
       console.info({
         message: "Tool error",
@@ -312,6 +417,9 @@ export class SSEEventHandler {
     if (!time?.end) {
       return;
     }
+
+    // Track the agent's final message
+    this.agentFinalMessage = text;
 
     console.info({
       message: "Text complete",
@@ -405,20 +513,92 @@ export class SSEEventHandler {
   }
 
   /**
-   * Handle session.idle - send Stop signal to Linear
+   * Handle session.idle - send appropriate signal to Linear
    */
   private async handleSessionIdle(): Promise<void> {
+    // Determine if session should continue or stop
+    // Continue if: tests failed, had errors, or no substantial work done
+    const shouldContinue =
+      (this.testsRan && !this.testsPassed) ||
+      this.hadErrors ||
+      (this.filesModified.size === 0 && !this.prUrl);
+
+    const signal = shouldContinue ? "continue" : "stop";
+
     console.info({
-      message: "Session idle, sending Stop signal",
+      message: `Session idle, sending ${signal} signal`,
       stage: "sse-handler",
       linearSessionId: this.linearSessionId,
       opencodeSessionId: this.opencodeSessionId,
+      testsRan: this.testsRan,
+      testsPassed: this.testsPassed,
+      hadErrors: this.hadErrors,
+      filesModified: this.filesModified.size,
+      signal,
     });
+
+    // Build rich completion message
+    const summaryParts: string[] = [];
+
+    // Include agent's final message if available
+    if (this.agentFinalMessage) {
+      summaryParts.push(this.agentFinalMessage);
+      summaryParts.push("\n---\n");
+    }
+
+    summaryParts.push("## Summary");
+
+    // Files modified
+    if (this.filesModified.size > 0) {
+      summaryParts.push(
+        `\n**Files modified:** ${this.filesModified.size} file${this.filesModified.size === 1 ? "" : "s"}`,
+      );
+      if (this.filesModified.size <= 5) {
+        summaryParts.push(
+          Array.from(this.filesModified)
+            .map((f) => `- \`${f}\``)
+            .join("\n"),
+        );
+      }
+    }
+
+    // Test results
+    if (this.testsRan) {
+      const testStatus = this.testsPassed ? "✅ Passed" : "❌ Failed";
+      summaryParts.push(`\n**Tests:** ${testStatus}`);
+    }
+
+    // PR link
+    if (this.prUrl) {
+      summaryParts.push(`\n**Pull Request:** ${this.prUrl}`);
+    }
+
+    // Add guidance if continuing
+    if (shouldContinue) {
+      summaryParts.push(
+        "\n\n_Session paused. You can provide additional guidance or let me continue._",
+      );
+    }
+
+    // Default message if no summary parts
+    if (
+      summaryParts.length === 0 ||
+      (summaryParts.length === 1 && !this.agentFinalMessage)
+    ) {
+      summaryParts.push(
+        shouldContinue
+          ? "Paused. Awaiting further guidance."
+          : "Task completed.",
+      );
+    }
+
+    const completionMessage = summaryParts.join("\n");
 
     await this.linear.postActivity(
       this.linearSessionId,
-      { type: "response", body: "Task completed." },
+      { type: "response", body: completionMessage },
       false, // persistent
+      signal, // Signal completion or continuation to Linear
     );
   }
 
