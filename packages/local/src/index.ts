@@ -1,9 +1,9 @@
 /**
  * Local server entry point for Linear OpenCode Agent
  *
- * This server runs on your local machine (accessible via Tailscale) and handles:
+ * This server runs in Docker and handles:
  * - Linear OAuth flow
- * - Linear webhooks
+ * - Linear webhooks (exposed publicly via Cloudflare Tunnel)
  * - Event processing (directly, no queue)
  *
  * Prerequisites:
@@ -40,15 +40,22 @@ import { join } from "node:path";
 
 /**
  * Extract client IP from request headers
- * Tailscale Funnel sets X-Forwarded-For header
+ * Cloudflare Tunnel sets CF-Connecting-IP header with the original client IP
  */
 function getClientIp(request: Request): string | null {
-  // X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+  // Cloudflare sets CF-Connecting-IP with the original client IP
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) {
+    return cfIp;
+  }
+
+  // Fallback to X-Forwarded-For (can contain multiple IPs: "client, proxy1, proxy2")
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
     const firstIp = xff.split(",")[0].trim();
     return firstIp || null;
   }
+
   return null;
 }
 
@@ -280,7 +287,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     message: "Configuration loaded",
     stage: "startup",
     port: config.port,
-    tailscaleHostname: config.tailscaleHostname,
+    publicHostname: config.publicHostname,
     opencodeUrl: config.opencode.url,
     configuredRepos,
     defaultRepo: config.defaultRepo,
@@ -325,7 +332,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 Linear OpenCode Agent (Local) running!
 
   Local:    http://localhost:${config.port}
-  Tailscale: ${workerUrl}
+  Public:   ${workerUrl}
 
   Webhook URL: ${workerUrl}/api/webhook/linear
   OAuth URL:   ${workerUrl}/api/oauth/authorize
