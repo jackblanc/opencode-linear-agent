@@ -65,18 +65,45 @@ function getString(input: Record<string, unknown>, key: string): string | null {
 }
 
 /**
+ * Convert an absolute path to a relative path from workdir
+ * Makes logs more readable by removing the long worktree prefix
+ */
+function toRelativePath(absolutePath: string, workdir: string | null): string {
+  if (!workdir || !absolutePath.startsWith(workdir)) {
+    // If no workdir or path doesn't start with it, try to extract just the repo-relative part
+    // Worktree paths look like: /home/user/.local/share/opencode/worktree/<hash>/<issue-slug>/...
+    const worktreeMatch = absolutePath.match(/\/worktree\/[^/]+\/[^/]+\/(.+)$/);
+    if (worktreeMatch) {
+      return worktreeMatch[1];
+    }
+    return absolutePath;
+  }
+
+  // Remove workdir prefix and leading slash
+  let relative = absolutePath.slice(workdir.length);
+  if (relative.startsWith("/")) {
+    relative = relative.slice(1);
+  }
+  return relative || absolutePath;
+}
+
+/**
  * Extract parameter from tool input for display
  */
 function extractToolParameter(
   toolName: string,
   input: Record<string, unknown>,
+  workdir: string | null = null,
 ): string {
   const key = toolName.toLowerCase();
   switch (key) {
     case "read":
     case "edit":
-    case "write":
-      return getString(input, "filePath") ?? getString(input, "path") ?? "file";
+    case "write": {
+      const filePath =
+        getString(input, "filePath") ?? getString(input, "path") ?? "file";
+      return toRelativePath(filePath, workdir);
+    }
     case "bash":
       return getString(input, "command") ?? "command";
     case "glob":
@@ -206,6 +233,7 @@ export class SSEEventHandler {
     private readonly opencodeSessionId: string,
     private readonly opcodeClient: OpencodeClient,
     private readonly log: Logger,
+    private readonly workdir: string | null = null,
   ) {}
 
   /**
@@ -302,7 +330,7 @@ export class SSEEventHandler {
         {
           type: "action",
           action: getToolActionName(tool, false),
-          parameter: extractToolParameter(tool, state.input),
+          parameter: extractToolParameter(tool, state.input, this.workdir),
         },
         false, // persistent
       );
@@ -310,13 +338,13 @@ export class SSEEventHandler {
       // Clean up running state tracking
       this.runningTools.delete(id);
 
-      // Track file modifications
+      // Track file modifications (use relative path for display)
       const toolLower = tool.toLowerCase();
       if (toolLower === "edit" || toolLower === "write") {
         const filePath =
           getString(state.input, "filePath") ?? getString(state.input, "path");
         if (filePath) {
-          this.filesModified.add(filePath);
+          this.filesModified.add(toRelativePath(filePath, this.workdir));
         }
       }
 
@@ -350,7 +378,7 @@ export class SSEEventHandler {
         {
           type: "action",
           action: getToolActionName(tool, true),
-          parameter: extractToolParameter(tool, state.input),
+          parameter: extractToolParameter(tool, state.input, this.workdir),
           result: truncateOutput(state.output),
         },
         false, // persistent
@@ -369,7 +397,7 @@ export class SSEEventHandler {
         {
           type: "action",
           action: getToolActionName(tool, true),
-          parameter: extractToolParameter(tool, state.input),
+          parameter: extractToolParameter(tool, state.input, this.workdir),
           result: `Error: ${truncateOutput(state.error)}`,
         },
         false, // persistent
@@ -478,24 +506,27 @@ export class SSEEventHandler {
   }
 
   /**
-   * Handle session.idle - send appropriate signal to Linear
+   * Handle session.idle - send appropriate activity to Linear
+   *
+   * Based on Linear's docs:
+   * - `response` type indicates work is complete (no signal needed)
+   * - `elicitation` type requests user input when agent needs guidance
+   * - Signals like `stop` are human-to-agent only (for prompt activities)
    */
   private async handleSessionIdle(): Promise<void> {
-    // Determine if session should continue or stop
-    // Continue if: tests failed, had errors, or no substantial work done
-    const shouldContinue =
+    // Determine if session needs user input to continue
+    // Request input if: tests failed, had errors, or no substantial work done
+    const needsUserInput =
       (this.testsRan && !this.testsPassed) ||
       this.hadErrors ||
       (this.filesModified.size === 0 && !this.prUrl);
 
-    const signal = shouldContinue ? "continue" : "stop";
-
-    this.log.info(`Session idle, sending ${signal} signal`, {
+    this.log.info("Session idle", {
       testsRan: this.testsRan,
       testsPassed: this.testsPassed,
       hadErrors: this.hadErrors,
       filesModified: this.filesModified.size,
-      signal,
+      needsUserInput,
     });
 
     // Build rich completion message
@@ -534,8 +565,8 @@ export class SSEEventHandler {
       summaryParts.push(`\n**Pull Request:** ${this.prUrl}`);
     }
 
-    // Add guidance if continuing
-    if (shouldContinue) {
+    // Add guidance if needs user input
+    if (needsUserInput) {
       summaryParts.push(
         "\n\n_Session paused. You can provide additional guidance or let me continue._",
       );
@@ -547,7 +578,7 @@ export class SSEEventHandler {
       (summaryParts.length === 1 && !this.agentFinalMessage)
     ) {
       summaryParts.push(
-        shouldContinue
+        needsUserInput
           ? "Paused. Awaiting further guidance."
           : "Task completed.",
       );
@@ -555,12 +586,21 @@ export class SSEEventHandler {
 
     const completionMessage = summaryParts.join("\n");
 
-    await this.linear.postActivity(
-      this.linearSessionId,
-      { type: "response", body: completionMessage },
-      false, // persistent
-      signal, // Signal completion or continuation to Linear
-    );
+    if (needsUserInput) {
+      // Use elicitation to request user input - session stays active
+      await this.linear.postActivity(
+        this.linearSessionId,
+        { type: "elicitation", body: completionMessage },
+        false, // persistent
+      );
+    } else {
+      // Use response to indicate work is complete
+      await this.linear.postActivity(
+        this.linearSessionId,
+        { type: "response", body: completionMessage },
+        false, // persistent
+      );
+    }
   }
 
   /**

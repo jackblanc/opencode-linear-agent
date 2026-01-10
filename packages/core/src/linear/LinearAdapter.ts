@@ -6,14 +6,15 @@ import type {
 } from "./types";
 
 /**
- * Signal to send with an activity
+ * Agent-to-human signals for elicitation activities
  *
- * - stop: Session is complete, no further work expected
- * - continue: Session paused but can resume with more input
+ * Per Linear docs, these are the only valid signals an agent can send:
  * - auth: Waiting for user to authenticate/link account
  * - select: Waiting for user to select from options
+ *
+ * Note: "stop" and "continue" are human-to-agent signals only
  */
-export type ActivitySignal = "stop" | "continue" | "auth" | "select";
+export type ElicitationSignal = "auth" | "select";
 
 /**
  * Adapter interface for Linear API operations
@@ -21,12 +22,14 @@ export type ActivitySignal = "stop" | "continue" | "auth" | "select";
 export interface LinearAdapter {
   /**
    * Post an activity to a Linear session
+   *
+   * Note: Signals are not used with regular activities. Use postElicitation
+   * for activities that require user input with auth/select signals.
    */
   postActivity(
     sessionId: string,
     content: ActivityContent,
     ephemeral?: boolean,
-    signal?: ActivitySignal,
   ): Promise<void>;
 
   /**
@@ -57,7 +60,7 @@ export interface LinearAdapter {
   postElicitation(
     sessionId: string,
     body: string,
-    signal: "auth" | "select",
+    signal: ElicitationSignal,
     metadata?: SignalMetadata,
   ): Promise<void>;
 

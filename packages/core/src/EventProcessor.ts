@@ -16,6 +16,18 @@ import { Log, type Logger } from "./logger";
 const MAX_COMMIT_GUARD_RETRIES = 3;
 
 /**
+ * High-frequency events that should be DEBUG level
+ */
+const DEBUG_EVENTS = new Set([
+  "message.part.updated",
+  "message.updated",
+  "session.updated",
+  "session.diff",
+  "session.status",
+  "lsp.client.diagnostics",
+]);
+
+/**
  * Log an OpenCode event to Worker logs for observability
  */
 function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
@@ -35,9 +47,11 @@ function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
     }
   }
 
-  // Use error level for session errors, info for everything else
+  // Use appropriate log level based on event type
   if (event.type === "session.error") {
     log.error(`OpenCode: ${event.type}`, extra);
+  } else if (DEBUG_EVENTS.has(event.type)) {
+    log.debug(`OpenCode: ${event.type}`, extra);
   } else {
     log.info(`OpenCode: ${event.type}`, extra);
   }
@@ -253,6 +267,7 @@ export class EventProcessor {
       opencodeSessionId,
       this.opencodeClient,
       log.clone().tag("service", "sse-handler"),
+      workdir,
     );
 
     let finalResult: SSEEventResult = { action: "break" };

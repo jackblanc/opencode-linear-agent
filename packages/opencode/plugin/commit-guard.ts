@@ -10,27 +10,30 @@ import type { Plugin } from "@opencode-ai/plugin";
  * When checks fail, throws an error with the [COMMIT_GUARD] prefix
  * so the outer system can detect it and re-prompt the agent.
  */
-export const CommitGuardPlugin: Plugin = async ({ $ }) => {
+export const CommitGuardPlugin: Plugin = async ({ $, worktree }) => {
+  // Create a shell scoped to the worktree directory
+  const $git = $.cwd(worktree);
+
   return {
     event: async ({ event }) => {
       if (event.type === "session.idle") {
         // Safety check: ensure we're in a git repository
-        const isGitRepo = await $`git rev-parse --git-dir`.nothrow();
+        const isGitRepo = await $git`git rev-parse --git-dir`.nothrow();
         if (isGitRepo.exitCode !== 0) {
-          // Not in a git repo (e.g., at server startup) - skip checks
+          // Not in a git repo - skip checks
           return;
         }
 
         const errors: string[] = [];
 
         // Step 1: Check for uncommitted changes (staged or unstaged)
-        const diffResult = await $`git diff --quiet`.nothrow();
-        const cachedResult = await $`git diff --cached --quiet`.nothrow();
+        const diffResult = await $git`git diff --quiet`.nothrow();
+        const cachedResult = await $git`git diff --cached --quiet`.nothrow();
 
         if (diffResult.exitCode !== 0 || cachedResult.exitCode !== 0) {
           // Get the actual diff for context
-          const diffOutput = await $`git diff`.text();
-          const cachedOutput = await $`git diff --cached`.text();
+          const diffOutput = await $git`git diff`.text();
+          const cachedOutput = await $git`git diff --cached`.text();
           const combinedDiff = [diffOutput, cachedOutput]
             .filter(Boolean)
             .join("\n");
@@ -41,16 +44,16 @@ export const CommitGuardPlugin: Plugin = async ({ $ }) => {
         }
 
         // Step 2: Check if branch is pushed to remote
-        const currentBranch = await $`git rev-parse --abbrev-ref HEAD`
+        const currentBranch = await $git`git rev-parse --abbrev-ref HEAD`
           .text()
-          .then((s) => s.trim());
-        const localCommit = await $`git rev-parse HEAD`
+          .then((s: string) => s.trim());
+        const localCommit = await $git`git rev-parse HEAD`
           .text()
-          .then((s) => s.trim());
-        const remoteCommit = await $`git rev-parse origin/${currentBranch}`
+          .then((s: string) => s.trim());
+        const remoteCommit = await $git`git rev-parse origin/${currentBranch}`
           .nothrow()
           .text()
-          .then((s) => s.trim());
+          .then((s: string) => s.trim());
 
         if (!remoteCommit || localCommit !== remoteCommit) {
           errors.push(
@@ -60,7 +63,7 @@ export const CommitGuardPlugin: Plugin = async ({ $ }) => {
 
         // Step 3: Get current git status for context
         if (errors.length > 0) {
-          const statusOutput = await $`git status --short`.text();
+          const statusOutput = await $git`git status --short`.text();
 
           const errorMessage = [
             "[COMMIT_GUARD] Cannot stop - data loss risk:\n",

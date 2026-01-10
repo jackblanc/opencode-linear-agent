@@ -21,7 +21,7 @@ export type { SessionState } from "./session/SessionState";
 export type { SessionRepository } from "./session/SessionRepository";
 
 // Linear adapter interface and implementation
-export type { LinearAdapter, ActivitySignal } from "./linear/LinearAdapter";
+export type { LinearAdapter, ElicitationSignal } from "./linear/LinearAdapter";
 export { LinearClientAdapter } from "./linear/LinearClientAdapter";
 export type {
   ActivityContent,
