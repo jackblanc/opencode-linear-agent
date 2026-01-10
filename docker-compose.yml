@@ -20,11 +20,9 @@ services:
       - linear-agent
 
   # OpenCode server - AI coding agent with native worktree management
-  # Pre-built image from GHCR (or build locally from packages/environment)
   opencode:
-    image: ghcr.io/jackblanc/opencode-environment:latest
-    # Or build from local:
-    # build: packages/environment
+    # image: ghcr.io/jackblanc/opencode-environment:latest
+    build: packages/opencode
     ports:
       - "127.0.0.1:4096:4096" # Localhost only - access OpenCode UI
     volumes:
