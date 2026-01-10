@@ -43,7 +43,11 @@ export interface Config {
   /** Default repo key to use when no GitHub link is found on issue */
   defaultRepo?: string;
   paths: {
-    worktrees: string;
+    /** Directory containing repositories (e.g., /home/repos) */
+    repos: string;
+    /** Directory for session worktrees (e.g., /workspace) */
+    workspace: string;
+    /** Directory for persistent data (e.g., /workspace/data) */
     data: string;
   };
 }
@@ -130,14 +134,9 @@ function validateConfig(config: unknown): config is Config {
     return false;
   }
 
-  // Check repo(s) - support both single `repo` and multiple `repos`
+  // Check repo(s) - support both single `repo` and multiple `repos` (optional for auto-discovery)
   const repo = getObject(config, "repo");
   const repos = getObject(config, "repos");
-
-  if (!repo && !repos) {
-    // At least one must be present
-    return false;
-  }
 
   if (repo) {
     // Validate single repo format
@@ -170,7 +169,8 @@ function validateConfig(config: unknown): config is Config {
   const paths = getObject(config, "paths");
   if (
     !paths ||
-    typeof paths.worktrees !== "string" ||
+    typeof paths.repos !== "string" ||
+    typeof paths.workspace !== "string" ||
     typeof paths.data !== "string"
   ) {
     return false;
@@ -232,7 +232,8 @@ export async function loadConfig(): Promise<Config> {
   const config: Config = {
     ...rawConfig,
     paths: {
-      worktrees: expandPath(rawConfig.paths.worktrees),
+      repos: expandPath(rawConfig.paths.repos),
+      workspace: expandPath(rawConfig.paths.workspace),
       data: expandPath(rawConfig.paths.data),
     },
   };

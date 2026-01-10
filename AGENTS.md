@@ -64,14 +64,14 @@ The project uses a pure SSE/SDK approach (no plugins):
 
 ### Container Paths
 
-The opencode container uses `/home/jack.blanc` as HOME to match work Linux machine paths:
+The opencode container uses `/home/user` as HOME and Cloudflare-aligned directory structure:
 
-| Path                                      | Purpose                    |
-| ----------------------------------------- | -------------------------- |
-| `/home/jack.blanc/projects/<repo>`        | Mounted repositories       |
-| `/home/jack.blanc/worktrees/<session-id>` | Git worktrees per session  |
-| `/home/jack.blanc/.config/opencode/`      | OpenCode configuration     |
-| `/home/jack.blanc/.local/share/opencode/` | OpenCode data (auth, logs) |
+| Path                                    | Purpose                    |
+| --------------------------------------- | -------------------------- |
+| `/home/repos/<repo>`                    | Mounted repositories       |
+| `/workspace/<repo>/<issue-id>`          | Git worktrees per session  |
+| `/home/user/.config/opencode/`          | OpenCode configuration     |
+| `/home/user/.local/share/opencode/`     | OpenCode data (auth, logs) |
 
 ### Security Layers
 
@@ -119,18 +119,16 @@ linear-opencode-agent/
 │   │   │       └── LocalGitOperations.ts  # Git worktree management
 │   │   └── Dockerfile                # Bun-based webhook server image
 │   │
+│   ├── environment/             # OpenCode sandbox environment
+│   │   ├── Dockerfile           # Extends official OpenCode image with dev tools
+│   │   ├── opencode.json        # OpenCode config with Linear + Context7 MCPs
+│   │   ├── AGENTS.md            # Agent instructions for sandbox
+│   │   └── plugin/
+│   │       └── commit-guard.ts  # Commit guard plugin
+│   │
 │   ├── linear/                  # Cloudflare Worker entry point
 │   ├── infrastructure/          # Cloudflare-specific implementations
 │   └── agent/                   # Agent configuration
-│
-├── docker/
-│   └── opencode/
-│       ├── Dockerfile           # OpenCode server image (Debian-based)
-│       ├── opencode.json        # OpenCode config with Linear + Context7 MCPs
-│       └── AGENTS.md            # Agent instructions for sandbox
-│
-├── scripts/
-│   └── rebuild-opencode.sh      # Rebuild container + copy auth files
 │
 ├── docker-compose.yml           # Local development stack
 ├── cloudflare-tunnel-setup.md   # Guide for setting up Cloudflare Tunnel
@@ -173,7 +171,7 @@ linear-opencode-agent/
    TUNNEL_TOKEN=eyJhIjoiY...     # From Cloudflare Tunnel setup
    ```
 
-4. **Create `config.docker.json`** with Linear secrets and repo mappings:
+4. **Create `config.docker.json`** with Linear secrets (repos are auto-discovered):
 
    ```json
    {
@@ -186,18 +184,16 @@ linear-opencode-agent/
        "organizationId": "your-org-id"
      },
      "github": { "token": "ghp_..." },
-     "repos": {
-       "my-repo": {
-         "localPath": "/home/jack.blanc/projects/my-repo",
-         "remoteUrl": "https://github.com/owner/my-repo"
-       }
-     },
      "paths": {
-       "worktrees": "/home/jack.blanc/worktrees",
+       "repos": "/home/repos",
+       "workspace": "/workspace",
        "data": "/data"
      }
    }
    ```
+
+   Note: Repositories are auto-discovered from `paths.repos`. You can optionally
+   add explicit `repos` config to override auto-discovery for specific repos.
 
 5. **Authenticate OpenCode (first time only on host):**
 
@@ -206,16 +202,19 @@ linear-opencode-agent/
    opencode mcp auth linear    # Authenticate Linear MCP
    ```
 
-6. **Rebuild and copy auth:**
+6. **Build and start the stack:**
 
    ```bash
-   ./scripts/rebuild-opencode.sh
+   docker compose build
+   docker compose up -d
    ```
 
-7. **Start the stack:**
+7. **Copy auth files to container:**
 
    ```bash
-   docker compose up -d
+   docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
+   docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
+   docker compose restart opencode
    ```
 
 8. **Configure Linear webhook** to point to your Cloudflare Tunnel URL (e.g., `https://linear-webhook.yourdomain.com/webhook/linear`)
@@ -231,8 +230,14 @@ linear-opencode-agent/
 ### Useful Commands
 
 ```bash
-# Rebuild OpenCode container and copy auth
-./scripts/rebuild-opencode.sh
+# Rebuild containers after code changes
+docker compose build
+docker compose up -d
+
+# Copy auth files after re-authenticating
+docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
+docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
+docker compose restart opencode
 
 # View all logs
 docker compose logs -f
@@ -242,9 +247,6 @@ docker compose logs -f linear-webhook
 
 # Restart after config changes
 docker compose restart linear-webhook
-
-# Rebuild after code changes
-docker compose up -d --build
 
 # Check Cloudflare Tunnel status
 docker compose logs cloudflared
@@ -256,12 +258,14 @@ docker compose logs cloudflared
 
 **"Unauthorized organization"**: Verify `organizationId` matches your Linear workspace
 
-**"ENOENT: git"**: Rebuild containers - `docker compose up -d --build`
+**"ENOENT: git"**: Rebuild containers - `docker compose build && docker compose up -d`
 
-**OpenCode auth expired**: Re-run the rebuild script:
+**OpenCode auth expired**: Copy auth files again:
 
 ```bash
-./scripts/rebuild-opencode.sh
+docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
+docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
+docker compose restart opencode
 ```
 
 ---
