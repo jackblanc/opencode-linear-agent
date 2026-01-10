@@ -1,5 +1,5 @@
 import { LinearClient, AgentActivitySignal } from "@linear/sdk";
-import type { LinearAdapter, ActivitySignal } from "./LinearAdapter";
+import type { LinearAdapter, ElicitationSignal } from "./LinearAdapter";
 import type {
   ActivityContent,
   PlanItem,
@@ -10,18 +10,14 @@ import { STAGE_MESSAGES } from "./types";
 import { Log, type Logger } from "../logger";
 
 /**
- * Maps our ActivitySignal type to Linear's AgentActivitySignal
+ * Maps elicitation signals to Linear's AgentActivitySignal
+ *
+ * Only auth and select are valid agent-to-human signals per Linear docs.
  */
-function mapSignal(signal?: ActivitySignal): AgentActivitySignal | undefined {
-  if (!signal) {
-    return undefined;
-  }
-
+function mapElicitationSignal(
+  signal: ElicitationSignal,
+): AgentActivitySignal | undefined {
   switch (signal) {
-    case "stop":
-      return AgentActivitySignal.Stop;
-    case "continue":
-      return AgentActivitySignal.Continue;
     case "auth":
       return AgentActivitySignal.Auth;
     case "select":
@@ -47,14 +43,12 @@ export class LinearClientAdapter implements LinearAdapter {
     sessionId: string,
     content: ActivityContent,
     ephemeral = false,
-    signal?: ActivitySignal,
   ): Promise<void> {
     try {
       await this.client.createAgentActivity({
         agentSessionId: sessionId,
         content,
         ephemeral,
-        signal: mapSignal(signal),
       });
     } catch (error) {
       const errorMessage =
@@ -135,7 +129,7 @@ export class LinearClientAdapter implements LinearAdapter {
   async postElicitation(
     sessionId: string,
     body: string,
-    signal: "auth" | "select",
+    signal: ElicitationSignal,
     metadata?: SignalMetadata,
   ): Promise<void> {
     try {
@@ -146,7 +140,7 @@ export class LinearClientAdapter implements LinearAdapter {
           body,
           signalMetadata: metadata,
         },
-        signal: mapSignal(signal),
+        signal: mapElicitationSignal(signal),
         ephemeral: false,
       });
     } catch (error) {
