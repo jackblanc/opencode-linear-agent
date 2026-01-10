@@ -18,13 +18,11 @@ RUN addgroup -g 1000 user && \
     adduser -u 1000 -G user -D -h /home/user user && \
     echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/user
 
-# Install Bun runtime for user
-USER user
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/home/user/.bun/bin:$PATH"
-
-# Switch back to root for directory setup
-USER root
+# Install Bun runtime (system-wide)
+RUN curl -fsSL https://bun.sh/install | bash && \
+    cp /root/.bun/bin/bun /usr/local/bin/bun && \
+    ln -s /usr/local/bin/bun /usr/local/bin/bunx && \
+    chmod +x /usr/local/bin/bun
 
 # Create directory structure aligned with Cloudflare conventions
 RUN mkdir -p /home/repos \
