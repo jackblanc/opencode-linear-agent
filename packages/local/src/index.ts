@@ -153,7 +153,7 @@ function createDirectDispatcher(
       // Create GitOperations for the resolved repo
       const gitOperations = createGitOperations(
         resolved.config,
-        config.paths.worktrees,
+        config.paths.workspace,
         config.github.token,
       );
 
@@ -274,24 +274,32 @@ function getConfiguredRepos(config: Config): string[] {
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
-  console.info({
-    message: "Starting Linear OpenCode Agent (Local)",
-    stage: "startup",
-  });
+  console.info("[startup] Starting Linear OpenCode Agent (Local)");
 
   // Load configuration
   const config = await loadConfig();
 
-  const configuredRepos = getConfiguredRepos(config);
+  // Auto-discover repositories from filesystem
+  const { discoverRepos } = await import("./RepoDiscovery");
+  const discoveredRepos = await discoverRepos(config.paths.repos);
+
+  // Merge discovered repos with explicitly configured repos (explicit config wins)
+  const allRepos = { ...discoveredRepos, ...config.repos };
+
+  // Update config with merged repos
+  config.repos = allRepos;
+
+  const configuredRepos = Object.keys(allRepos);
   console.info({
     message: "Configuration loaded",
     stage: "startup",
     port: config.port,
     publicHostname: config.publicHostname,
     opencodeUrl: config.opencode.url,
+    discoveredRepos: Object.keys(discoveredRepos).length,
     configuredRepos,
     defaultRepo: config.defaultRepo,
-    worktreesPath: config.paths.worktrees,
+    worktreesPath: config.paths.workspace,
   });
 
   // Initialize storage

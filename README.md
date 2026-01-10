@@ -47,7 +47,7 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
    TAILSCALE_HOSTNAME=linear-agent
    ```
 
-4. **Create `config.docker.json`:**
+4. **Create `config.docker.json`** (repos are auto-discovered):
 
    ```json
    {
@@ -61,38 +61,37 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
        "organizationId": "your-org-id"
      },
      "github": { "token": "ghp_..." },
-     "repos": {
-       "my-repo": {
-         "localPath": "/home/jack.blanc/projects/my-repo",
-         "remoteUrl": "https://github.com/owner/my-repo"
-       }
-     },
      "paths": {
-       "worktrees": "/home/jack.blanc/worktrees",
+       "repos": "/home/repos",
+       "workspace": "/workspace",
        "data": "/data"
      }
    }
    ```
 
-5. **Start the stack:**
+   Note: Repositories are auto-discovered from `paths.repos`. You can optionally
+   add explicit `repos` config to override auto-discovery for specific repos.
+
+5. **Authenticate OpenCode (first time only on host):**
 
    ```bash
+   opencode                    # Follow OAuth prompts for Claude Max
+   opencode mcp auth linear    # Authenticate Linear MCP
+   ```
+
+6. **Build and start the stack:**
+
+   ```bash
+   docker compose build
    docker compose up -d
    ```
 
-6. **Authenticate OpenCode (first time only):**
-
-   Run on your host machine to authenticate Claude Max and Linear MCP:
+7. **Copy auth files to container:**
 
    ```bash
-   opencode  # Follow OAuth prompts for Claude Max
-   opencode mcp auth linear  # Authenticate Linear MCP
-   ```
-
-7. **Copy auth to container and rebuild:**
-
-   ```bash
-   ./scripts/rebuild-opencode.sh
+   docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
+   docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
+   docker compose restart opencode
    ```
 
 8. **Get your public webhook URL:**
@@ -125,7 +124,7 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
          ▼                              ▼
     Linear API                   OpenCode Server
                                  (opencode container)
-                                 /home/jack.blanc/...
+                                 /home/user/...
 ```
 
 ### Container Architecture
@@ -154,11 +153,17 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
    - Stream progress as Linear activities
    - Update its plan as it works
 
-## Scripts
+## Common Commands
 
 ```bash
-# Rebuild and restart OpenCode container (copies auth files)
-./scripts/rebuild-opencode.sh
+# Rebuild containers after code changes
+docker compose build
+docker compose up -d
+
+# Copy auth files after re-authenticating
+docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
+docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
+docker compose restart opencode
 
 # View logs
 docker compose logs -f linear-webhook
@@ -189,17 +194,14 @@ linear-opencode-agent/
 │   │   │   └── git/                  # Git worktree management
 │   │   └── Dockerfile
 │   │
+│   ├── environment/             # OpenCode sandbox environment
+│   │   ├── Dockerfile           # Extends official OpenCode image
+│   │   ├── opencode.json        # OpenCode config with MCPs
+│   │   ├── AGENTS.md            # Agent instructions
+│   │   └── plugin/              # OpenCode plugins
+│   │
 │   ├── linear/                  # Cloudflare Worker entry point
 │   └── infrastructure/          # Cloudflare-specific implementations
-│
-├── docker/
-│   └── opencode/
-│       ├── Dockerfile           # OpenCode server image
-│       ├── opencode.json        # OpenCode config with MCPs
-│       └── AGENTS.md            # Agent instructions
-│
-├── scripts/
-│   └── rebuild-opencode.sh      # Rebuild + copy auth
 │
 ├── docker-compose.yml           # Local development stack
 ├── config.docker.json           # Docker config (gitignored)

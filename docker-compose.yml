@@ -8,22 +8,18 @@ services:
       - "3000:3000" # Local access only
     volumes:
       # Mount config file (use config.docker.json for Docker networking)
-      - ./config.docker.json:/app/packages/local/config.json:ro
-      # Persist data (tokens, sessions)
+      - ./config.docker.json:/usr/src/app/packages/local/config.json:ro
+      # Mount all repositories from ~/projects (read-write for creating worktrees)
+      # This container needs write access to .git/worktrees/ directory
+      - ${PROJECTS_DIR:-~/projects}:/home/repos:cached
+      # Session worktrees (ephemeral, per-session) - writable for creating worktrees
+      - worktrees:/workspace
+      # Persistent data (tokens, sessions) - separate path to avoid nested mount issues
       - linear-data:/data
-      # Mount all repositories - paths match /home/user/projects in opencode container
-      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/user/projects/cyrus
-      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/user/projects/linear-opencode-agent
-      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/user/projects/moneydb
-      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/user/projects/opencode
-      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/user/projects/reservations
-      - ${REPO_PATH_SST:-~/projects/sst}:/home/user/projects/sst
-      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/user/projects/weather-bot
-      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/user/projects/website
-      # Worktrees directory for session isolation
-      - worktrees:/home/user/worktrees
     environment:
       - NODE_ENV=production
+      - REPOS_DIR=/home/repos
+      - WORKSPACE_DIR=/workspace
     depends_on:
       - opencode
     networks:
@@ -31,36 +27,36 @@ services:
 
   # OpenCode server - AI coding agent
   # Port 4096 exposed to localhost only for UI access
-  # Uses pre-built environment image from GHCR (requires docker login ghcr.io)
+  # Extends official OpenCode image with development tools
   opencode:
-    image: ghcr.io/jackblanc/environment:main-personal-linux
+    build:
+      context: ./packages/environment
+      dockerfile: Dockerfile
     ports:
       - "127.0.0.1:4096:4096" # Localhost only - access OpenCode UI at http://localhost:4096
     volumes:
-      # Mount worktrees - paths match between containers
-      - worktrees:/home/user/worktrees
-      # Mount all repositories from ~/projects to /home/user/projects
-      - ${REPO_PATH_CYRUS:-~/projects/cyrus}:/home/user/projects/cyrus
-      - ${REPO_PATH_LINEAR_AGENT:-~/projects/linear-opencode-agent}:/home/user/projects/linear-opencode-agent
-      - ${REPO_PATH_MONEYDB:-~/projects/moneydb}:/home/user/projects/moneydb
-      - ${REPO_PATH_OPENCODE:-~/projects/opencode}:/home/user/projects/opencode
-      - ${REPO_PATH_RESERVATIONS:-~/projects/reservations}:/home/user/projects/reservations
-      - ${REPO_PATH_SST:-~/projects/sst}:/home/user/projects/sst
-      - ${REPO_PATH_WEATHER_BOT:-~/projects/weather-bot}:/home/user/projects/weather-bot
-      - ${REPO_PATH_WEBSITE:-~/projects/website}:/home/user/projects/website
-      # Persistent storage for OpenCode data (logs, sessions, etc.)
+      # Mount all repositories (read-write for git operations in .git/ directories)
+      # File permissions prevent modifying source files (agent runs as non-root user)
+      - ${PROJECTS_DIR:-~/projects}:/home/repos:cached
+      # Session worktrees (ephemeral, per-session) - shared with webhook server
+      - worktrees:/workspace
+      # Persistent storage for OpenCode data (auth, logs)
       - opencode-data:/home/user/.local/share/opencode
-      # Mount linear-opencode-agent specific config files
-      - ./docker/opencode/opencode.json:/home/user/.config/opencode/opencode.json:ro
-      - ./docker/opencode/AGENTS.md:/home/user/AGENTS.md:ro
-      - ./docker/opencode/plugin:/home/user/.config/opencode/plugin:ro
     environment:
       # Optional: Anthropic API key (not needed if using Claude Max OAuth)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       # GitHub token for git operations
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # Path configuration
+      - REPOS_DIR=/home/repos
+      - WORKSPACE_DIR=/workspace
     networks:
       - linear-agent
+    # Security: Drop all capabilities (container runs as non-root user)
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   # Cloudflare Tunnel - exposes linear-webhook publicly via Cloudflare Tunnel
   # Provides IP allowlisting via Cloudflare Access and DDoS protection
