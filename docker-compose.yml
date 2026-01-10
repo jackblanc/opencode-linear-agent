@@ -9,6 +9,8 @@ services:
     volumes:
       # Mount config file
       - ./config.docker.json:/app/packages/server/config.json:ro
+      # Mount repos for discovery (read-only)
+      - ${PROJECTS_DIR:-~/projects}:/home/repos:ro
       # Persistent data (tokens, sessions)
       - server-data:/data
     environment:

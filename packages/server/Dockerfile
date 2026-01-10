@@ -1,6 +1,9 @@
 # Linear webhook server Dockerfile
 FROM oven/bun:1-alpine
 
+# Install git for repo discovery
+RUN apk add --no-cache git
+
 WORKDIR /app
 
 # Copy package files first for caching
