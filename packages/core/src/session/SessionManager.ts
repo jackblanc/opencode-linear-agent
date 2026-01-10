@@ -1,4 +1,4 @@
-import type { OpencodeClient, Message, Part } from "@opencode-ai/sdk";
+import type { OpencodeClient, Message, Part } from "@opencode-ai/sdk/v2";
 import type { SessionRepository } from "./SessionRepository";
 import type { SessionState } from "./SessionState";
 
@@ -103,8 +103,8 @@ export class SessionManager {
 
       try {
         const session = await this.opcodeClient.session.get({
-          path: { id: existingState.opencodeSessionId },
-          query: { directory: workdir },
+          sessionID: existingState.opencodeSessionId,
+          directory: workdir,
         });
 
         if (session.data) {
@@ -190,8 +190,8 @@ export class SessionManager {
   ): Promise<string | undefined> {
     try {
       const messagesResult = await this.opcodeClient.session.messages({
-        path: { id: opcodeSessionId },
-        query: { directory: workdir },
+        sessionID: opcodeSessionId,
+        directory: workdir,
       });
 
       if (messagesResult.data && messagesResult.data.length > 0) {
@@ -236,10 +236,8 @@ export class SessionManager {
     });
 
     const session = await this.opcodeClient.session.create({
-      body: {
-        title: `Linear Issue ${issueId}`,
-      },
-      query: { directory: workdir },
+      title: `Linear Issue ${issueId}`,
+      directory: workdir,
     });
 
     if (!session.data) {

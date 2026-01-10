@@ -1,9 +1,0 @@
-# Secrets for local development
-# Copy this file to .dev.vars and fill in your values
-
-# Required: Linear webhook secret for signature verification
-LINEAR_WEBHOOK_SECRET="..."
-
-# Required: Linear OAuth credentials
-LINEAR_CLIENT_ID="..."
-LINEAR_CLIENT_SECRET="..."

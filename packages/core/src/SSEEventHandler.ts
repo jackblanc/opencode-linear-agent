@@ -5,7 +5,7 @@ import type {
   TextPart,
   Todo,
   Part,
-} from "@opencode-ai/sdk";
+} from "@opencode-ai/sdk/v2";
 import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { PlanItem } from "./linear/types";
 
@@ -224,8 +224,8 @@ export class SSEEventHandler {
       return { action: "continue" };
     }
 
-    if (event.type === "permission.updated") {
-      await this.handlePermissionUpdated(event.properties);
+    if (event.type === "permission.asked") {
+      await this.handlePermissionAsked(event.properties);
       return { action: "continue" };
     }
 
@@ -468,18 +468,19 @@ export class SSEEventHandler {
   }
 
   /**
-   * Handle permission.updated events - auto-approve all
+   * Handle permission.asked events - auto-approve all
    *
    * For an agentic coding tool working on delegated issues,
    * auto-approving permissions is appropriate since the user
    * has already granted trust by delegating the work.
    */
-  private async handlePermissionUpdated(properties: {
+  private async handlePermissionAsked(properties: {
     id: string;
     sessionID: string;
+    permission: string;
     [key: string]: unknown;
   }): Promise<void> {
-    const { id, sessionID } = properties;
+    const { id, sessionID, permission } = properties;
 
     // Only process for our session
     if (sessionID !== this.opencodeSessionId) {
@@ -489,17 +490,17 @@ export class SSEEventHandler {
     console.info({
       message: "Auto-approving permission",
       stage: "sse-handler",
-      permissionId: id,
+      requestId: id,
+      permission,
       linearSessionId: this.linearSessionId,
       opencodeSessionId: this.opencodeSessionId,
     });
 
     try {
       // Use the SDK's permission reply endpoint
-      // POST /session/{id}/permissions/{permissionID}
-      await this.opencodeClient.postSessionIdPermissionsPermissionId({
-        path: { id: this.opencodeSessionId, permissionID: id },
-        body: { response: "always" },
+      await this.opencodeClient.permission.reply({
+        requestID: id,
+        reply: "always",
       });
     } catch (error) {
       const errorMessage =
@@ -507,7 +508,7 @@ export class SSEEventHandler {
       console.error({
         message: "Failed to reply to permission",
         stage: "sse-handler",
-        permissionId: id,
+        requestId: id,
         error: errorMessage,
       });
     }

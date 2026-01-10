@@ -1,5 +1,5 @@
 {
-  "name": "@linear-opencode-agent/local",
+  "name": "@linear-opencode-agent/server",
   "version": "1.0.0",
   "type": "module",
   "private": true,

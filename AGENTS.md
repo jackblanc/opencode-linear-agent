@@ -66,12 +66,12 @@ The project uses a pure SSE/SDK approach (no plugins):
 
 The opencode container uses `/home/user` as HOME and Cloudflare-aligned directory structure:
 
-| Path                                    | Purpose                    |
-| --------------------------------------- | -------------------------- |
-| `/home/repos/<repo>`                    | Mounted repositories       |
-| `/workspace/<repo>/<issue-id>`          | Git worktrees per session  |
-| `/home/user/.config/opencode/`          | OpenCode configuration     |
-| `/home/user/.local/share/opencode/`     | OpenCode data (auth, logs) |
+| Path                                | Purpose                    |
+| ----------------------------------- | -------------------------- |
+| `/home/repos/<repo>`                | Mounted repositories       |
+| `/workspace/<repo>/<issue-id>`      | Git worktrees per session  |
+| `/home/user/.config/opencode/`      | OpenCode configuration     |
+| `/home/user/.local/share/opencode/` | OpenCode data (auth, logs) |
 
 ### Security Layers
 
