@@ -53,12 +53,15 @@ export interface EventProcessorConfig {
   modelID: string;
   /** Command to run after worktree creation (e.g., "bun install") */
   startCommand?: string;
+  /** OpenCode server URL for external links (should be localhost for security) */
+  opencodeUrl?: string;
 }
 
 const DEFAULT_CONFIG: EventProcessorConfig = {
   providerID: "opencode",
   modelID: "minimax-m2.1-free",
   startCommand: "bun install",
+  opencodeUrl: "http://localhost:4096",
 };
 
 /**
@@ -93,12 +96,8 @@ export class EventProcessor {
    * Process a Linear webhook event
    *
    * @param event - The webhook payload from Linear
-   * @param workerUrl - The URL of the worker (for external links)
    */
-  async process(
-    event: AgentSessionEventWebhookPayload,
-    workerUrl: string,
-  ): Promise<void> {
+  async process(event: AgentSessionEventWebhookPayload): Promise<void> {
     const linearSessionId = event.agentSession.id;
     // Use identifier (e.g., "CODE-29") instead of id (UUID)
     const issue =
@@ -181,11 +180,8 @@ export class EventProcessor {
 
       // Set external link to OpenCode UI
       // Format: /{base64_encoded_workdir}/session/{sessionId}
-      // For local development, use localhost:4096 instead of the public webhook URL
-      const opcodeBaseUrl =
-        workerUrl.includes("localhost") || workerUrl.includes("127.0.0.1")
-          ? "http://localhost:4096"
-          : workerUrl;
+      // Use configured OpenCode URL (should be localhost for security)
+      const opcodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
       const encodedWorkdir = base64Encode(workdir);
       const externalLink = `${opcodeBaseUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
       await this.linear.setExternalLink(linearSessionId, externalLink);
