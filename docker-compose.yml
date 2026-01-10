@@ -40,9 +40,9 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run linear-webhook
+    volumes:
+      - ~/.cloudflared:/etc/cloudflared:ro
     depends_on:
       - webhook-server
     networks:
