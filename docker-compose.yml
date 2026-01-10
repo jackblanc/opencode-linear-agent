@@ -15,6 +15,7 @@ services:
       - server-data:/data
     environment:
       - NODE_ENV=production
+      - LOG_FORMAT=pretty
       - OPENCODE_URL=http://opencode:4096
     depends_on:
       - opencode

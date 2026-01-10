@@ -1,6 +1,7 @@
 import type { OpencodeClient, Message, Part } from "@opencode-ai/sdk/v2";
 import type { SessionRepository } from "./SessionRepository";
 import type { SessionState } from "./SessionState";
+import { Log, type Logger } from "../logger";
 
 /**
  * Result of getting or creating a session
@@ -80,26 +81,22 @@ export class SessionManager {
    */
   async getOrCreateSession(
     linearSessionId: string,
-    issueId: string,
+    issue: string,
     branchName: string,
     workdir: string,
   ): Promise<SessionResult> {
-    console.info({
-      message: "Looking up existing session state",
-      stage: "session",
-      linearSessionId,
-      issueId,
-    });
+    const log = Log.create({ service: "session" })
+      .tag("issue", issue)
+      .tag("sessionId", linearSessionId);
+
+    log.info("Looking up existing session state");
 
     const existingState = await this.repository.get(linearSessionId);
 
     if (existingState?.opencodeSessionId) {
-      console.info({
-        message: "Found existing state, attempting to resume",
-        stage: "session",
-        linearSessionId,
-        opcodeSessionId: existingState.opencodeSessionId,
-      });
+      log.tag("opcodeSession", existingState.opencodeSessionId.slice(0, 8));
+      log.tag("opcodeSessionId", existingState.opencodeSessionId);
+      log.info("Found existing state, attempting to resume");
 
       try {
         const session = await this.opcodeClient.session.get({
@@ -108,12 +105,7 @@ export class SessionManager {
         });
 
         if (session.data) {
-          console.info({
-            message: "Successfully resumed session",
-            stage: "session",
-            linearSessionId,
-            opcodeSessionId: session.data.id,
-          });
+          log.info("Successfully resumed session");
           return {
             opcodeSessionId: session.data.id,
             existingState,
@@ -122,50 +114,45 @@ export class SessionManager {
         }
 
         // Session not found in OpenCode - try to fetch previous messages before creating new
-        console.warn({
-          message: "Session not found, fetching previous context",
-          stage: "session",
-          linearSessionId,
-          opcodeSessionId: existingState.opencodeSessionId,
-        });
+        log.warn("Session not found, fetching previous context");
 
         const previousContext = await this.fetchPreviousContext(
           existingState.opencodeSessionId,
           workdir,
+          log,
         );
 
         return this.createNewSession(
           linearSessionId,
-          issueId,
+          issue,
           branchName,
           workdir,
           existingState,
           previousContext,
+          log,
         );
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.warn({
-          message: "Failed to resume session, fetching previous context",
-          stage: "session",
+        log.warn("Failed to resume session, fetching previous context", {
           error: errorMessage,
-          linearSessionId,
-          opcodeSessionId: existingState.opencodeSessionId,
         });
 
         // Try to fetch previous context before creating new session
         const previousContext = await this.fetchPreviousContext(
           existingState.opencodeSessionId,
           workdir,
+          log,
         );
 
         return this.createNewSession(
           linearSessionId,
-          issueId,
+          issue,
           branchName,
           workdir,
           existingState,
           previousContext,
+          log,
         );
       }
     }
@@ -173,11 +160,12 @@ export class SessionManager {
     // No existing state - create fresh session
     return this.createNewSession(
       linearSessionId,
-      issueId,
+      issue,
       branchName,
       workdir,
       null,
       undefined,
+      log,
     );
   }
 
@@ -187,6 +175,7 @@ export class SessionManager {
   private async fetchPreviousContext(
     opcodeSessionId: string,
     workdir: string,
+    log: Logger,
   ): Promise<string | undefined> {
     try {
       const messagesResult = await this.opcodeClient.session.messages({
@@ -195,10 +184,7 @@ export class SessionManager {
       });
 
       if (messagesResult.data && messagesResult.data.length > 0) {
-        console.info({
-          message: "Fetched previous messages for context",
-          stage: "session",
-          opcodeSessionId,
+        log.info("Fetched previous messages for context", {
           messageCount: messagesResult.data.length,
         });
         return formatMessageHistory(messagesResult.data);
@@ -206,12 +192,7 @@ export class SessionManager {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.warn({
-        message: "Failed to fetch previous messages",
-        stage: "session",
-        error: errorMessage,
-        opcodeSessionId,
-      });
+      log.warn("Failed to fetch previous messages", { error: errorMessage });
     }
     return undefined;
   }
@@ -221,45 +202,35 @@ export class SessionManager {
    */
   private async createNewSession(
     linearSessionId: string,
-    issueId: string,
+    issue: string,
     branchName: string,
     workdir: string,
     existingState: SessionState | null,
     previousContext: string | undefined,
+    log: Logger,
   ): Promise<SessionResult> {
-    console.info({
-      message: "Creating new OpenCode session",
-      stage: "session",
-      linearSessionId,
-      issueId,
+    log.info("Creating new OpenCode session", {
       hasPreviousContext: !!previousContext,
     });
 
     const session = await this.opcodeClient.session.create({
-      title: `Linear Issue ${issueId}`,
+      title: `Linear Issue ${issue}`,
       directory: workdir,
     });
 
     if (!session.data) {
-      console.error({
-        message: "OpenCode API returned no data when creating session",
-        stage: "session",
-        linearSessionId,
-      });
+      log.error("OpenCode API returned no data when creating session");
       throw new Error("Failed to create OpenCode session");
     }
 
-    console.info({
-      message: "Created OpenCode session",
-      stage: "session",
-      linearSessionId,
-      opcodeSessionId: session.data.id,
-    });
+    log.tag("opcodeSession", session.data.id.slice(0, 8));
+    log.tag("opcodeSessionId", session.data.id);
+    log.info("Created OpenCode session");
 
     const newState: SessionState = {
       opencodeSessionId: session.data.id,
       linearSessionId,
-      issueId,
+      issueId: issue,
       branchName,
       workdir,
       lastActivityTime: Date.now(),
@@ -267,14 +238,7 @@ export class SessionManager {
 
     await this.repository.save(newState);
 
-    console.info({
-      message: "Saved session state to repository",
-      stage: "session",
-      linearSessionId,
-      opcodeSessionId: session.data.id,
-      branchName,
-      workdir,
-    });
+    log.info("Saved session state to repository", { branchName, workdir });
 
     return {
       opcodeSessionId: session.data.id,

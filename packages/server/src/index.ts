@@ -22,6 +22,7 @@ import {
   handleWebhook,
   refreshAccessToken,
   LinearClientAdapter,
+  Log,
   type EventDispatcher,
   type KeyValueStore,
   type OAuthConfig,
@@ -85,14 +86,15 @@ function createDirectDispatcher(
       const issueId =
         event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
 
+      const log = Log.create({ service: "dispatcher" }).tag(
+        "organizationId",
+        organizationId,
+      );
+
       // Get or refresh access token
       let accessToken = await tokenStore.getAccessToken(organizationId);
       if (!accessToken) {
-        console.info({
-          message: "No access token, attempting refresh",
-          stage: "dispatcher",
-          organizationId,
-        });
+        log.info("No access token, attempting refresh");
 
         const oauthConfig: OAuthConfig = {
           clientId: config.linear.clientId,
@@ -120,9 +122,7 @@ function createDirectDispatcher(
         );
       }
 
-      console.info({
-        message: "Resolved repository for issue",
-        stage: "dispatcher",
+      log.info("Resolved repository for issue", {
         issueId,
         repoKey: resolved.key,
         repoUrl: resolved.config.remoteUrl,
@@ -171,11 +171,11 @@ function createServer(
 
       const clientIp = getClientIp(request);
 
+      const log = Log.create({ service: "server" });
+
       // Helper to log and return response
       const respond = (response: Response): Response => {
-        console.info({
-          message: "Request",
-          stage: "server",
+        log.info("Request", {
           method: request.method,
           pathname,
           status: response.status,
@@ -203,9 +203,7 @@ function createServer(
       ) {
         // IP allowlist check - only Linear's servers can call this endpoint
         if (!isAllowedIp(clientIp, config.linear.webhookIps)) {
-          console.warn({
-            message: "Webhook request from unauthorized IP",
-            stage: "server",
+          log.warn("Webhook request from unauthorized IP", {
             clientIp,
             allowedIps: config.linear.webhookIps,
           });
@@ -233,7 +231,8 @@ function createServer(
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
-  console.info("[startup] Starting Linear OpenCode Agent (Local)");
+  const log = Log.create({ service: "startup" });
+  log.info("Starting Linear OpenCode Agent (Local)");
 
   // Load configuration
   const config = await loadConfig();
@@ -249,9 +248,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   config.repos = allRepos;
 
   const configuredRepos = Object.keys(allRepos);
-  console.info({
-    message: "Configuration loaded",
-    stage: "startup",
+  log.info("Configuration loaded", {
     port: config.port,
     publicHostname: config.publicHostname,
     opencodeUrl: config.opencode.url,
@@ -269,11 +266,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const tokenStore = new FileTokenStore(kv);
   const sessionRepository = new FileSessionRepository(kv);
 
-  console.info({
-    message: "Storage initialized",
-    stage: "startup",
-    dataPath,
-  });
+  log.info("Storage initialized", { dataPath });
 
   // Create event dispatcher (git operations created per-request based on issue)
   const dispatcher = createDirectDispatcher(
@@ -286,16 +279,15 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const server = createServer(config, kv, tokenStore, dispatcher);
 
   const workerUrl = getWorkerUrl(config);
-  console.info({
-    message: "Server started",
-    stage: "startup",
+  log.info("Server started", {
     port: config.port,
     workerUrl,
     webhookUrl: `${workerUrl}/api/webhook/linear`,
     oauthUrl: `${workerUrl}/api/oauth/authorize`,
   });
 
-  console.log(`
+  // Banner output - use process.stdout directly for multi-line
+  process.stdout.write(`
 Linear OpenCode Agent (Local) running!
 
   Local:    http://localhost:${config.port}
@@ -312,9 +304,8 @@ Make sure OpenCode is running: opencode serve
 
 // Run the server
 main().catch((error) => {
-  console.error({
-    message: "Failed to start server",
-    stage: "startup",
+  const log = Log.create({ service: "startup" });
+  log.error("Failed to start server", {
     error: error instanceof Error ? error.message : String(error),
     stack: error instanceof Error ? error.stack : undefined,
   });

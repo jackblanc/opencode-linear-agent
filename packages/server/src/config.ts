@@ -4,6 +4,7 @@
 
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
+import { Log } from "@linear-opencode-agent/core";
 
 /**
  * Repository configuration
@@ -114,16 +115,16 @@ function validateConfig(config: unknown): config is Config {
     return false;
   }
 
+  const log = Log.create({ service: "config" });
+
   // Check webhookIps (required array of strings)
   if (!Array.isArray(linear.webhookIps) || linear.webhookIps.length === 0) {
-    console.error(
-      "linear.webhookIps must be a non-empty array of IP addresses",
-    );
+    log.error("linear.webhookIps must be a non-empty array of IP addresses");
     return false;
   }
   for (const ip of linear.webhookIps) {
     if (typeof ip !== "string") {
-      console.error("linear.webhookIps must contain only strings");
+      log.error("linear.webhookIps must contain only strings");
       return false;
     }
   }
@@ -152,14 +153,14 @@ function validateConfig(config: unknown): config is Config {
     // Validate multi-repo format
     for (const [key, repoConfig] of Object.entries(repos)) {
       if (!isObject(repoConfig)) {
-        console.error(`Invalid repo config for key: ${key}`);
+        log.error(`Invalid repo config for key: ${key}`);
         return false;
       }
       if (
         typeof repoConfig.localPath !== "string" ||
         typeof repoConfig.remoteUrl !== "string"
       ) {
-        console.error(`Missing localPath or remoteUrl for repo: ${key}`);
+        log.error(`Missing localPath or remoteUrl for repo: ${key}`);
         return false;
       }
     }
@@ -218,7 +219,8 @@ export async function loadConfig(): Promise<Config> {
     );
   }
 
-  console.info(`Loading config from: ${configPath}`);
+  const log = Log.create({ service: "config" });
+  log.info("Loading config", { path: configPath });
 
   const rawConfig: unknown = await configFile.json();
 

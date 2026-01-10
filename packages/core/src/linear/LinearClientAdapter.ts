@@ -7,6 +7,7 @@ import type {
   SignalMetadata,
 } from "./types";
 import { STAGE_MESSAGES } from "./types";
+import { Log, type Logger } from "../logger";
 
 /**
  * Maps our ActivitySignal type to Linear's AgentActivitySignal
@@ -35,9 +36,11 @@ function mapSignal(signal?: ActivitySignal): AgentActivitySignal | undefined {
  */
 export class LinearClientAdapter implements LinearAdapter {
   private readonly client: LinearClient;
+  private readonly log: Logger;
 
   constructor(accessToken: string) {
     this.client = new LinearClient({ accessToken });
+    this.log = Log.create({ service: "linear" });
   }
 
   async postActivity(
@@ -56,11 +59,9 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Failed to send activity",
-        stage: "linear",
+      this.log.error("Failed to send activity", {
         activityType: content.type,
-        linearSessionId: sessionId,
+        sessionId,
         ephemeral,
         error: errorMessage,
       });
@@ -87,11 +88,9 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Failed to send stage activity",
-        stage: "linear",
+      this.log.error("Failed to send stage activity", {
         processingStage: stage,
-        linearSessionId: sessionId,
+        sessionId,
         error: errorMessage,
       });
     }
@@ -125,10 +124,8 @@ export class LinearClientAdapter implements LinearAdapter {
         reportError instanceof Error
           ? reportError.message
           : String(reportError);
-      console.error({
-        message: "Failed to report error to Linear",
-        stage: "linear",
-        linearSessionId: sessionId,
+      this.log.error("Failed to report error to Linear", {
+        sessionId,
         originalError: errorMessage,
         reportError: reportErrorMessage,
       });
@@ -155,10 +152,8 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Failed to send elicitation",
-        stage: "linear",
-        linearSessionId: sessionId,
+      this.log.error("Failed to send elicitation", {
+        sessionId,
         signal,
         error: errorMessage,
       });
@@ -172,10 +167,8 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Failed to set external link",
-        stage: "linear",
-        linearSessionId: sessionId,
+      this.log.error("Failed to set external link", {
+        sessionId,
         url,
         error: errorMessage,
       });
@@ -189,10 +182,8 @@ export class LinearClientAdapter implements LinearAdapter {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Failed to update plan",
-        stage: "linear",
-        linearSessionId: sessionId,
+      this.log.error("Failed to update plan", {
+        sessionId,
         planItemCount: plan.length,
         error: errorMessage,
       });
