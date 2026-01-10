@@ -42,7 +42,7 @@ The project uses a pure SSE/SDK approach (no plugins):
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ Webhook Server (linear-webhook container)                │
+│ Webhook Server (webhook-server container)                │
 │                                                          │
 │  - Receives Linear webhooks                              │
 │  - Verifies signatures + org ID                          │
@@ -110,25 +110,26 @@ linear-opencode-agent/
 │   │       └── webhook/
 │   │           └── handlers.ts        # Webhook verification + dispatch
 │   │
-│   ├── local/                   # Local development server
+│   ├── server/                  # Webhook server (formerly local)
 │   │   ├── src/
 │   │   │   ├── index.ts              # HTTP server + routing
 │   │   │   ├── config.ts             # Configuration loader
 │   │   │   ├── RepoResolver.ts       # Resolve repo from GitHub links
-│   │   │   └── git/
-│   │   │       └── LocalGitOperations.ts  # Git worktree management
-│   │   └── Dockerfile                # Bun-based webhook server image
+│   │   │   ├── RepoDiscovery.ts      # Auto-discover repos from mounted directories
+│   │   │   └── storage/              # File-based storage for tokens and sessions
+│   │   ├── Dockerfile               # Bun-based webhook server image
+│   │   ├── config.example.json      # Example config file
+│   │   └── config.json              # Docker config (gitignored)
 │   │
-│   ├── environment/             # OpenCode sandbox environment
+│   ├── opencode/                # OpenCode sandbox environment (formerly environment)
 │   │   ├── Dockerfile           # Extends official OpenCode image with dev tools
 │   │   ├── opencode.json        # OpenCode config with Linear + Context7 MCPs
 │   │   ├── AGENTS.md            # Agent instructions for sandbox
 │   │   └── plugin/
 │   │       └── commit-guard.ts  # Commit guard plugin
 │   │
-│   ├── linear/                  # Cloudflare Worker entry point
-│   ├── infrastructure/          # Cloudflare-specific implementations
-│   └── agent/                   # Agent configuration
+│   └── agent/                   # (DEPRECATED: Cloudflare Workers entry point removed)
+│       └── ...                  # Deleted in favor of two-container architecture
 │
 ├── docker-compose.yml           # Local development stack
 ├── cloudflare-tunnel-setup.md   # Guide for setting up Cloudflare Tunnel
@@ -217,13 +218,13 @@ linear-opencode-agent/
    docker compose restart opencode
    ```
 
-8. **Configure Linear webhook** to point to your Cloudflare Tunnel URL (e.g., `https://linear-webhook.yourdomain.com/webhook/linear`)
+8. **Configure Linear webhook** to point to your Cloudflare Tunnel URL (e.g., `https://linear-agent.yourdomain.com/webhook/linear`)
 
 ### Container Architecture
 
 | Container        | Purpose                         | Ports           |
 | ---------------- | ------------------------------- | --------------- |
-| `linear-webhook` | Webhook server, session manager | 3000 (local)    |
+| `webhook-server` | Webhook server, session manager | 3000 (local)    |
 | `opencode`       | AI coding agent                 | 4096 (internal) |
 | `cloudflared`    | Exposes webhook via tunnel      | N/A (outbound)  |
 
@@ -243,10 +244,10 @@ docker compose restart opencode
 docker compose logs -f
 
 # View specific container
-docker compose logs -f linear-webhook
+docker compose logs -f webhook-server
 
 # Restart after config changes
-docker compose restart linear-webhook
+docker compose restart webhook-server
 
 # Check Cloudflare Tunnel status
 docker compose logs cloudflared
