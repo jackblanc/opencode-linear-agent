@@ -54,3 +54,7 @@ export { handleWebhook } from "./webhook";
 
 // Utilities
 export { base64Encode, base64Decode } from "./utils/encode";
+
+// Logging
+export { Log, createLogger, initLogger, defaultLogger } from "./logger";
+export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";

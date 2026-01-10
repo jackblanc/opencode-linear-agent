@@ -9,6 +9,7 @@ import type {
 } from "@linear/sdk/webhooks";
 import type { TokenStore } from "../storage";
 import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
+import { Log } from "../logger";
 
 /**
  * Type guard for AgentSessionEvent
@@ -70,9 +71,8 @@ export async function handleWebhook(
   try {
     const parsed: { webhookTimestamp?: number } = JSON.parse(bodyText);
 
-    console.info({
-      message: "Attempting webhook verification",
-      stage: "webhook",
+    const log = Log.create({ service: "webhook" });
+    log.info("Attempting webhook verification", {
       webhookTimestamp: parsed.webhookTimestamp,
       bodyLength: bodyText.length,
     });
@@ -86,61 +86,49 @@ export async function handleWebhook(
     );
 
     // Log the full webhook payload for debugging
-    console.info({
-      message: "Webhook verified successfully",
-      stage: "webhook",
-      webhookPayload: JSON.stringify(webhookPayload, null, 2),
-    });
+    log.info("Webhook verified successfully");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error({
-      message: "Webhook verification failed",
-      stage: "webhook",
+    const log = Log.create({ service: "webhook" });
+    log.error("Webhook verification failed", {
       error: errorMessage,
       stack: errorStack,
-      signature,
-      body: bodyText,
     });
     return new Response("Invalid webhook", { status: 400 });
   }
 
   // Only handle AgentSessionEvent webhooks
   if (!isAgentSessionEvent(webhookPayload)) {
-    console.info({
-      message: "Ignoring non-AgentSessionEvent webhook",
+    const log = Log.create({ service: "webhook" });
+    log.info("Ignoring non-AgentSessionEvent webhook", {
       webhookType: webhookPayload.type,
-      stage: "webhook",
     });
     return new Response("OK", { status: 200 });
   }
 
   const sessionId = webhookPayload.agentSession.id;
   const organizationId = webhookPayload.organizationId;
-  const issueId =
-    webhookPayload.agentSession.issue?.id ??
+  const issue =
+    webhookPayload.agentSession.issue?.identifier ??
     webhookPayload.agentSession.issueId ??
     "unknown";
 
+  // Create tagged logger for this webhook
+  const log = Log.create({ service: "webhook" })
+    .tag("issue", issue)
+    .tag("sessionId", sessionId)
+    .tag("organizationId", organizationId);
+
   // Check organization ID allowlist if configured
   if (allowedOrganizationId && organizationId !== allowedOrganizationId) {
-    console.warn({
-      message: "Webhook from unauthorized organization",
-      stage: "webhook",
-      organizationId,
+    log.warn("Webhook from unauthorized organization", {
       allowedOrganizationId,
     });
     return new Response("Unauthorized organization", { status: 403 });
   }
 
-  console.info({
-    message: "Webhook received",
-    stage: "webhook",
-    action: webhookPayload.action,
-    linearSessionId: sessionId,
-    issueId,
-    organizationId,
-  });
+  log.info("Webhook received", { action: webhookPayload.action });
 
   // Post immediate status activity to Linear
   if (organizationId && statusPosterFactory) {
@@ -149,12 +137,7 @@ export async function handleWebhook(
       const statusPoster = statusPosterFactory(accessToken);
       await statusPoster.postStageActivity(sessionId, "webhook_received");
     } else {
-      console.info({
-        message: "No access token available for webhook activity",
-        stage: "webhook",
-        linearSessionId: sessionId,
-        organizationId,
-      });
+      log.info("No access token available for webhook activity");
     }
   }
 
@@ -164,14 +147,7 @@ export async function handleWebhook(
   // Dispatch for processing
   await dispatcher.dispatch(webhookPayload, workerUrl);
 
-  console.info({
-    message: "Event dispatched successfully",
-    stage: "webhook",
-    action: webhookPayload.action,
-    linearSessionId: sessionId,
-    issueId,
-    organizationId,
-  });
+  log.info("Event dispatched successfully", { action: webhookPayload.action });
 
   return new Response("OK", { status: 200 });
 }

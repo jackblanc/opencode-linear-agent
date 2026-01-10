@@ -8,6 +8,7 @@ import type { SessionRepository } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import { SSEEventHandler, type SSEEventResult } from "./SSEEventHandler";
 import { base64Encode } from "./utils/encode";
+import { Log, type Logger } from "./logger";
 
 /**
  * Maximum number of retry attempts when commit guard blocks the agent
@@ -17,59 +18,28 @@ const MAX_COMMIT_GUARD_RETRIES = 3;
 /**
  * Log an OpenCode event to Worker logs for observability
  */
-function logOpencodeEvent(
-  event: OpencodeEvent,
-  linearSessionId: string,
-  opencodeSessionId: string,
-): void {
-  // Extract relevant properties based on event type
-  const logEntry: Record<string, unknown> = {
-    message: `OpenCode: ${event.type}`,
-    stage: "opencode",
-    eventType: event.type,
-    linearSessionId,
-    opencodeSessionId,
-  };
+function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
+  // Extract event-specific properties
+  const extra: Record<string, unknown> = { eventType: event.type };
 
-  // Add event-specific properties
   if ("properties" in event && event.properties) {
     const props = event.properties as Record<string, unknown>;
 
-    // Include common useful properties
-    if (props.sessionID) {
-      logEntry.eventSessionId = props.sessionID;
-    }
-    if (props.error) {
-      logEntry.error = props.error;
-    }
-    if (props.status) {
-      logEntry.status = props.status;
-    }
-
-    // For message events, include message info
-    if (props.messageID) {
-      logEntry.messageId = props.messageID;
-    }
-    if (props.partID) {
-      logEntry.partId = props.partID;
-    }
-
-    // For file events
-    if (props.path) {
-      logEntry.filePath = props.path;
-    }
-
-    // For todo events
+    if (props.error) extra.error = props.error;
+    if (props.status) extra.status = props.status;
+    if (props.messageID) extra.messageId = props.messageID;
+    if (props.partID) extra.partId = props.partID;
+    if (props.path) extra.filePath = props.path;
     if (props.todos && Array.isArray(props.todos)) {
-      logEntry.todoCount = props.todos.length;
+      extra.todoCount = props.todos.length;
     }
   }
 
-  // Use console.info for normal events, console.error for errors
+  // Use error level for session errors, info for everything else
   if (event.type === "session.error") {
-    console.error(logEntry);
+    log.error(`OpenCode: ${event.type}`, extra);
   } else {
-    console.info(logEntry);
+    log.info(`OpenCode: ${event.type}`, extra);
   }
 }
 
@@ -131,18 +101,17 @@ export class EventProcessor {
   ): Promise<void> {
     const linearSessionId = event.agentSession.id;
     // Use identifier (e.g., "CODE-29") instead of id (UUID)
-    const issueId =
+    const issue =
       event.agentSession.issue?.identifier ??
       event.agentSession.issueId ??
       "unknown";
 
-    console.info({
-      message: "Processing event",
-      stage: "processor",
-      action: event.action,
-      linearSessionId,
-      issueId,
-    });
+    // Create a tagged logger for this processing context
+    const log = Log.create({ service: "processor" })
+      .tag("issue", issue)
+      .tag("sessionId", linearSessionId);
+
+    log.info("Processing event", { action: event.action });
 
     try {
       // Get existing state to check for existing worktree
@@ -157,29 +126,19 @@ export class EventProcessor {
         workdir = existingState.workdir;
         branchName = existingState.branchName;
 
-        console.info({
-          message: "Reusing existing worktree",
-          stage: "processor",
-          linearSessionId,
-          workdir,
-          branchName,
-        });
+        log.info("Reusing existing worktree", { workdir, branchName });
       } else {
         // Create worktree via OpenCode native API
         await this.linear.postStageActivity(linearSessionId, "git_setup");
 
-        console.info({
-          message: "Creating worktree via OpenCode",
-          stage: "processor",
-          linearSessionId,
-          issueId,
+        log.info("Creating worktree via OpenCode", {
           repoDirectory: this.repoDirectory,
         });
 
         const worktreeResult = await this.opencodeClient.worktree.create({
           directory: this.repoDirectory,
           worktreeCreateInput: {
-            name: issueId,
+            name: issue,
             startCommand: this.config.startCommand,
           },
         });
@@ -191,13 +150,7 @@ export class EventProcessor {
         workdir = worktreeResult.data.directory;
         branchName = worktreeResult.data.branch;
 
-        console.info({
-          message: "Worktree created",
-          stage: "processor",
-          linearSessionId,
-          workdir,
-          branchName,
-        });
+        log.info("Worktree created", { workdir, branchName });
       }
 
       // Post session ready stage activity with branch info
@@ -210,17 +163,17 @@ export class EventProcessor {
       // Get or create OpenCode session
       const sessionResult = await this.sessionManager.getOrCreateSession(
         linearSessionId,
-        issueId,
+        issue,
         branchName,
         workdir,
       );
       const opcodeSessionId = sessionResult.opcodeSessionId;
 
-      console.info({
-        message: "OpenCode session ready",
-        stage: "processor",
-        linearSessionId,
-        opcodeSessionId,
+      // Add OpenCode session ID to logger context
+      log.tag("opcodeSession", opcodeSessionId.slice(0, 8));
+      log.tag("opcodeSessionId", opcodeSessionId);
+
+      log.info("OpenCode session ready", {
         workdir,
         isNewSession: sessionResult.isNewSession,
         hasPreviousContext: !!sessionResult.previousContext,
@@ -242,18 +195,20 @@ export class EventProcessor {
           event,
           opcodeSessionId,
           linearSessionId,
-          issueId,
+          issue,
           workdir,
           sessionResult.previousContext,
+          log,
         );
       } else if (event.action === "prompted") {
         await this.handlePrompted(
           event,
           opcodeSessionId,
           linearSessionId,
-          issueId,
+          issue,
           workdir,
           sessionResult.previousContext,
+          log,
         );
       }
     } catch (error) {
@@ -261,13 +216,9 @@ export class EventProcessor {
         error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
 
-      console.error({
-        message: "Error processing event",
-        stage: "processor",
+      log.error("Error processing event", {
         error: errorMessage,
         stack: errorStack,
-        linearSessionId,
-        issueId,
       });
 
       // Report error to Linear
@@ -287,13 +238,9 @@ export class EventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
+    log: Logger,
   ): Promise<SSEEventResult> {
-    console.info({
-      message: "Subscribing to OpenCode event stream",
-      stage: "processor",
-      linearSessionId,
-      opencodeSessionId,
-    });
+    log.info("Subscribing to OpenCode event stream");
 
     const eventStream = await this.opencodeClient.event.subscribe({
       directory: workdir,
@@ -305,28 +252,25 @@ export class EventProcessor {
       linearSessionId,
       opencodeSessionId,
       this.opencodeClient,
+      log.clone().tag("service", "sse-handler"),
     );
 
     let finalResult: SSEEventResult = { action: "break" };
 
     for await (const event of eventStream.stream) {
       // Log every event for observability
-      logOpencodeEvent(event, linearSessionId, opencodeSessionId);
+      logOpencodeEvent(event, log);
 
       // Process the event via handler (posts activities to Linear, handles permissions)
       const result = await handler.handleEvent(event);
 
       // Break if handler signals completion (session.idle, session.error, or retry)
       if (result.action === "break" || result.action === "retry") {
-        console.info({
-          message:
-            result.action === "retry"
-              ? "Session needs retry (commit guard)"
-              : "Session completed",
-          stage: "processor",
-          linearSessionId,
-          opencodeSessionId,
-        });
+        log.info(
+          result.action === "retry"
+            ? "Session needs retry (commit guard)"
+            : "Session completed",
+        );
         finalResult = result;
         break;
       }
@@ -343,6 +287,7 @@ export class EventProcessor {
     linearSessionId: string,
     workdir: string,
     prompt: string,
+    log: Logger,
   ): Promise<SSEEventResult> {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
@@ -362,6 +307,7 @@ export class EventProcessor {
         opcodeSessionId,
         linearSessionId,
         workdir,
+        log,
       ),
     ]);
 
@@ -376,6 +322,7 @@ export class EventProcessor {
     linearSessionId: string,
     workdir: string,
     initialPrompt: string,
+    log: Logger,
   ): Promise<void> {
     // First iteration with initial prompt
     let result = await this.executePromptIteration(
@@ -383,16 +330,12 @@ export class EventProcessor {
       linearSessionId,
       workdir,
       initialPrompt,
+      log,
     );
 
     // If no retry needed, we're done
     if (result.action !== "retry") {
-      console.info({
-        message: "OpenCode session completed",
-        stage: "processor",
-        linearSessionId,
-        opcodeSessionId,
-      });
+      log.info("OpenCode session completed");
       return;
     }
 
@@ -402,11 +345,7 @@ export class EventProcessor {
       retryCount <= MAX_COMMIT_GUARD_RETRIES;
       retryCount++
     ) {
-      console.info({
-        message: "Commit guard triggered, retrying",
-        stage: "processor",
-        linearSessionId,
-        opcodeSessionId,
+      log.info("Commit guard triggered, retrying", {
         retryCount,
         maxRetries: MAX_COMMIT_GUARD_RETRIES,
       });
@@ -430,27 +369,18 @@ Once everything passes, you can complete your work.`;
         linearSessionId,
         workdir,
         retryPrompt,
+        log,
       );
 
       // If this iteration succeeded, we're done
       if (result.action !== "retry") {
-        console.info({
-          message: "OpenCode session completed after retry",
-          stage: "processor",
-          linearSessionId,
-          opcodeSessionId,
-          retryCount,
-        });
+        log.info("OpenCode session completed after retry", { retryCount });
         return;
       }
     }
 
     // Max retries exceeded
-    console.error({
-      message: "Max commit guard retries exceeded",
-      stage: "processor",
-      linearSessionId,
-      opcodeSessionId,
+    log.error("Max commit guard retries exceeded", {
       retryCount: MAX_COMMIT_GUARD_RETRIES,
     });
 
@@ -483,9 +413,10 @@ Once everything passes, you can complete your work.`;
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    issueId: string,
+    issue: string,
     workdir: string,
-    previousContext?: string,
+    previousContext: string | undefined,
+    log: Logger,
   ): Promise<void> {
     const basePrompt = event.promptContext ?? "Please help with this issue.";
     // Inject previous context if we had to recreate the session
@@ -493,12 +424,7 @@ Once everything passes, you can complete your work.`;
       ? `${previousContext}${basePrompt}`
       : basePrompt;
 
-    console.info({
-      message: "Starting new session with prompt",
-      stage: "processor",
-      linearSessionId,
-      opcodeSessionId,
-      issueId,
+    log.info("Starting new session with prompt", {
       promptLength: prompt.length,
       hasPreviousContext: !!previousContext,
     });
@@ -512,6 +438,7 @@ Once everything passes, you can complete your work.`;
       linearSessionId,
       workdir,
       prompt,
+      log,
     );
   }
 
@@ -522,19 +449,14 @@ Once everything passes, you can complete your work.`;
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    issueId: string,
+    issue: string,
     workdir: string,
-    previousContext?: string,
+    previousContext: string | undefined,
+    log: Logger,
   ): Promise<void> {
     // Check for stop signal
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
-      console.info({
-        message: "Stop signal received, aborting session",
-        stage: "processor",
-        linearSessionId,
-        opcodeSessionId,
-        issueId,
-      });
+      log.info("Stop signal received, aborting session");
 
       await this.opencodeClient.session.abort({
         sessionID: opcodeSessionId,
@@ -559,12 +481,7 @@ Once everything passes, you can complete your work.`;
       ? `${previousContext}${basePrompt}`
       : basePrompt;
 
-    console.info({
-      message: "Sending follow-up prompt",
-      stage: "processor",
-      linearSessionId,
-      opcodeSessionId,
-      issueId,
+    log.info("Sending follow-up prompt", {
       promptLength: prompt.length,
       hasPreviousContext: !!previousContext,
     });
@@ -575,6 +492,7 @@ Once everything passes, you can complete your work.`;
       linearSessionId,
       workdir,
       prompt,
+      log,
     );
   }
 }

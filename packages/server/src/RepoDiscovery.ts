@@ -4,6 +4,7 @@
 
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
+import { Log } from "@linear-opencode-agent/core";
 import type { RepoConfig } from "./config";
 
 /**
@@ -71,6 +72,7 @@ export async function discoverRepos(
   reposDir: string,
 ): Promise<Record<string, RepoConfig>> {
   const repos: Record<string, RepoConfig> = {};
+  const log = Log.create({ service: "repo-discovery" });
 
   try {
     const entries = await readdir(reposDir, { withFileTypes: true });
@@ -90,9 +92,7 @@ export async function discoverRepos(
       // Get remote URL
       const remoteUrl = await getRemoteUrl(dirPath);
       if (!remoteUrl) {
-        console.warn({
-          message: "Found git repo but no remote URL",
-          stage: "repo-discovery",
+        log.warn("Found git repo but no remote URL", {
           repo: entry.name,
           path: dirPath,
         });
@@ -104,9 +104,7 @@ export async function discoverRepos(
         remoteUrl,
       };
 
-      console.info({
-        message: "Discovered repository",
-        stage: "repo-discovery",
+      log.info("Discovered repository", {
         repo: entry.name,
         path: dirPath,
         remoteUrl,
@@ -114,9 +112,7 @@ export async function discoverRepos(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error({
-      message: "Failed to discover repositories",
-      stage: "repo-discovery",
+    log.error("Failed to discover repositories", {
       reposDir,
       error: errorMessage,
     });

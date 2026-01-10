@@ -5,6 +5,7 @@
 import { LinearClient } from "@linear/sdk";
 import type { KeyValueStore, TokenStore, RefreshTokenData } from "../storage";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
+import { Log } from "../logger";
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -64,9 +65,8 @@ async function exchangeCodeForToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error({
-      message: "Token exchange failed",
-      stage: "oauth",
+    const log = Log.create({ service: "oauth" });
+    log.error("Token exchange failed", {
       status: response.status,
       response: text,
     });
@@ -176,11 +176,8 @@ export async function handleAuthorize(
   });
 
   const authUrl = `${LINEAR_OAUTH_URL}?${params.toString()}`;
-  console.info({
-    message: "Redirecting to Linear OAuth",
-    stage: "oauth",
-    state,
-  });
+  const log = Log.create({ service: "oauth" });
+  log.info("Redirecting to Linear OAuth", { state });
 
   return Response.redirect(authUrl, 302);
 }
@@ -202,12 +199,8 @@ export async function handleCallback(
   const errorDescription = url.searchParams.get("error_description");
 
   if (error) {
-    console.error({
-      message: "OAuth error from Linear",
-      stage: "oauth",
-      error,
-      errorDescription,
-    });
+    const log = Log.create({ service: "oauth" });
+    log.error("OAuth error from Linear", { error, errorDescription });
     return new Response(`OAuth Error: ${error}\n${errorDescription ?? ""}`, {
       status: 400,
     });
@@ -240,13 +233,13 @@ export async function handleCallback(
     const viewer = await client.viewer;
     const organization = await viewer.organization;
 
-    console.info({
-      message: "Retrieved app info",
-      stage: "oauth",
+    const log = Log.create({ service: "oauth" })
+      .tag("org", organization.name)
+      .tag("organizationId", organization.id);
+
+    log.info("Retrieved app info", {
       viewerName: viewer.name,
       viewerId: viewer.id,
-      organizationName: organization.name,
-      organizationId: organization.id,
     });
 
     // Store tokens
@@ -265,11 +258,7 @@ export async function handleCallback(
     };
     await tokenStore.setRefreshTokenData(organization.id, refreshData);
 
-    console.info({
-      message: "Tokens stored successfully",
-      stage: "oauth",
-      organizationId: organization.id,
-    });
+    log.info("Tokens stored successfully");
 
     // Return success page
     const result: OAuthCallbackResult = {
@@ -284,12 +273,11 @@ export async function handleCallback(
       status: 200,
       headers: { "Content-Type": "text/html" },
     });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error({
-      message: "OAuth callback failed",
-      stage: "oauth",
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    const log = Log.create({ service: "oauth" });
+    log.error("OAuth callback failed", {
       error: errorMessage,
       stack: errorStack,
     });
@@ -305,11 +293,12 @@ export async function refreshAccessToken(
   tokenStore: TokenStore,
   organizationId: string,
 ): Promise<string> {
-  console.info({
-    message: "Refreshing access token",
-    stage: "oauth",
+  const log = Log.create({ service: "oauth" }).tag(
+    "organizationId",
     organizationId,
-  });
+  );
+
+  log.info("Refreshing access token");
 
   const refreshData = await tokenStore.getRefreshTokenData(organizationId);
   if (!refreshData) {
@@ -333,12 +322,9 @@ export async function refreshAccessToken(
 
   if (!response.ok) {
     const text = await response.text();
-    console.error({
-      message: "Token refresh failed",
-      stage: "oauth",
+    log.error("Token refresh failed", {
       status: response.status,
       response: text,
-      organizationId,
     });
     throw new Error(`Token refresh failed: ${response.status}`);
   }
@@ -359,10 +345,6 @@ export async function refreshAccessToken(
   };
   await tokenStore.setRefreshTokenData(organizationId, updatedRefreshData);
 
-  console.info({
-    message: "Token refreshed successfully",
-    stage: "oauth",
-    organizationId,
-  });
+  log.info("Token refreshed successfully");
   return data.access_token;
 }

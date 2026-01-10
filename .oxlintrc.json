@@ -33,6 +33,7 @@
     "typescript/consistent-type-imports": "error",
 
     // Code Quality & Safety
+    "eslint/no-console": "error",
     "eslint/no-var": "error",
     "eslint/no-param-reassign": "error",
     "eslint/no-regex-spaces": "error",
@@ -40,7 +41,7 @@
     "eslint/no-throw-literal": "error",
     "eslint/no-fallthrough": "error",
     "eslint/no-self-compare": "error",
-    "eslint/curly": "error",
+    "eslint/curly": "off",
     "eslint/default-case-last": "error",
     "typescript/no-namespace": "error",
 

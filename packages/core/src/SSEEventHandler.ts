@@ -8,6 +8,7 @@ import type {
 } from "@opencode-ai/sdk/v2";
 import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { PlanItem } from "./linear/types";
+import type { Logger } from "./logger";
 
 /**
  * Prefix used by the commit-guard plugin to identify its errors
@@ -203,7 +204,8 @@ export class SSEEventHandler {
     private readonly linear: LinearAdapter,
     private readonly linearSessionId: string,
     private readonly opencodeSessionId: string,
-    private readonly opencodeClient: OpencodeClient,
+    private readonly opcodeClient: OpencodeClient,
+    private readonly log: Logger,
   ) {}
 
   /**
@@ -293,13 +295,7 @@ export class SSEEventHandler {
         );
       }
 
-      console.info({
-        message: "Tool starting",
-        stage: "sse-handler",
-        tool,
-        linearSessionId: this.linearSessionId,
-        opencodeSessionId: this.opencodeSessionId,
-      });
+      this.log.info("Tool starting", { tool });
 
       await this.linear.postActivity(
         this.linearSessionId,
@@ -344,12 +340,8 @@ export class SSEEventHandler {
         }
       }
 
-      console.info({
-        message: "Tool completed",
-        stage: "sse-handler",
+      this.log.info("Tool completed", {
         tool,
-        linearSessionId: this.linearSessionId,
-        opencodeSessionId: this.opencodeSessionId,
         outputLength: state.output.length,
       });
 
@@ -370,14 +362,7 @@ export class SSEEventHandler {
       // Track errors for continue signal logic
       this.hadErrors = true;
 
-      console.info({
-        message: "Tool error",
-        stage: "sse-handler",
-        tool,
-        linearSessionId: this.linearSessionId,
-        opencodeSessionId: this.opencodeSessionId,
-        error: state.error,
-      });
+      this.log.info("Tool error", { tool, error: state.error });
 
       await this.linear.postActivity(
         this.linearSessionId,
@@ -421,13 +406,7 @@ export class SSEEventHandler {
     // Track the agent's final message
     this.agentFinalMessage = text;
 
-    console.info({
-      message: "Text complete",
-      stage: "sse-handler",
-      linearSessionId: this.linearSessionId,
-      opencodeSessionId: this.opencodeSessionId,
-      textLength: text.length,
-    });
+    this.log.info("Text complete", { textLength: text.length });
 
     await this.linear.postActivity(
       this.linearSessionId,
@@ -455,14 +434,7 @@ export class SSEEventHandler {
       status: mapTodoStatus(todo.status),
     }));
 
-    console.info({
-      message: "Syncing todos to plan",
-      stage: "sse-handler",
-      linearSessionId: this.linearSessionId,
-      opencodeSessionId: this.opencodeSessionId,
-      todoCount: todos.length,
-      plan: JSON.stringify(plan),
-    });
+    this.log.info("Syncing todos to plan", { todoCount: todos.length });
 
     await this.linear.updatePlan(this.linearSessionId, plan);
   }
@@ -487,27 +459,18 @@ export class SSEEventHandler {
       return;
     }
 
-    console.info({
-      message: "Auto-approving permission",
-      stage: "sse-handler",
-      requestId: id,
-      permission,
-      linearSessionId: this.linearSessionId,
-      opencodeSessionId: this.opencodeSessionId,
-    });
+    this.log.info("Auto-approving permission", { requestId: id, permission });
 
     try {
       // Use the SDK's permission reply endpoint
-      await this.opencodeClient.permission.reply({
+      await this.opcodeClient.permission.reply({
         requestID: id,
         reply: "always",
       });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Failed to reply to permission",
-        stage: "sse-handler",
+      this.log.error("Failed to reply to permission", {
         requestId: id,
         error: errorMessage,
       });
@@ -527,11 +490,7 @@ export class SSEEventHandler {
 
     const signal = shouldContinue ? "continue" : "stop";
 
-    console.info({
-      message: `Session idle, sending ${signal} signal`,
-      stage: "sse-handler",
-      linearSessionId: this.linearSessionId,
-      opencodeSessionId: this.opencodeSessionId,
+    this.log.info(`Session idle, sending ${signal} signal`, {
       testsRan: this.testsRan,
       testsPassed: this.testsPassed,
       hadErrors: this.hadErrors,
@@ -628,12 +587,7 @@ export class SSEEventHandler {
 
     // Check if this is a commit guard error - these should trigger retry
     if (errorMessage.startsWith(COMMIT_GUARD_PREFIX)) {
-      console.info({
-        message: "Commit guard triggered, signaling retry",
-        stage: "sse-handler",
-        linearSessionId: this.linearSessionId,
-        opencodeSessionId: this.opencodeSessionId,
-      });
+      this.log.info("Commit guard triggered, signaling retry");
 
       // Post the error to Linear as a thought (not a fatal error)
       await this.linear.postActivity(
@@ -649,13 +603,7 @@ export class SSEEventHandler {
     }
 
     // Regular error - post and break
-    console.error({
-      message: "Session error",
-      stage: "sse-handler",
-      linearSessionId: this.linearSessionId,
-      opencodeSessionId: this.opencodeSessionId,
-      error: errorMessage,
-    });
+    this.log.error("Session error", { error: errorMessage });
 
     await this.linear.postError(this.linearSessionId, new Error(errorMessage));
     return { action: "break" };

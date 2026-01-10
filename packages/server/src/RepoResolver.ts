@@ -9,7 +9,7 @@
  */
 
 import type { LinearClient } from "@linear/sdk";
-import { parseRepoLabel } from "@linear-opencode-agent/core";
+import { parseRepoLabel, Log } from "@linear-opencode-agent/core";
 import type { RepoConfig } from "./config";
 
 /**
@@ -63,10 +63,12 @@ export class RepoResolver {
    * @returns Resolved repo config, or null if no matching repo found
    */
   async resolve(issueId: string): Promise<ResolvedRepo | null> {
-    console.info({
-      message: "Resolving repository for issue",
-      stage: "repo-resolver",
+    const log = Log.create({ service: "repo-resolver" }).tag(
+      "issueId",
       issueId,
+    );
+
+    log.info("Resolving repository for issue", {
       availableRepos: Object.keys(this.repos),
     });
 
@@ -80,10 +82,7 @@ export class RepoResolver {
       if (repoLabelInfo) {
         const resolved = this.findRepoByName(repoLabelInfo.repositoryName);
         if (resolved) {
-          console.info({
-            message: "Resolved repo from label",
-            stage: "repo-resolver",
-            issueId,
+          log.info("Resolved repo from label", {
             label: `repo:${repoLabelInfo.organizationName ? `${repoLabelInfo.organizationName}/` : ""}${repoLabelInfo.repositoryName}`,
             repoKey: resolved.key,
           });
@@ -95,10 +94,7 @@ export class RepoResolver {
           const repoUrl = `https://github.com/${repoLabelInfo.organizationName}/${repoLabelInfo.repositoryName}`;
           const resolvedByUrl = this.findRepoByUrl(repoUrl);
           if (resolvedByUrl) {
-            console.info({
-              message: "Resolved repo from label (by URL)",
-              stage: "repo-resolver",
-              issueId,
+            log.info("Resolved repo from label (by URL)", {
               repoUrl,
               repoKey: resolvedByUrl.key,
             });
@@ -106,10 +102,7 @@ export class RepoResolver {
           }
         }
 
-        console.warn({
-          message: "Found repo: label but no matching repo config",
-          stage: "repo-resolver",
-          issueId,
+        log.warn("Found repo: label but no matching repo config", {
           repoLabel: repoLabelInfo,
           availableRepos: Object.keys(this.repos),
         });
@@ -127,10 +120,7 @@ export class RepoResolver {
         if (repoUrl) {
           const resolved = this.findRepoByUrl(repoUrl);
           if (resolved) {
-            console.info({
-              message: "Resolved repo from attachment",
-              stage: "repo-resolver",
-              issueId,
+            log.info("Resolved repo from attachment", {
               attachmentUrl: url,
               repoKey: resolved.key,
             });
@@ -149,10 +139,7 @@ export class RepoResolver {
           if (repoUrl) {
             const resolved = this.findRepoByUrl(repoUrl);
             if (resolved) {
-              console.info({
-                message: "Resolved repo from description",
-                stage: "repo-resolver",
-                issueId,
+              log.info("Resolved repo from description", {
                 foundUrl: match,
                 repoKey: resolved.key,
               });
@@ -164,12 +151,7 @@ export class RepoResolver {
 
       // Strategy 4: Fall back to default repo
       if (this.defaultRepoKey && this.repos[this.defaultRepoKey]) {
-        console.info({
-          message: "Using default repo",
-          stage: "repo-resolver",
-          issueId,
-          repoKey: this.defaultRepoKey,
-        });
+        log.info("Using default repo", { repoKey: this.defaultRepoKey });
         return {
           key: this.defaultRepoKey,
           config: this.repos[this.defaultRepoKey],
@@ -180,19 +162,11 @@ export class RepoResolver {
       const repoKeys = Object.keys(this.repos);
       if (repoKeys.length === 1) {
         const key = repoKeys[0];
-        console.info({
-          message: "Using only available repo",
-          stage: "repo-resolver",
-          issueId,
-          repoKey: key,
-        });
+        log.info("Using only available repo", { repoKey: key });
         return { key, config: this.repos[key] };
       }
 
-      console.warn({
-        message: "Could not resolve repository for issue",
-        stage: "repo-resolver",
-        issueId,
+      log.warn("Could not resolve repository for issue", {
         availableRepos: repoKeys,
       });
 
@@ -200,12 +174,7 @@ export class RepoResolver {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error({
-        message: "Error resolving repository",
-        stage: "repo-resolver",
-        issueId,
-        error: errorMessage,
-      });
+      log.error("Error resolving repository", { error: errorMessage });
       throw error;
     }
   }
