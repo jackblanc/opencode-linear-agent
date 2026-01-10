@@ -12,7 +12,7 @@
  * - Local repository at the configured path
  */
 
-import { createOpencodeClient } from "@opencode-ai/sdk";
+import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { LinearClient } from "@linear/sdk";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import {
@@ -27,14 +27,8 @@ import {
   type OAuthConfig,
   type TokenStore,
 } from "@linear-opencode-agent/core";
-import {
-  loadConfig,
-  getWorkerUrl,
-  type Config,
-  type RepoConfig,
-} from "./config";
+import { loadConfig, getWorkerUrl, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
-import { LocalGitOperations } from "./git";
 import { RepoResolver } from "./RepoResolver";
 import { join } from "node:path";
 
@@ -67,22 +61,6 @@ function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
     return false;
   }
   return allowlist.includes(ip);
-}
-
-/**
- * Create GitOperations for a specific repo
- */
-function createGitOperations(
-  repoConfig: RepoConfig,
-  worktreesPath: string,
-  githubToken: string,
-): LocalGitOperations {
-  return new LocalGitOperations(
-    repoConfig.localPath,
-    worktreesPath,
-    githubToken,
-    repoConfig.remoteUrl,
-  );
 }
 
 /**
@@ -148,24 +126,19 @@ function createDirectDispatcher(
         issueId,
         repoKey: resolved.key,
         repoUrl: resolved.config.remoteUrl,
+        localPath: resolved.config.localPath,
       });
-
-      // Create GitOperations for the resolved repo
-      const gitOperations = createGitOperations(
-        resolved.config,
-        config.paths.workspace,
-        config.github.token,
-      );
 
       // Create Linear adapter
       const linearAdapter = new LinearClientAdapter(accessToken);
 
-      // Create event processor
+      // Create event processor with repo directory
+      // OpenCode handles worktree creation natively
       const processor = new EventProcessor(
         opencodeClient,
         linearAdapter,
         sessionRepository,
-        gitOperations,
+        resolved.config.localPath,
       );
 
       // Process the event directly (this is the key difference from Cloudflare)
@@ -254,20 +227,6 @@ function createServer(
       return respond(new Response("Not found", { status: 404 }));
     },
   });
-}
-
-/**
- * Get list of configured repos for logging
- */
-function getConfiguredRepos(config: Config): string[] {
-  if (config.repos) {
-    return Object.keys(config.repos);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
-  if (config.repo) {
-    return ["default (single repo)"];
-  }
-  return [];
 }
 
 /**

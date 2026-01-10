@@ -1,8 +1,10 @@
-import type { OpencodeClient, Event as OpencodeEvent } from "@opencode-ai/sdk";
+import type {
+  OpencodeClient,
+  Event as OpencodeEvent,
+} from "@opencode-ai/sdk/v2";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { SessionRepository } from "./session/SessionRepository";
-import type { GitOperations } from "./git/GitOperations";
 import { SessionManager } from "./session/SessionManager";
 import { SSEEventHandler, type SSEEventResult } from "./SSEEventHandler";
 import { base64Encode } from "./utils/encode";
@@ -79,11 +81,14 @@ export interface EventProcessorConfig {
   providerID: string;
   /** Default model ID */
   modelID: string;
+  /** Command to run after worktree creation (e.g., "bun install") */
+  startCommand?: string;
 }
 
 const DEFAULT_CONFIG: EventProcessorConfig = {
   providerID: "opencode",
   modelID: "minimax-m2.1-free",
+  startCommand: "bun install",
 };
 
 /**
@@ -97,7 +102,7 @@ function hasStopSignal(activity: { signal?: string | null }): boolean {
  * Main entry point for processing Linear webhook events.
  *
  * This class is platform-agnostic and receives all dependencies via constructor injection.
- * It knows nothing about Cloudflare, KV, Sandbox, etc.
+ * Uses OpenCode's native worktree management instead of custom git operations.
  */
 export class EventProcessor {
   private readonly sessionManager: SessionManager;
@@ -107,7 +112,7 @@ export class EventProcessor {
     private readonly opencodeClient: OpencodeClient,
     private readonly linear: LinearAdapter,
     sessions: SessionRepository,
-    private readonly git: GitOperations,
+    private readonly repoDirectory: string,
     config?: Partial<EventProcessorConfig>,
   ) {
     this.sessionManager = new SessionManager(opencodeClient, sessions);
@@ -140,27 +145,60 @@ export class EventProcessor {
     });
 
     try {
-      // Get existing state to check for branch
+      // Get existing state to check for existing worktree
       const existingState =
         await this.sessionManager["repository"].get(linearSessionId);
-      const existingBranch = existingState?.branchName;
 
-      // Ensure worktree exists with progress callback
-      const { workdir, branchName } = await this.git.ensureWorktree(
-        linearSessionId,
-        issueId,
-        existingBranch,
-        async (step, details) =>
-          this.linear.postGitStepActivity(linearSessionId, step, details),
-      );
+      let workdir: string;
+      let branchName: string;
 
-      console.info({
-        message: "Worktree ready",
-        stage: "processor",
-        linearSessionId,
-        workdir,
-        branchName,
-      });
+      if (existingState?.workdir) {
+        // Reuse existing worktree
+        workdir = existingState.workdir;
+        branchName = existingState.branchName;
+
+        console.info({
+          message: "Reusing existing worktree",
+          stage: "processor",
+          linearSessionId,
+          workdir,
+          branchName,
+        });
+      } else {
+        // Create worktree via OpenCode native API
+        await this.linear.postStageActivity(linearSessionId, "git_setup");
+
+        console.info({
+          message: "Creating worktree via OpenCode",
+          stage: "processor",
+          linearSessionId,
+          issueId,
+          repoDirectory: this.repoDirectory,
+        });
+
+        const worktreeResult = await this.opencodeClient.worktree.create({
+          directory: this.repoDirectory,
+          worktreeCreateInput: {
+            name: issueId,
+            startCommand: this.config.startCommand,
+          },
+        });
+
+        if (!worktreeResult.data) {
+          throw new Error("Failed to create worktree: no data returned");
+        }
+
+        workdir = worktreeResult.data.directory;
+        branchName = worktreeResult.data.branch;
+
+        console.info({
+          message: "Worktree created",
+          stage: "processor",
+          linearSessionId,
+          workdir,
+          branchName,
+        });
+      }
 
       // Post session ready stage activity with branch info
       await this.linear.postStageActivity(
@@ -258,7 +296,7 @@ export class EventProcessor {
     });
 
     const eventStream = await this.opencodeClient.event.subscribe({
-      query: { directory: workdir },
+      directory: workdir,
     });
 
     // Create the SSE event handler to process events and post to Linear
@@ -312,15 +350,13 @@ export class EventProcessor {
     // Send prompt and subscribe to events concurrently
     const [, result] = await Promise.all([
       this.opencodeClient.session.prompt({
-        path: { id: opcodeSessionId },
-        query: { directory: workdir },
-        body: {
-          model: {
-            providerID: this.config.providerID,
-            modelID: this.config.modelID,
-          },
-          parts: [{ type: "text", text: prompt }],
+        sessionID: opcodeSessionId,
+        directory: workdir,
+        model: {
+          providerID: this.config.providerID,
+          modelID: this.config.modelID,
         },
+        parts: [{ type: "text", text: prompt }],
       }),
       this.subscribeAndWaitForCompletion(
         opcodeSessionId,
@@ -501,8 +537,8 @@ Once everything passes, you can complete your work.`;
       });
 
       await this.opencodeClient.session.abort({
-        path: { id: opcodeSessionId },
-        query: { directory: workdir },
+        sessionID: opcodeSessionId,
+        directory: workdir,
       });
 
       await this.linear.postActivity(

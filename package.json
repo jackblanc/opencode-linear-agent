@@ -3,14 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
-  "description": "Self-hosted Linear agent powered by OpenCode and Cloudflare Workers",
+  "description": "Self-hosted Linear agent powered by OpenCode",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "dev:linear": "bun run --filter @linear-opencode-agent/linear dev",
-    "dev:agent": "bun run --filter @linear-opencode-agent/agent dev",
-    "deploy:all": "bun run --filter @linear-opencode-agent/linear deploy && bun run --filter @linear-opencode-agent/agent deploy",
+    "dev": "bun run --filter @linear-opencode-agent/server dev",
     "typecheck": "bun run --filter '*' typecheck",
     "lint:check": "oxlint --report-unused-disable-directives --deny-warnings --type-aware --type-check",
     "lint:fix": "oxlint --fix",
@@ -20,14 +18,16 @@
     "fix": "bun run lint:fix && bun run format:fix"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260103.0",
     "knip": "^5.80.0",
     "oxlint": "^1.36.0",
     "oxlint-tsgolint": "^0.10.1",
     "prettier": "^3.7.4",
-    "typescript": "^5.9.3",
-    "wrangler": "^4.54.0"
+    "typescript": "^5.9.3"
   },
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.1.12",
+    "@opencode-ai/sdk": "^1.1.12"
+  }
 }

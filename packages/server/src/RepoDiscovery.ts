@@ -113,8 +113,7 @@ export async function discoverRepos(
       });
     }
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error({
       message: "Failed to discover repositories",
       stage: "repo-discovery",

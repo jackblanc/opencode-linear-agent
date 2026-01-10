@@ -4,7 +4,7 @@
  * This package contains:
  * - EventProcessor: Main entry point for processing Linear webhook events
  * - SessionManager: Manages OpenCode session lifecycle
- * - Interfaces for external dependencies (LinearAdapter, SessionRepository, GitOperations)
+ * - Interfaces for external dependencies (LinearAdapter, SessionRepository)
  */
 
 // Main processor
@@ -20,10 +20,6 @@ export { SessionManager } from "./session/SessionManager";
 export type { SessionState } from "./session/SessionState";
 export type { SessionRepository } from "./session/SessionRepository";
 
-// Git operations interface
-export type { GitOperations, GitProgressCallback } from "./git/GitOperations";
-export type { GitStatus, WorktreeInfo } from "./git/types";
-
 // Linear adapter interface and implementation
 export type { LinearAdapter, ActivitySignal } from "./linear/LinearAdapter";
 export { LinearClientAdapter } from "./linear/LinearClientAdapter";
@@ -31,9 +27,8 @@ export type {
   ActivityContent,
   PlanItem,
   ProcessingStage,
-  GitSetupStep,
 } from "./linear/types";
-export { STAGE_MESSAGES, GIT_STEP_MESSAGES } from "./linear/types";
+export { STAGE_MESSAGES } from "./linear/types";
 
 // Label parsing
 export { parseRepoLabel } from "./linear/label-parser";
