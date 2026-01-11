@@ -75,6 +75,6 @@ export * from "./errors";
 export { OpencodeService } from "./opencode";
 export type {
   WorktreeResult,
-  SessionResult as OpencodeSessionResult,
+  OpencodeSessionResult,
   MessageWithParts,
 } from "./opencode";

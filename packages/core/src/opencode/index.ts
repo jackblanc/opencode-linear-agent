@@ -1,6 +1,6 @@
 export { OpencodeService } from "./OpencodeService";
 export type {
   WorktreeResult,
-  SessionResult,
+  OpencodeSessionResult,
   MessageWithParts,
 } from "./OpencodeService";

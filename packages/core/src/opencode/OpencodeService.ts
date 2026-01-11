@@ -24,7 +24,7 @@ export interface WorktreeResult {
 /**
  * Session creation/retrieval result
  */
-export interface SessionResult {
+export interface OpencodeSessionResult {
   id: string;
 }
 
@@ -102,7 +102,7 @@ export class OpencodeService {
   async createSession(
     title: string,
     directory: string,
-  ): Promise<Result<SessionResult, OpencodeServiceError>> {
+  ): Promise<Result<OpencodeSessionResult, OpencodeServiceError>> {
     const result = await this.client.session.create({
       title,
       directory,

@@ -176,7 +176,18 @@ export class EventProcessor {
       branchName,
       workdir,
     );
-    const opcodeSessionId = sessionResult.opcodeSessionId;
+
+    if (Result.isError(sessionResult)) {
+      log.error("Error getting/creating session", {
+        error: sessionResult.error.message,
+        errorType: sessionResult.error._tag,
+      });
+      await this.linear.postError(linearSessionId, sessionResult.error);
+      return;
+    }
+
+    const session = sessionResult.value;
+    const opcodeSessionId = session.opcodeSessionId;
 
     // Add OpenCode session ID to logger context
     log.tag("opcodeSession", opcodeSessionId.slice(0, 8));
@@ -184,8 +195,8 @@ export class EventProcessor {
 
     log.info("OpenCode session ready", {
       workdir,
-      isNewSession: sessionResult.isNewSession,
-      hasPreviousContext: !!sessionResult.previousContext,
+      isNewSession: session.isNewSession,
+      hasPreviousContext: !!session.previousContext,
     });
 
     // Set external link to OpenCode UI
@@ -203,7 +214,7 @@ export class EventProcessor {
         linearSessionId,
         issue,
         workdir,
-        sessionResult.previousContext,
+        session.previousContext,
         log,
       );
     } else if (event.action === "prompted") {
@@ -213,7 +224,7 @@ export class EventProcessor {
         linearSessionId,
         issue,
         workdir,
-        sessionResult.previousContext,
+        session.previousContext,
         log,
       );
     }

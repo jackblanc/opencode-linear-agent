@@ -5,6 +5,7 @@ import type {
   OpencodeService,
   MessageWithParts,
 } from "../opencode/OpencodeService";
+import type { OpencodeServiceError } from "../errors";
 import { Log, type Logger } from "../logger";
 
 /**
@@ -79,14 +80,14 @@ export class SessionManager {
   /**
    * Get or create an OpenCode session for a Linear session
    *
-   * @returns Object containing the session ID, existing state, and whether this is a new session
+   * @returns Result containing the session ID, existing state, and whether this is a new session
    */
   async getOrCreateSession(
     linearSessionId: string,
     issue: string,
     branchName: string,
     workdir: string,
-  ): Promise<SessionResult> {
+  ): Promise<Result<SessionResult, OpencodeServiceError>> {
     const log = Log.create({ service: "session" })
       .tag("issue", issue)
       .tag("sessionId", linearSessionId);
@@ -107,11 +108,11 @@ export class SessionManager {
 
       if (Result.isOk(sessionResult)) {
         log.info("Successfully resumed session");
-        return {
+        return Result.ok({
           opcodeSessionId: sessionResult.value.id,
           existingState,
           isNewSession: false,
-        };
+        });
       }
 
       // Session not found or error - log and try to fetch previous context
@@ -191,7 +192,7 @@ export class SessionManager {
     existingState: SessionState | null,
     previousContext: string | undefined,
     log: Logger,
-  ): Promise<SessionResult> {
+  ): Promise<Result<SessionResult, OpencodeServiceError>> {
     log.info("Creating new OpenCode session", {
       hasPreviousContext: !!previousContext,
     });
@@ -206,7 +207,7 @@ export class SessionManager {
         error: sessionResult.error.message,
         errorType: sessionResult.error._tag,
       });
-      throw sessionResult.error;
+      return Result.err(sessionResult.error);
     }
 
     const sessionId = sessionResult.value.id;
@@ -228,12 +229,12 @@ export class SessionManager {
 
     log.info("Saved session state to repository", { branchName, workdir });
 
-    return {
+    return Result.ok({
       opcodeSessionId: sessionId,
       existingState,
       isNewSession: true,
       previousContext,
-    };
+    });
   }
 
   /**
