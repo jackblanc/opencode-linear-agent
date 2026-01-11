@@ -67,3 +67,14 @@ export { base64Encode, base64Decode } from "./utils/encode";
 // Logging
 export { Log, createLogger, initLogger, defaultLogger } from "./logger";
 export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
+
+// Errors
+export * from "./errors";
+
+// OpenCode service wrapper
+export { OpencodeService } from "./opencode";
+export type {
+  WorktreeResult,
+  SessionResult as OpencodeSessionResult,
+  MessageWithParts,
+} from "./opencode";

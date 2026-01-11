@@ -22,6 +22,7 @@ import {
   handleWebhook,
   refreshAccessToken,
   LinearServiceImpl,
+  OpencodeService,
   Log,
   type EventDispatcher,
   type KeyValueStore,
@@ -76,6 +77,7 @@ function createDirectDispatcher(
   const opencodeClient = createOpencodeClient({
     baseUrl: config.opencode.url,
   });
+  const opencode = new OpencodeService(opencodeClient);
 
   const availableRepos = Object.keys(config.repos ?? {});
 
@@ -148,7 +150,7 @@ function createDirectDispatcher(
       // Create event processor with repo directory
       // OpenCode handles worktree creation natively
       const processor = new EventProcessor(
-        opencodeClient,
+        opencode,
         linear,
         sessionRepository,
         resolved.config.localPath,

@@ -15,6 +15,8 @@ import type {
 } from "./types";
 import { STAGE_MESSAGES } from "./types";
 import { Log, type Logger } from "../logger";
+import type { LinearServiceError } from "../errors";
+import { mapLinearError } from "../errors";
 
 /**
  * Maps elicitation signals to Linear's AgentActivitySignal
@@ -32,13 +34,6 @@ function mapElicitationSignal(
     default:
       return undefined;
   }
-}
-
-/**
- * Ensure error is an Error instance
- */
-function toError(e: unknown): Error {
-  return e instanceof Error ? e : new Error(String(e));
 }
 
 /**
@@ -61,23 +56,26 @@ export class LinearServiceImpl implements LinearService {
     sessionId: string,
     content: ActivityContent,
     ephemeral = false,
-  ): Promise<Result<void, Error>> {
-    const result = await Result.tryPromise(async () =>
-      this.client.createAgentActivity({
-        agentSessionId: sessionId,
-        content,
-        ephemeral,
-      }),
-    );
+  ): Promise<Result<void, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () =>
+        this.client.createAgentActivity({
+          agentSessionId: sessionId,
+          content,
+          ephemeral,
+        }),
+      catch: mapLinearError,
+    });
 
     if (Result.isError(result)) {
       this.log.error("Failed to send activity", {
         activityType: content.type,
         sessionId,
         ephemeral,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
+      return Result.err(result.error);
     }
 
     return Result.ok(undefined);
@@ -87,25 +85,28 @@ export class LinearServiceImpl implements LinearService {
     sessionId: string,
     stage: ProcessingStage,
     details?: string,
-  ): Promise<Result<void, Error>> {
+  ): Promise<Result<void, LinearServiceError>> {
     const baseMessage = STAGE_MESSAGES[stage];
     const body = details ? `${baseMessage}\n\n${details}` : baseMessage;
 
-    const result = await Result.tryPromise(async () =>
-      this.client.createAgentActivity({
-        agentSessionId: sessionId,
-        content: { type: "thought", body },
-        ephemeral: true,
-      }),
-    );
+    const result = await Result.tryPromise({
+      try: async () =>
+        this.client.createAgentActivity({
+          agentSessionId: sessionId,
+          content: { type: "thought", body },
+          ephemeral: true,
+        }),
+      catch: mapLinearError,
+    });
 
     if (Result.isError(result)) {
       this.log.error("Failed to send stage activity", {
         processingStage: stage,
         sessionId,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
+      return Result.err(result.error);
     }
 
     return Result.ok(undefined);
@@ -114,7 +115,7 @@ export class LinearServiceImpl implements LinearService {
   async postError(
     sessionId: string,
     error: unknown,
-  ): Promise<Result<void, Error>> {
+  ): Promise<Result<void, LinearServiceError>> {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
 
@@ -126,21 +127,24 @@ export class LinearServiceImpl implements LinearService {
       ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${truncatedStack}\n\`\`\``
       : `**Error:** ${errorMessage}`;
 
-    const result = await Result.tryPromise(async () =>
-      this.client.createAgentActivity({
-        agentSessionId: sessionId,
-        content: { type: "error", body: errorBody },
-        ephemeral: false,
-      }),
-    );
+    const result = await Result.tryPromise({
+      try: async () =>
+        this.client.createAgentActivity({
+          agentSessionId: sessionId,
+          content: { type: "error", body: errorBody },
+          ephemeral: false,
+        }),
+      catch: mapLinearError,
+    });
 
     if (Result.isError(result)) {
       this.log.error("Failed to report error to Linear", {
         sessionId,
         originalError: errorMessage,
-        reportError: toError(result.error).message,
+        reportError: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
+      return Result.err(result.error);
     }
 
     return Result.ok(undefined);
@@ -151,27 +155,30 @@ export class LinearServiceImpl implements LinearService {
     body: string,
     signal: ElicitationSignal,
     metadata?: SignalMetadata,
-  ): Promise<Result<void, Error>> {
-    const result = await Result.tryPromise(async () =>
-      this.client.createAgentActivity({
-        agentSessionId: sessionId,
-        content: {
-          type: "elicitation",
-          body,
-          signalMetadata: metadata,
-        },
-        signal: mapElicitationSignal(signal),
-        ephemeral: false,
-      }),
-    );
+  ): Promise<Result<void, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () =>
+        this.client.createAgentActivity({
+          agentSessionId: sessionId,
+          content: {
+            type: "elicitation",
+            body,
+            signalMetadata: metadata,
+          },
+          signal: mapElicitationSignal(signal),
+          ephemeral: false,
+        }),
+      catch: mapLinearError,
+    });
 
     if (Result.isError(result)) {
       this.log.error("Failed to send elicitation", {
         sessionId,
         signal,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
+      return Result.err(result.error);
     }
 
     return Result.ok(undefined);
@@ -180,19 +187,23 @@ export class LinearServiceImpl implements LinearService {
   async setExternalLink(
     sessionId: string,
     url: string,
-  ): Promise<Result<void, Error>> {
-    const result = await Result.tryPromise(async () => {
-      const agentSession = await this.client.agentSession(sessionId);
-      await agentSession.update({ externalLink: url });
+  ): Promise<Result<void, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const agentSession = await this.client.agentSession(sessionId);
+        await agentSession.update({ externalLink: url });
+      },
+      catch: mapLinearError,
     });
 
     if (Result.isError(result)) {
       this.log.error("Failed to set external link", {
         sessionId,
         url,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
+      return result;
     }
 
     return Result.ok(undefined);
@@ -201,19 +212,23 @@ export class LinearServiceImpl implements LinearService {
   async updatePlan(
     sessionId: string,
     plan: PlanItem[],
-  ): Promise<Result<void, Error>> {
-    const result = await Result.tryPromise(async () => {
-      const agentSession = await this.client.agentSession(sessionId);
-      await agentSession.update({ plan });
+  ): Promise<Result<void, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const agentSession = await this.client.agentSession(sessionId);
+        await agentSession.update({ plan });
+      },
+      catch: mapLinearError,
     });
 
     if (Result.isError(result)) {
       this.log.error("Failed to update plan", {
         sessionId,
         planItemCount: plan.length,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
+      return result;
     }
 
     return Result.ok(undefined);
@@ -223,45 +238,55 @@ export class LinearServiceImpl implements LinearService {
   // Issue Query Methods
   // ─────────────────────────────────────────────────────────────
 
-  async getIssue(issueId: string): Promise<Result<LinearIssue, Error>> {
-    const result = await Result.tryPromise(async () => {
-      const issue = await this.client.issue(issueId);
-      return {
-        id: issue.id,
-        identifier: issue.identifier,
-        title: issue.title,
-        description: issue.description ?? undefined,
-        url: issue.url,
-      };
+  async getIssue(
+    issueId: string,
+  ): Promise<Result<LinearIssue, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        return {
+          id: issue.id,
+          identifier: issue.identifier,
+          title: issue.title,
+          description: issue.description ?? undefined,
+          url: issue.url,
+        };
+      },
+      catch: mapLinearError,
     });
 
     if (Result.isError(result)) {
       this.log.error("Failed to get issue", {
         issueId,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
     }
 
     return result;
   }
 
-  async getIssueLabels(issueId: string): Promise<Result<LinearLabel[], Error>> {
-    const result = await Result.tryPromise(async () => {
-      const issue = await this.client.issue(issueId);
-      const labels = await issue.labels();
-      return labels.nodes.map((label) => ({
-        id: label.id,
-        name: label.name,
-      }));
+  async getIssueLabels(
+    issueId: string,
+  ): Promise<Result<LinearLabel[], LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        const labels = await issue.labels();
+        return labels.nodes.map((label) => ({
+          id: label.id,
+          name: label.name,
+        }));
+      },
+      catch: mapLinearError,
     });
 
     if (Result.isError(result)) {
       this.log.error("Failed to get issue labels", {
         issueId,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
     }
 
     return result;
@@ -269,23 +294,26 @@ export class LinearServiceImpl implements LinearService {
 
   async getIssueAttachments(
     issueId: string,
-  ): Promise<Result<LinearAttachment[], Error>> {
-    const result = await Result.tryPromise(async () => {
-      const issue = await this.client.issue(issueId);
-      const attachments = await issue.attachments();
-      return attachments.nodes.map((attachment) => ({
-        id: attachment.id,
-        url: attachment.url ?? undefined,
-        title: attachment.title,
-      }));
+  ): Promise<Result<LinearAttachment[], LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        const attachments = await issue.attachments();
+        return attachments.nodes.map((attachment) => ({
+          id: attachment.id,
+          url: attachment.url ?? undefined,
+          title: attachment.title,
+        }));
+      },
+      catch: mapLinearError,
     });
 
     if (Result.isError(result)) {
       this.log.error("Failed to get issue attachments", {
         issueId,
-        error: toError(result.error).message,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-      return Result.err(toError(result.error));
     }
 
     return result;

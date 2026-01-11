@@ -1,4 +1,5 @@
 import type { Result } from "better-result";
+import type { LinearServiceError } from "../errors";
 import type {
   ActivityContent,
   PlanItem,
@@ -48,7 +49,7 @@ export interface LinearAttachment {
 /**
  * Unified interface for all Linear operations.
  *
- * Wraps the Linear SDK client and returns Result types
+ * Wraps the Linear SDK client and returns Result types with typed errors
  * instead of throwing exceptions.
  */
 export interface LinearService {
@@ -63,7 +64,7 @@ export interface LinearService {
     sessionId: string,
     content: ActivityContent,
     ephemeral?: boolean,
-  ): Promise<Result<void, Error>>;
+  ): Promise<Result<void, LinearServiceError>>;
 
   /**
    * Post a processing stage activity (ephemeral thought)
@@ -72,12 +73,15 @@ export interface LinearService {
     sessionId: string,
     stage: ProcessingStage,
     details?: string,
-  ): Promise<Result<void, Error>>;
+  ): Promise<Result<void, LinearServiceError>>;
 
   /**
    * Post an error activity to a Linear session
    */
-  postError(sessionId: string, error: unknown): Promise<Result<void, Error>>;
+  postError(
+    sessionId: string,
+    error: unknown,
+  ): Promise<Result<void, LinearServiceError>>;
 
   /**
    * Post an elicitation activity to request user input
@@ -87,17 +91,23 @@ export interface LinearService {
     body: string,
     signal: ElicitationSignal,
     metadata?: SignalMetadata,
-  ): Promise<Result<void, Error>>;
+  ): Promise<Result<void, LinearServiceError>>;
 
   /**
    * Set the external link for a Linear session
    */
-  setExternalLink(sessionId: string, url: string): Promise<Result<void, Error>>;
+  setExternalLink(
+    sessionId: string,
+    url: string,
+  ): Promise<Result<void, LinearServiceError>>;
 
   /**
    * Update the plan for a Linear session
    */
-  updatePlan(sessionId: string, plan: PlanItem[]): Promise<Result<void, Error>>;
+  updatePlan(
+    sessionId: string,
+    plan: PlanItem[],
+  ): Promise<Result<void, LinearServiceError>>;
 
   // ─────────────────────────────────────────────────────────────
   // Issue Query Methods
@@ -106,17 +116,19 @@ export interface LinearService {
   /**
    * Get an issue by ID
    */
-  getIssue(issueId: string): Promise<Result<LinearIssue, Error>>;
+  getIssue(issueId: string): Promise<Result<LinearIssue, LinearServiceError>>;
 
   /**
    * Get labels for an issue
    */
-  getIssueLabels(issueId: string): Promise<Result<LinearLabel[], Error>>;
+  getIssueLabels(
+    issueId: string,
+  ): Promise<Result<LinearLabel[], LinearServiceError>>;
 
   /**
    * Get attachments for an issue
    */
   getIssueAttachments(
     issueId: string,
-  ): Promise<Result<LinearAttachment[], Error>>;
+  ): Promise<Result<LinearAttachment[], LinearServiceError>>;
 }

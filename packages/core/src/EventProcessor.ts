@@ -1,12 +1,11 @@
-import type {
-  OpencodeClient,
-  Event as OpencodeEvent,
-} from "@opencode-ai/sdk/v2";
+import type { Event as OpencodeEvent } from "@opencode-ai/sdk/v2";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import { Result } from "better-result";
 import type { LinearService } from "./linear/LinearService";
 import type { SessionRepository } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import { SSEEventHandler } from "./SSEEventHandler";
+import type { OpencodeService } from "./opencode/OpencodeService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
 
@@ -91,13 +90,13 @@ export class EventProcessor {
   private readonly config: EventProcessorConfig;
 
   constructor(
-    private readonly opencodeClient: OpencodeClient,
+    private readonly opencode: OpencodeService,
     private readonly linear: LinearService,
     sessions: SessionRepository,
     private readonly repoDirectory: string,
     config?: Partial<EventProcessorConfig>,
   ) {
-    this.sessionManager = new SessionManager(opencodeClient, sessions);
+    this.sessionManager = new SessionManager(opencode, sessions);
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -142,31 +141,23 @@ export class EventProcessor {
         repoDirectory: this.repoDirectory,
       });
 
-      const worktreeResult = await this.opencodeClient.worktree.create({
-        directory: this.repoDirectory,
-        worktreeCreateInput: {
-          name: issue,
-          startCommand: this.config.startCommand,
-        },
-      });
+      const worktreeResult = await this.opencode.createWorktree(
+        this.repoDirectory,
+        issue,
+        this.config.startCommand,
+      );
 
-      if (!worktreeResult.data) {
-        // Extract error details from SDK response if available
-        const errorDetails =
-          worktreeResult.error?.errors
-            ?.map((e: Record<string, unknown>) =>
-              typeof e === "object" ? JSON.stringify(e) : String(e),
-            )
-            .join("; ") ?? "no data returned";
-
-        const error = new Error(`Failed to create worktree: ${errorDetails}`);
-        log.error("Error creating worktree", { error: error.message });
-        await this.linear.postError(linearSessionId, error);
+      if (Result.isError(worktreeResult)) {
+        log.error("Error creating worktree", {
+          error: worktreeResult.error.message,
+          errorType: worktreeResult.error._tag,
+        });
+        await this.linear.postError(linearSessionId, worktreeResult.error);
         return;
       }
 
-      workdir = worktreeResult.data.directory;
-      branchName = worktreeResult.data.branch;
+      workdir = worktreeResult.value.directory;
+      branchName = worktreeResult.value.branch;
 
       log.info("Worktree created", { workdir, branchName });
     }
@@ -242,16 +233,14 @@ export class EventProcessor {
   ): Promise<void> {
     log.info("Subscribing to OpenCode event stream");
 
-    const eventStream = await this.opencodeClient.event.subscribe({
-      directory: workdir,
-    });
+    const eventStream = await this.opencode.subscribe(workdir);
 
     // Create the SSE event handler to process events and post to Linear
     const handler = new SSEEventHandler(
       this.linear,
       linearSessionId,
       opencodeSessionId,
-      this.opencodeClient,
+      this.opencode,
       log.clone().tag("service", "sse-handler"),
       workdir,
     );
@@ -286,15 +275,15 @@ export class EventProcessor {
 
     // Send prompt and subscribe to events concurrently
     await Promise.all([
-      this.opencodeClient.session.prompt({
-        sessionID: opcodeSessionId,
-        directory: workdir,
-        model: {
+      this.opencode.prompt(
+        opcodeSessionId,
+        workdir,
+        {
           providerID: this.config.providerID,
           modelID: this.config.modelID,
         },
-        parts: [{ type: "text", text: prompt }],
-      }),
+        [{ type: "text", text: prompt }],
+      ),
       this.subscribeAndWaitForCompletion(
         opcodeSessionId,
         linearSessionId,
@@ -313,7 +302,7 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    issue: string,
+    _issue: string,
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
@@ -321,18 +310,16 @@ export class EventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session");
 
-      const abortResult = await this.opencodeClient.session.abort({
-        sessionID: opcodeSessionId,
-        directory: workdir,
-      });
+      const abortResult = await this.opencode.abortSession(
+        opcodeSessionId,
+        workdir,
+      );
 
-      if (abortResult.error) {
-        const errorMessage =
-          typeof abortResult.error === "object" &&
-          "message" in abortResult.error
-            ? String(abortResult.error.message)
-            : JSON.stringify(abortResult.error);
-        log.warn("Failed to abort session", { error: errorMessage });
+      if (Result.isError(abortResult)) {
+        log.warn("Failed to abort session", {
+          error: abortResult.error.message,
+          errorType: abortResult.error._tag,
+        });
       }
 
       await this.linear.postActivity(
@@ -371,7 +358,7 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    issue: string,
+    _issue: string,
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
@@ -380,18 +367,16 @@ export class EventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session");
 
-      const abortResult = await this.opencodeClient.session.abort({
-        sessionID: opcodeSessionId,
-        directory: workdir,
-      });
+      const abortResult = await this.opencode.abortSession(
+        opcodeSessionId,
+        workdir,
+      );
 
-      if (abortResult.error) {
-        const errorMessage =
-          typeof abortResult.error === "object" &&
-          "message" in abortResult.error
-            ? String(abortResult.error.message)
-            : JSON.stringify(abortResult.error);
-        log.warn("Failed to abort session", { error: errorMessage });
+      if (Result.isError(abortResult)) {
+        log.warn("Failed to abort session", {
+          error: abortResult.error.message,
+          errorType: abortResult.error._tag,
+        });
       }
 
       await this.linear.postActivity(
