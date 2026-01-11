@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "lefthook install",
     "dev": "bun run --filter @linear-opencode-agent/server dev",
     "typecheck": "bun run --filter '*' typecheck",
     "lint:check": "oxlint --report-unused-disable-directives --deny-warnings --type-aware --type-check",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "knip": "^5.80.0",
+    "lefthook": "^2.0.13",
     "oxlint": "^1.36.0",
     "oxlint-tsgolint": "^0.10.1",
     "prettier": "^3.7.4",
