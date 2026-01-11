@@ -13,15 +13,15 @@
  */
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
-import { LinearClient } from "@linear/sdk";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import { Result } from "better-result";
 import {
   EventProcessor,
   handleAuthorize,
   handleCallback,
   handleWebhook,
   refreshAccessToken,
-  LinearClientAdapter,
+  LinearServiceImpl,
   Log,
   type EventDispatcher,
   type KeyValueStore,
@@ -108,63 +108,57 @@ function createDirectDispatcher(
         );
       }
 
-      // Create Linear adapter early so we can report errors
-      const linearAdapter = new LinearClientAdapter(accessToken);
+      // Create Linear service (unified interface for all Linear operations)
+      const linear = new LinearServiceImpl(accessToken);
 
-      try {
-        // Create Linear client for repo resolution
-        const linearClient = new LinearClient({ accessToken });
+      // Resolve which repository to use for this issue
+      const repoResolver = RepoResolver.fromConfig(linear, config);
+      const resolveResult = await repoResolver.resolve(issueId);
 
-        // Resolve which repository to use for this issue
-        const repoResolver = RepoResolver.fromConfig(linearClient, config);
-        const resolved = await repoResolver.resolve(issueId);
-
-        if (!resolved) {
-          const errorMessage =
-            `**Could not determine which repository to use for this issue.**\n\n` +
-            `To fix this, add one of the following:\n` +
-            `- A \`repo:*\` label (e.g., \`repo:linear-opencode-agent\`)\n` +
-            `- A GitHub link in the issue description\n\n` +
-            `Available repositories: ${availableRepos.join(", ")}`;
-
-          await linearAdapter.postError(
-            linearSessionId,
-            new Error(errorMessage),
-          );
-          log.error("Could not resolve repository", { availableRepos });
-          return;
-        }
-
-        log.info("Resolved repository for issue", {
-          issueId,
-          repoKey: resolved.key,
-          repoUrl: resolved.config.remoteUrl,
-          localPath: resolved.config.localPath,
+      // Handle resolution errors
+      if (Result.isError(resolveResult)) {
+        log.error("Failed to resolve repository", {
+          error: resolveResult.error.message,
         });
-
-        // Create event processor with repo directory
-        // OpenCode handles worktree creation natively
-        const processor = new EventProcessor(
-          opencodeClient,
-          linearAdapter,
-          sessionRepository,
-          resolved.config.localPath,
-          { opencodeUrl: config.opencode.url },
-        );
-
-        // Process the event directly (this is the key difference from Cloudflare)
-        // Cloudflare uses a queue for 15min timeout, but locally we can just await
-        await processor.process(event);
-      } catch (error) {
-        // Post error to Linear so the user sees what went wrong
-        log.error("Dispatch failed", {
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        });
-
-        await linearAdapter.postError(linearSessionId, error);
-        // Don't re-throw - we've already posted the error to Linear
+        await linear.postError(linearSessionId, resolveResult.error);
+        return;
       }
+
+      const resolved = resolveResult.value;
+      if (!resolved) {
+        const errorMessage =
+          `**Could not determine which repository to use for this issue.**\n\n` +
+          `To fix this, add one of the following:\n` +
+          `- A \`repo:*\` label (e.g., \`repo:linear-opencode-agent\`)\n` +
+          `- A GitHub link in the issue description\n\n` +
+          `Available repositories: ${availableRepos.join(", ")}`;
+
+        await linear.postError(linearSessionId, new Error(errorMessage));
+        log.error("Could not resolve repository", { availableRepos });
+        return;
+      }
+
+      log.info("Resolved repository for issue", {
+        issueId,
+        repoKey: resolved.key,
+        repoUrl: resolved.config.remoteUrl,
+        localPath: resolved.config.localPath,
+      });
+
+      // Create event processor with repo directory
+      // OpenCode handles worktree creation natively
+      const processor = new EventProcessor(
+        opencodeClient,
+        linear,
+        sessionRepository,
+        resolved.config.localPath,
+        { opencodeUrl: config.opencode.url },
+      );
+
+      // Process the event directly (this is the key difference from Cloudflare)
+      // Cloudflare uses a queue for 15min timeout, but locally we can just await
+      // Note: processor.process() handles its own errors and posts them to Linear
+      await processor.process(event);
     },
   };
 }

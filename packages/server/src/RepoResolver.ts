@@ -8,7 +8,8 @@
  * 4. Fall back to default repo
  */
 
-import type { LinearClient } from "@linear/sdk";
+import { Result } from "better-result";
+import type { LinearService } from "@linear-opencode-agent/core";
 import { parseRepoLabel, Log } from "@linear-opencode-agent/core";
 import type { RepoConfig } from "./config";
 
@@ -51,7 +52,7 @@ function extractGitHubRepoUrl(url: string): string | null {
  */
 export class RepoResolver {
   constructor(
-    private readonly linearClient: LinearClient,
+    private readonly linear: LinearService,
     private readonly repos: Record<string, RepoConfig>,
     private readonly defaultRepoKey?: string,
   ) {}
@@ -60,9 +61,9 @@ export class RepoResolver {
    * Resolve the repository for an issue
    *
    * @param issueId - Linear issue ID
-   * @returns Resolved repo config, or null if no matching repo found
+   * @returns Result containing resolved repo config, or null if no matching repo found
    */
-  async resolve(issueId: string): Promise<ResolvedRepo | null> {
+  async resolve(issueId: string): Promise<Result<ResolvedRepo | null, Error>> {
     const log = Log.create({ service: "repo-resolver" }).tag(
       "issueId",
       issueId,
@@ -72,111 +73,114 @@ export class RepoResolver {
       availableRepos: Object.keys(this.repos),
     });
 
-    try {
-      // Fetch issue with attachments and labels
-      const issue = await this.linearClient.issue(issueId);
+    // Strategy 1: Check labels for "repo:" label
+    const labelsResult = await this.linear.getIssueLabels(issueId);
+    if (Result.isError(labelsResult)) {
+      return Result.err(labelsResult.error);
+    }
 
-      // Strategy 1: Check labels for "repo:" label
-      const labels = await issue.labels();
-      const repoLabelInfo = parseRepoLabel(labels.nodes);
-      if (repoLabelInfo) {
-        const resolved = this.findRepoByName(repoLabelInfo.repositoryName);
-        if (resolved) {
-          log.info("Resolved repo from label", {
-            label: `repo:${repoLabelInfo.organizationName ? `${repoLabelInfo.organizationName}/` : ""}${repoLabelInfo.repositoryName}`,
-            repoKey: resolved.key,
-          });
-          return resolved;
-        }
-
-        // If org/repo format, try to find by URL pattern
-        if (repoLabelInfo.organizationName) {
-          const repoUrl = `https://github.com/${repoLabelInfo.organizationName}/${repoLabelInfo.repositoryName}`;
-          const resolvedByUrl = this.findRepoByUrl(repoUrl);
-          if (resolvedByUrl) {
-            log.info("Resolved repo from label (by URL)", {
-              repoUrl,
-              repoKey: resolvedByUrl.key,
-            });
-            return resolvedByUrl;
-          }
-        }
-
-        log.warn("Found repo: label but no matching repo config", {
-          repoLabel: repoLabelInfo,
-          availableRepos: Object.keys(this.repos),
+    const repoLabelInfo = parseRepoLabel(labelsResult.value);
+    if (repoLabelInfo) {
+      const resolved = this.findRepoByName(repoLabelInfo.repositoryName);
+      if (resolved) {
+        log.info("Resolved repo from label", {
+          label: `repo:${repoLabelInfo.organizationName ? `${repoLabelInfo.organizationName}/` : ""}${repoLabelInfo.repositoryName}`,
+          repoKey: resolved.key,
         });
+        return Result.ok(resolved);
       }
 
-      // Strategy 2: Check attachments for GitHub links
-      const attachments = await issue.attachments();
-      for (const attachment of attachments.nodes) {
-        const url = attachment.url;
-        if (!url) {
-          continue;
+      // If org/repo format, try to find by URL pattern
+      if (repoLabelInfo.organizationName) {
+        const repoUrl = `https://github.com/${repoLabelInfo.organizationName}/${repoLabelInfo.repositoryName}`;
+        const resolvedByUrl = this.findRepoByUrl(repoUrl);
+        if (resolvedByUrl) {
+          log.info("Resolved repo from label (by URL)", {
+            repoUrl,
+            repoKey: resolvedByUrl.key,
+          });
+          return Result.ok(resolvedByUrl);
         }
+      }
 
-        const repoUrl = extractGitHubRepoUrl(url);
+      log.warn("Found repo: label but no matching repo config", {
+        repoLabel: repoLabelInfo,
+        availableRepos: Object.keys(this.repos),
+      });
+    }
+
+    // Strategy 2: Check attachments for GitHub links
+    const attachmentsResult = await this.linear.getIssueAttachments(issueId);
+    if (Result.isError(attachmentsResult)) {
+      return Result.err(attachmentsResult.error);
+    }
+
+    for (const attachment of attachmentsResult.value) {
+      const url = attachment.url;
+      if (!url) {
+        continue;
+      }
+
+      const repoUrl = extractGitHubRepoUrl(url);
+      if (repoUrl) {
+        const resolved = this.findRepoByUrl(repoUrl);
+        if (resolved) {
+          log.info("Resolved repo from attachment", {
+            attachmentUrl: url,
+            repoKey: resolved.key,
+          });
+          return Result.ok(resolved);
+        }
+      }
+    }
+
+    // Strategy 3: Check issue description for GitHub links
+    const issueResult = await this.linear.getIssue(issueId);
+    if (Result.isError(issueResult)) {
+      return Result.err(issueResult.error);
+    }
+
+    const description = issueResult.value.description ?? "";
+    const urlRegex = /https?:\/\/github\.com\/[^\s)>\]]+/gi;
+    const matches = description.match(urlRegex);
+    if (matches) {
+      for (const match of matches) {
+        const repoUrl = extractGitHubRepoUrl(match);
         if (repoUrl) {
           const resolved = this.findRepoByUrl(repoUrl);
           if (resolved) {
-            log.info("Resolved repo from attachment", {
-              attachmentUrl: url,
+            log.info("Resolved repo from description", {
+              foundUrl: match,
               repoKey: resolved.key,
             });
-            return resolved;
+            return Result.ok(resolved);
           }
         }
       }
-
-      // Strategy 3: Check issue description for GitHub links
-      const description = issue.description ?? "";
-      const urlRegex = /https?:\/\/github\.com\/[^\s)>\]]+/gi;
-      const matches = description.match(urlRegex);
-      if (matches) {
-        for (const match of matches) {
-          const repoUrl = extractGitHubRepoUrl(match);
-          if (repoUrl) {
-            const resolved = this.findRepoByUrl(repoUrl);
-            if (resolved) {
-              log.info("Resolved repo from description", {
-                foundUrl: match,
-                repoKey: resolved.key,
-              });
-              return resolved;
-            }
-          }
-        }
-      }
-
-      // Strategy 4: Fall back to default repo
-      if (this.defaultRepoKey && this.repos[this.defaultRepoKey]) {
-        log.info("Using default repo", { repoKey: this.defaultRepoKey });
-        return {
-          key: this.defaultRepoKey,
-          config: this.repos[this.defaultRepoKey],
-        };
-      }
-
-      // No default, try the first repo if there's only one
-      const repoKeys = Object.keys(this.repos);
-      if (repoKeys.length === 1) {
-        const key = repoKeys[0];
-        log.info("Using only available repo", { repoKey: key });
-        return { key, config: this.repos[key] };
-      }
-
-      log.warn("Could not resolve repository for issue", {
-        availableRepos: repoKeys,
-      });
-
-      return null;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      log.error("Error resolving repository", { error: errorMessage });
-      throw error;
     }
+
+    // Strategy 4: Fall back to default repo
+    if (this.defaultRepoKey && this.repos[this.defaultRepoKey]) {
+      log.info("Using default repo", { repoKey: this.defaultRepoKey });
+      return Result.ok({
+        key: this.defaultRepoKey,
+        config: this.repos[this.defaultRepoKey],
+      });
+    }
+
+    // No default, try the first repo if there's only one
+    const repoKeys = Object.keys(this.repos);
+    if (repoKeys.length === 1) {
+      const key = repoKeys[0];
+      log.info("Using only available repo", { repoKey: key });
+      return Result.ok({ key, config: this.repos[key] });
+    }
+
+    log.warn("Could not resolve repository for issue", {
+      availableRepos: repoKeys,
+    });
+
+    return Result.ok(null);
   }
 
   /**
@@ -226,7 +230,7 @@ export class RepoResolver {
    * Handles both single repo (backward compat) and multi-repo configs
    */
   static fromConfig(
-    linearClient: LinearClient,
+    linear: LinearService,
     config: {
       repo?: RepoConfig;
       repos?: Record<string, RepoConfig>;
@@ -242,10 +246,6 @@ export class RepoResolver {
       repos = { default: config.repo };
     }
 
-    return new RepoResolver(
-      linearClient,
-      repos,
-      config.defaultRepo ?? "default",
-    );
+    return new RepoResolver(linear, repos, config.defaultRepo ?? "default");
   }
 }

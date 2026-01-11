@@ -6,7 +6,7 @@ import type {
   Todo,
   Part,
 } from "@opencode-ai/sdk/v2";
-import type { LinearAdapter } from "./linear/LinearAdapter";
+import type { LinearService } from "./linear/LinearService";
 import type { PlanItem } from "./linear/types";
 import type { Logger } from "./logger";
 
@@ -210,7 +210,7 @@ export class SSEEventHandler {
   private postedFinalResponse = false;
 
   constructor(
-    private readonly linear: LinearAdapter,
+    private readonly linear: LinearService,
     private readonly linearSessionId: string,
     private readonly opencodeSessionId: string,
     private readonly opcodeClient: OpencodeClient,
@@ -456,15 +456,17 @@ export class SSEEventHandler {
 
     this.log.info("Auto-approving permission", { requestId: id, permission });
 
-    try {
-      // Use the SDK's permission reply endpoint
-      await this.opcodeClient.permission.reply({
-        requestID: id,
-        reply: "always",
-      });
-    } catch (error) {
+    // Use the SDK's permission reply endpoint
+    const result = await this.opcodeClient.permission.reply({
+      requestID: id,
+      reply: "always",
+    });
+
+    if (result.error) {
       const errorMessage =
-        error instanceof Error ? error.message : String(error);
+        typeof result.error === "object" && "message" in result.error
+          ? String(result.error.message)
+          : JSON.stringify(result.error);
       this.log.error("Failed to reply to permission", {
         requestId: id,
         error: errorMessage,

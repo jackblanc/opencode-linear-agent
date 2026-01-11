@@ -98,63 +98,48 @@ export class SessionManager {
       log.tag("opcodeSessionId", existingState.opencodeSessionId);
       log.info("Found existing state, attempting to resume");
 
-      try {
-        const session = await this.opcodeClient.session.get({
-          sessionID: existingState.opencodeSessionId,
-          directory: workdir,
-        });
+      const session = await this.opcodeClient.session.get({
+        sessionID: existingState.opencodeSessionId,
+        directory: workdir,
+      });
 
-        if (session.data) {
-          log.info("Successfully resumed session");
-          return {
-            opcodeSessionId: session.data.id,
-            existingState,
-            isNewSession: false,
-          };
-        }
-
-        // Session not found in OpenCode - try to fetch previous messages before creating new
-        log.warn("Session not found, fetching previous context");
-
-        const previousContext = await this.fetchPreviousContext(
-          existingState.opencodeSessionId,
-          workdir,
-          log,
-        );
-
-        return this.createNewSession(
-          linearSessionId,
-          issue,
-          branchName,
-          workdir,
+      if (session.data) {
+        log.info("Successfully resumed session");
+        return {
+          opcodeSessionId: session.data.id,
           existingState,
-          previousContext,
-          log,
-        );
-      } catch (error) {
+          isNewSession: false,
+        };
+      }
+
+      // Session not found or error - log and try to fetch previous context
+      if (session.error) {
         const errorMessage =
-          error instanceof Error ? error.message : String(error);
+          typeof session.error === "object" && "message" in session.error
+            ? String(session.error.message)
+            : JSON.stringify(session.error);
         log.warn("Failed to resume session, fetching previous context", {
           error: errorMessage,
         });
-
-        // Try to fetch previous context before creating new session
-        const previousContext = await this.fetchPreviousContext(
-          existingState.opencodeSessionId,
-          workdir,
-          log,
-        );
-
-        return this.createNewSession(
-          linearSessionId,
-          issue,
-          branchName,
-          workdir,
-          existingState,
-          previousContext,
-          log,
-        );
+      } else {
+        log.warn("Session not found, fetching previous context");
       }
+
+      const previousContext = await this.fetchPreviousContext(
+        existingState.opencodeSessionId,
+        workdir,
+        log,
+      );
+
+      return this.createNewSession(
+        linearSessionId,
+        issue,
+        branchName,
+        workdir,
+        existingState,
+        previousContext,
+        log,
+      );
     }
 
     // No existing state - create fresh session
@@ -177,23 +162,28 @@ export class SessionManager {
     workdir: string,
     log: Logger,
   ): Promise<string | undefined> {
-    try {
-      const messagesResult = await this.opcodeClient.session.messages({
-        sessionID: opcodeSessionId,
-        directory: workdir,
-      });
+    const messagesResult = await this.opcodeClient.session.messages({
+      sessionID: opcodeSessionId,
+      directory: workdir,
+    });
 
-      if (messagesResult.data && messagesResult.data.length > 0) {
-        log.info("Fetched previous messages for context", {
-          messageCount: messagesResult.data.length,
-        });
-        return formatMessageHistory(messagesResult.data);
-      }
-    } catch (error) {
+    if (messagesResult.error) {
       const errorMessage =
-        error instanceof Error ? error.message : String(error);
+        typeof messagesResult.error === "object" &&
+        "message" in messagesResult.error
+          ? String(messagesResult.error.message)
+          : JSON.stringify(messagesResult.error);
       log.warn("Failed to fetch previous messages", { error: errorMessage });
+      return undefined;
     }
+
+    if (messagesResult.data && messagesResult.data.length > 0) {
+      log.info("Fetched previous messages for context", {
+        messageCount: messagesResult.data.length,
+      });
+      return formatMessageHistory(messagesResult.data);
+    }
+
     return undefined;
   }
 
