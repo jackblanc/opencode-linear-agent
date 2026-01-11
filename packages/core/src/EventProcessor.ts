@@ -69,7 +69,7 @@ export interface EventProcessorConfig {
 const DEFAULT_CONFIG: EventProcessorConfig = {
   providerID: "opencode",
   modelID: "minimax-m2.1-free",
-  startCommand: "bun install",
+  startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
 
