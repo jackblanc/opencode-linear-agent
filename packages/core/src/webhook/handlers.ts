@@ -141,11 +141,8 @@ export async function handleWebhook(
     }
   }
 
-  // Extract worker URL for externalLink
-  const workerUrl = new URL(request.url).origin;
-
   // Dispatch for processing
-  await dispatcher.dispatch(webhookPayload, workerUrl);
+  await dispatcher.dispatch(webhookPayload);
 
   log.info("Event dispatched successfully", { action: webhookPayload.action });
 
