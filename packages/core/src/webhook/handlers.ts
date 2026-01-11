@@ -141,10 +141,21 @@ export async function handleWebhook(
     }
   }
 
-  // Dispatch for processing
-  await dispatcher.dispatch(webhookPayload);
+  // Dispatch for processing in background (fire-and-forget)
+  // We return 200 immediately to prevent Linear webhook timeouts and retries.
+  // The dispatcher is responsible for error handling and posting errors to Linear.
+  setImmediate(() => {
+    dispatcher.dispatch(webhookPayload).catch((error) => {
+      log.error("Background dispatch failed", {
+        action: webhookPayload.action,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  });
 
-  log.info("Event dispatched successfully", { action: webhookPayload.action });
+  log.info("Event dispatched for background processing", {
+    action: webhookPayload.action,
+  });
 
   return new Response("OK", { status: 200 });
 }
