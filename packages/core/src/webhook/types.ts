@@ -17,12 +17,8 @@ export interface EventDispatcher {
    * Dispatch an event for processing
    *
    * @param event - The webhook payload from Linear
-   * @param workerUrl - The base URL to use for external links
    */
-  dispatch(
-    event: AgentSessionEventWebhookPayload,
-    workerUrl: string,
-  ): Promise<void>;
+  dispatch(event: AgentSessionEventWebhookPayload): Promise<void>;
 }
 
 /**

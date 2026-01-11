@@ -78,10 +78,7 @@ function createDirectDispatcher(
   });
 
   return {
-    async dispatch(
-      event: AgentSessionEventWebhookPayload,
-      workerUrl: string,
-    ): Promise<void> {
+    async dispatch(event: AgentSessionEventWebhookPayload): Promise<void> {
       const organizationId = event.organizationId;
       const issueId =
         event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
@@ -139,11 +136,12 @@ function createDirectDispatcher(
         linearAdapter,
         sessionRepository,
         resolved.config.localPath,
+        { opencodeUrl: config.opencode.url },
       );
 
       // Process the event directly (this is the key difference from Cloudflare)
       // Cloudflare uses a queue for 15min timeout, but locally we can just await
-      await processor.process(event, workerUrl);
+      await processor.process(event);
     },
   };
 }
