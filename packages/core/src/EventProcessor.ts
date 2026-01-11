@@ -152,7 +152,14 @@ export class EventProcessor {
         });
 
         if (!worktreeResult.data) {
-          throw new Error("Failed to create worktree: no data returned");
+          // Extract error details from SDK response if available
+          const errorDetails =
+            worktreeResult.error?.errors
+              ?.map((e: Record<string, unknown>) =>
+                typeof e === "object" ? JSON.stringify(e) : String(e),
+              )
+              .join("; ") ?? "no data returned";
+          throw new Error(`Failed to create worktree: ${errorDetails}`);
         }
 
         workdir = worktreeResult.data.directory;
