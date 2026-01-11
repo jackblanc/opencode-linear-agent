@@ -6,14 +6,9 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { LinearAdapter } from "./linear/LinearAdapter";
 import type { SessionRepository } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
-import { SSEEventHandler, type SSEEventResult } from "./SSEEventHandler";
+import { SSEEventHandler } from "./SSEEventHandler";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
-
-/**
- * Maximum number of retry attempts when commit guard blocks the agent
- */
-const MAX_COMMIT_GUARD_RETRIES = 3;
 
 /**
  * High-frequency events that should be DEBUG level
@@ -253,7 +248,7 @@ export class EventProcessor {
     linearSessionId: string,
     workdir: string,
     log: Logger,
-  ): Promise<SSEEventResult> {
+  ): Promise<void> {
     log.info("Subscribing to OpenCode event stream");
 
     const eventStream = await this.opencodeClient.event.subscribe({
@@ -270,8 +265,6 @@ export class EventProcessor {
       workdir,
     );
 
-    let finalResult: SSEEventResult = { action: "break" };
-
     for await (const event of eventStream.stream) {
       // Log every event for observability
       logOpencodeEvent(event, log);
@@ -279,36 +272,29 @@ export class EventProcessor {
       // Process the event via handler (posts activities to Linear, handles permissions)
       const result = await handler.handleEvent(event);
 
-      // Break if handler signals completion (session.idle, session.error, or retry)
-      if (result.action === "break" || result.action === "retry") {
-        log.info(
-          result.action === "retry"
-            ? "Session needs retry (commit guard)"
-            : "Session completed",
-        );
-        finalResult = result;
+      // Break if handler signals completion (session.idle or session.error)
+      if (result.action === "break") {
+        log.info("Session completed");
         break;
       }
     }
-
-    return finalResult;
   }
 
   /**
-   * Execute a single prompt iteration and return the result
+   * Execute a prompt and wait for completion
    */
-  private async executePromptIteration(
+  private async executePrompt(
     opcodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     prompt: string,
     log: Logger,
-  ): Promise<SSEEventResult> {
+  ): Promise<void> {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
     // Send prompt and subscribe to events concurrently
-    const [, result] = await Promise.all([
+    await Promise.all([
       this.opencodeClient.session.prompt({
         sessionID: opcodeSessionId,
         directory: workdir,
@@ -326,99 +312,7 @@ export class EventProcessor {
       ),
     ]);
 
-    return result;
-  }
-
-  /**
-   * Send a prompt and wait for completion, with retry loop for commit guard
-   */
-  private async promptWithRetry(
-    opcodeSessionId: string,
-    linearSessionId: string,
-    workdir: string,
-    initialPrompt: string,
-    log: Logger,
-  ): Promise<void> {
-    // First iteration with initial prompt
-    let result = await this.executePromptIteration(
-      opcodeSessionId,
-      linearSessionId,
-      workdir,
-      initialPrompt,
-      log,
-    );
-
-    // If no retry needed, we're done
-    if (result.action !== "retry") {
-      log.info("OpenCode session completed");
-      return;
-    }
-
-    // Handle retries
-    for (
-      let retryCount = 1;
-      retryCount <= MAX_COMMIT_GUARD_RETRIES;
-      retryCount++
-    ) {
-      log.info("Commit guard triggered, retrying", {
-        retryCount,
-        maxRetries: MAX_COMMIT_GUARD_RETRIES,
-      });
-
-      // Build retry prompt with the error context
-      const retryPrompt = `${result.reason}
-
----
-
-Please address the issues above. This is retry ${retryCount} of ${MAX_COMMIT_GUARD_RETRIES}.
-
-Remember:
-1. Fix any failing tests - run \`bun run check\` to verify
-2. Commit all your changes with a descriptive message
-3. Add any untracked files to git or .gitignore
-
-Once everything passes, you can complete your work.`;
-
-      result = await this.executePromptIteration(
-        opcodeSessionId,
-        linearSessionId,
-        workdir,
-        retryPrompt,
-        log,
-      );
-
-      // If this iteration succeeded, we're done
-      if (result.action !== "retry") {
-        log.info("OpenCode session completed after retry", { retryCount });
-        return;
-      }
-    }
-
-    // Max retries exceeded
-    log.error("Max commit guard retries exceeded", {
-      retryCount: MAX_COMMIT_GUARD_RETRIES,
-    });
-
-    await this.linear.postError(
-      linearSessionId,
-      new Error(
-        `Commit guard failed after ${MAX_COMMIT_GUARD_RETRIES} attempts. Last error:\n\n${result.reason}`,
-      ),
-    );
-  }
-
-  /**
-   * Post initial plan to Linear
-   */
-  private async postInitialPlan(linearSessionId: string): Promise<void> {
-    await this.linear.updatePlan(linearSessionId, [
-      { content: "Understanding the issue", status: "inProgress" },
-      { content: "Analyzing codebase", status: "pending" },
-      { content: "Planning implementation", status: "pending" },
-      { content: "Implementing changes", status: "pending" },
-      { content: "Running tests", status: "pending" },
-      { content: "Committing and creating PR", status: "pending" },
-    ]);
+    log.info("OpenCode session completed");
   }
 
   /**
@@ -444,11 +338,8 @@ Once everything passes, you can complete your work.`;
       hasPreviousContext: !!previousContext,
     });
 
-    // Post initial plan
-    await this.postInitialPlan(linearSessionId);
-
-    // Send prompt with retry loop for commit guard
-    await this.promptWithRetry(
+    // Send prompt and wait for completion
+    await this.executePrompt(
       opcodeSessionId,
       linearSessionId,
       workdir,
@@ -501,8 +392,8 @@ Once everything passes, you can complete your work.`;
       hasPreviousContext: !!previousContext,
     });
 
-    // Send prompt with retry loop for commit guard
-    await this.promptWithRetry(
+    // Send prompt and wait for completion
+    await this.executePrompt(
       opcodeSessionId,
       linearSessionId,
       workdir,

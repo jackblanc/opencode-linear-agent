@@ -11,17 +11,9 @@ import type { PlanItem } from "./linear/types";
 import type { Logger } from "./logger";
 
 /**
- * Prefix used by the commit-guard plugin to identify its errors
- */
-const COMMIT_GUARD_PREFIX = "[COMMIT_GUARD]";
-
-/**
  * Result from handling an SSE event
  */
-export type SSEEventResult =
-  | { action: "continue" }
-  | { action: "break" }
-  | { action: "retry"; reason: string };
+export type SSEEventResult = { action: "continue" } | { action: "break" };
 
 /**
  * Tool name mapping for friendly action names
@@ -211,21 +203,11 @@ export class SSEEventHandler {
   /** Track tool parts we've seen in running state */
   private runningTools = new Set<string>();
 
-  /** Track files modified during session */
-  private filesModified = new Set<string>();
-
-  /** Track PR URL if created */
-  private prUrl: string | null = null;
-
-  /** Track test results */
-  private testsRan = false;
-  private testsPassed = false;
-
-  /** Track agent's last text response */
+  /** Track agent's last text response for session completion */
   private agentFinalMessage: string | null = null;
 
-  /** Track if session had errors that might need user intervention */
-  private hadErrors = false;
+  /** Track if we've already posted a final response to avoid duplicates */
+  private postedFinalResponse = false;
 
   constructor(
     private readonly linear: LinearAdapter,
@@ -338,36 +320,6 @@ export class SSEEventHandler {
       // Clean up running state tracking
       this.runningTools.delete(id);
 
-      // Track file modifications (use relative path for display)
-      const toolLower = tool.toLowerCase();
-      if (toolLower === "edit" || toolLower === "write") {
-        const filePath =
-          getString(state.input, "filePath") ?? getString(state.input, "path");
-        if (filePath) {
-          this.filesModified.add(toRelativePath(filePath, this.workdir));
-        }
-      }
-
-      // Track PR creation
-      if (toolLower === "bash") {
-        const command = getString(state.input, "command");
-        if (command?.includes("gh pr create")) {
-          // Extract PR URL from output (gh pr create outputs the URL)
-          const urlMatch = state.output.match(
-            /https:\/\/github\.com\/[^\s]+\/pull\/\d+/,
-          );
-          if (urlMatch) {
-            this.prUrl = urlMatch[0];
-          }
-        }
-        // Track test execution
-        if (command?.includes("test") || command?.includes("bun run check")) {
-          this.testsRan = true;
-          this.testsPassed =
-            !state.output.includes("FAIL") && !state.output.includes("Error");
-        }
-      }
-
       this.log.info("Tool completed", {
         tool,
         outputLength: state.output.length,
@@ -386,9 +338,6 @@ export class SSEEventHandler {
     } else if (state.status === "error") {
       // Clean up running state tracking
       this.runningTools.delete(id);
-
-      // Track errors for continue signal logic
-      this.hadErrors = true;
 
       this.log.info("Tool error", { tool, error: state.error });
 
@@ -414,20 +363,20 @@ export class SSEEventHandler {
   private async handleTextPart(part: TextPart): Promise<void> {
     const { id, text, time } = part;
 
-    // Skip if already sent - check and add BEFORE async operation to prevent race condition
-    // where the same event arrives twice before the first postActivity completes
-    if (this.sentTextParts.has(id)) {
-      return;
-    }
-    this.sentTextParts.add(id);
-
     // Skip empty text
     if (!text.trim()) {
       return;
     }
 
-    // Check if text is complete (has end time)
+    // Only process complete text parts (has end time)
+    // Streaming parts arrive without time.end, we wait for the final update
     if (!time?.end) {
+      return;
+    }
+
+    // Skip if already sent (check AFTER confirming it's complete)
+    // This prevents posting the same completed text twice
+    if (this.sentTextParts.has(id)) {
       return;
     }
 
@@ -441,6 +390,12 @@ export class SSEEventHandler {
       { type: "response", body: text },
       false, // persistent
     );
+
+    // Mark as sent AFTER successful post
+    this.sentTextParts.add(id);
+
+    // Mark that we've posted a final response (for handleSessionIdle)
+    this.postedFinalResponse = true;
   }
 
   /**
@@ -452,8 +407,15 @@ export class SSEEventHandler {
   }): Promise<void> {
     const { sessionID, todos } = properties;
 
+    this.log.info("Received todo.updated event", {
+      eventSessionID: sessionID,
+      ourSessionID: this.opencodeSessionId,
+      todoCount: todos.length,
+    });
+
     // Only process for our session
     if (sessionID !== this.opencodeSessionId) {
+      this.log.info("Skipping todo.updated - session ID mismatch");
       return;
     }
 
@@ -462,9 +424,14 @@ export class SSEEventHandler {
       status: mapTodoStatus(todo.status),
     }));
 
-    this.log.info("Syncing todos to plan", { todoCount: todos.length });
+    this.log.info("Syncing todos to Linear plan", {
+      todoCount: todos.length,
+      items: plan.map((p) => `${p.status}: ${p.content}`),
+    });
 
     await this.linear.updatePlan(this.linearSessionId, plan);
+
+    this.log.info("Plan update complete");
   }
 
   /**
@@ -506,108 +473,34 @@ export class SSEEventHandler {
   }
 
   /**
-   * Handle session.idle - send appropriate activity to Linear
+   * Handle session.idle - send completion response to Linear if needed
    *
-   * Based on Linear's docs:
-   * - `response` type indicates work is complete (no signal needed)
-   * - `elicitation` type requests user input when agent needs guidance
-   * - Signals like `stop` are human-to-agent only (for prompt activities)
+   * If we already posted the agent's final text as a response, skip posting again.
+   * Otherwise, post a default completion message.
    */
   private async handleSessionIdle(): Promise<void> {
-    // Determine if session needs user input to continue
-    // Request input if: tests failed, had errors, or no substantial work done
-    const needsUserInput =
-      (this.testsRan && !this.testsPassed) ||
-      this.hadErrors ||
-      (this.filesModified.size === 0 && !this.prUrl);
-
     this.log.info("Session idle", {
-      testsRan: this.testsRan,
-      testsPassed: this.testsPassed,
-      hadErrors: this.hadErrors,
-      filesModified: this.filesModified.size,
-      needsUserInput,
+      postedFinalResponse: this.postedFinalResponse,
     });
 
-    // Build rich completion message
-    const summaryParts: string[] = [];
-
-    // Include agent's final message if available
-    if (this.agentFinalMessage) {
-      summaryParts.push(this.agentFinalMessage);
-      summaryParts.push("\n---\n");
-    }
-
-    summaryParts.push("## Summary");
-
-    // Files modified
-    if (this.filesModified.size > 0) {
-      summaryParts.push(
-        `\n**Files modified:** ${this.filesModified.size} file${this.filesModified.size === 1 ? "" : "s"}`,
+    // Skip if we already posted the agent's final response via handleTextPart
+    if (this.postedFinalResponse) {
+      this.log.info(
+        "Skipping duplicate response - already posted via text part",
       );
-      if (this.filesModified.size <= 5) {
-        summaryParts.push(
-          Array.from(this.filesModified)
-            .map((f) => `- \`${f}\``)
-            .join("\n"),
-        );
-      }
+      return;
     }
 
-    // Test results
-    if (this.testsRan) {
-      const testStatus = this.testsPassed ? "✅ Passed" : "❌ Failed";
-      summaryParts.push(`\n**Tests:** ${testStatus}`);
-    }
-
-    // PR link
-    if (this.prUrl) {
-      summaryParts.push(`\n**Pull Request:** ${this.prUrl}`);
-    }
-
-    // Add guidance if needs user input
-    if (needsUserInput) {
-      summaryParts.push(
-        "\n\n_Session paused. You can provide additional guidance or let me continue._",
-      );
-    }
-
-    // Default message if no summary parts
-    if (
-      summaryParts.length === 0 ||
-      (summaryParts.length === 1 && !this.agentFinalMessage)
-    ) {
-      summaryParts.push(
-        needsUserInput
-          ? "Paused. Awaiting further guidance."
-          : "Task completed.",
-      );
-    }
-
-    const completionMessage = summaryParts.join("\n");
-
-    if (needsUserInput) {
-      // Use elicitation to request user input - session stays active
-      await this.linear.postActivity(
-        this.linearSessionId,
-        { type: "elicitation", body: completionMessage },
-        false, // persistent
-      );
-    } else {
-      // Use response to indicate work is complete
-      await this.linear.postActivity(
-        this.linearSessionId,
-        { type: "response", body: completionMessage },
-        false, // persistent
-      );
-    }
+    // Post a default completion message if agent didn't produce text output
+    await this.linear.postActivity(
+      this.linearSessionId,
+      { type: "response", body: "Work completed." },
+      false, // persistent
+    );
   }
 
   /**
    * Handle session.error - report error to Linear
-   *
-   * If the error is from the commit-guard plugin, returns a retry signal
-   * so the processor can re-prompt the agent with the error context.
    */
   private async handleSessionError(properties: {
     sessionID?: string;
@@ -625,24 +518,6 @@ export class SSEEventHandler {
       errorMessage = error.name;
     }
 
-    // Check if this is a commit guard error - these should trigger retry
-    if (errorMessage.startsWith(COMMIT_GUARD_PREFIX)) {
-      this.log.info("Commit guard triggered, signaling retry");
-
-      // Post the error to Linear as a thought (not a fatal error)
-      await this.linear.postActivity(
-        this.linearSessionId,
-        {
-          type: "thought",
-          body: errorMessage.replace(COMMIT_GUARD_PREFIX, "").trim(),
-        },
-        false,
-      );
-
-      return { action: "retry", reason: errorMessage };
-    }
-
-    // Regular error - post and break
     this.log.error("Session error", { error: errorMessage });
 
     await this.linear.postError(this.linearSessionId, new Error(errorMessage));
