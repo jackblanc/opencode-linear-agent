@@ -9,8 +9,8 @@ services:
     volumes:
       # Mount config file
       - ./config.docker.json:/app/packages/server/config.json:ro
-      # Mount repos for discovery (read-only)
-      - ${PROJECTS_DIR:-~/projects}:/home/repos:ro
+      # Mount repos for discovery (same path as opencode container)
+      - ${PROJECTS_DIR:-~/projects}:/home/user/projects:ro
       # Persistent data (tokens, sessions)
       - server-data:/data
     environment:
