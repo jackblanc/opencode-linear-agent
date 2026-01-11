@@ -332,6 +332,17 @@ These are in the config file, not environment variables:
 
 ## Code Style Guidelines
 
+### General Principles
+
+- Try to keep things in one function unless composable or reusable
+- AVOID unnecessary destructuring of variables - instead of `const { a, b } = obj` just reference `obj.a` and `obj.b` (preserves context)
+- AVOID `try`/`catch` blocks unless absolutely necessary
+- AVOID `else` statements
+- AVOID using `any` type
+- AVOID `let` statements - prefer `const`
+- PREFER single word variable names where possible
+- Use Bun APIs where available (e.g., `Bun.file()`)
+
 ### TypeScript Configuration
 
 - **Target**: ESNext
@@ -357,9 +368,78 @@ The project uses oxlint with aggressive rules:
 
 ### Error Handling
 
-- Always handle errors in async operations
-- Use structured error responses: `Response.json({ error: "..." }, { status: 400 })`
-- Avoid throwing unhandled errors in fetch handlers
+**NEVER use `try`/`catch` blocks unless absolutely necessary.**
+
+#### OpenCode SDK Error Handling
+
+The OpenCode SDK uses `throwOnError: false` by default, meaning errors are returned as part of the response object rather than thrown. **Do NOT wrap SDK calls in try/catch.**
+
+```typescript
+// CORRECT - check the error field
+const result = await client.session.get({ path: { id: sessionId } });
+if (result.error) {
+  console.error("Failed to get session:", result.error);
+  return;
+}
+console.log("Session:", result.data);
+
+// WRONG - unnecessary try/catch
+try {
+  const result = await client.session.get({ path: { id: sessionId } });
+} catch (error) {
+  // This will never catch SDK errors with default config!
+}
+```
+
+The response shape is:
+
+```typescript
+{
+  data: T | undefined,
+  error: TError | undefined,
+  request: Request,
+  response: Response
+}
+```
+
+#### Message-Level Errors
+
+For assistant messages, errors are embedded in `AssistantMessage.error`:
+
+| Error Type                 | Description                                                         |
+| -------------------------- | ------------------------------------------------------------------- |
+| `ProviderAuthError`        | Authentication failed with the LLM provider                         |
+| `UnknownError`             | Generic unexpected error                                            |
+| `MessageOutputLengthError` | Response exceeded output token limit                                |
+| `MessageAbortedError`      | Message generation was cancelled                                    |
+| `APIError`                 | HTTP/API error from provider (includes `statusCode`, `isRetryable`) |
+
+```typescript
+const result = await client.session.prompt({
+  path: { id: session.id },
+  body: { parts: [{ type: "text", text: "Hello!" }] },
+});
+
+if (result.data?.error) {
+  if (
+    result.data.error.name === "APIError" &&
+    result.data.error.data.isRetryable
+  ) {
+    // Handle retryable error
+  }
+}
+```
+
+#### HTTP Response Errors
+
+For HTTP handlers, use structured error responses:
+
+```typescript
+// Return error responses, don't throw
+if (!request.valid) {
+  return Response.json({ error: "Invalid request" }, { status: 400 });
+}
+```
 
 ---
 
