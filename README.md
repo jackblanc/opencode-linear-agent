@@ -173,6 +173,67 @@ docker compose logs -f opencode
 docker compose exec tailscale tailscale funnel status
 ```
 
+## Scheduled Linear Orchestration (macOS)
+
+You can set up a launchd job to automatically triage and manage Linear issues on a schedule using OpenCode's `linear` command.
+
+**Create the launchd plist:**
+
+```bash
+cat > ~/Library/LaunchAgents/com.opencode.linear.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.opencode.linear</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/opencode</string>
+        <string>run</string>
+        <string>--command</string>
+        <string>linear</string>
+        <string>Review and process Linear issues</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/opencode-linear.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/opencode-linear.log</string>
+</dict>
+</plist>
+EOF
+```
+
+**Note:** Replace `/path/to/opencode` with your actual opencode path (e.g., `which opencode`).
+
+**Manage the job:**
+
+```bash
+# Load (enable)
+launchctl load ~/Library/LaunchAgents/com.opencode.linear.plist
+
+# Unload (disable)
+launchctl unload ~/Library/LaunchAgents/com.opencode.linear.plist
+
+# Check status
+launchctl list | grep opencode
+
+# View logs
+tail -f /tmp/opencode-linear.log
+
+# Run immediately (for testing)
+launchctl start com.opencode.linear
+```
+
+The `linear` command acts as an orchestrator that:
+
+- Triages backlog issues
+- Delegates work to the OpenCode Agent in Linear
+- Monitors PR status and re-assigns when needed
+- Updates issue statuses based on outcomes
+
 ## Project Structure
 
 ```
