@@ -330,6 +330,28 @@ export class EventProcessor {
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
+    if (event.agentActivity && hasStopSignal(event.agentActivity)) {
+      log.info("Stop signal received, aborting session");
+
+      try {
+        await this.opencodeClient.session.abort({
+          sessionID: opcodeSessionId,
+          directory: workdir,
+        });
+      } catch (abortError) {
+        const errorMessage =
+          abortError instanceof Error ? abortError.message : String(abortError);
+        log.warn("Failed to abort session", { error: errorMessage });
+      }
+
+      await this.linear.postActivity(
+        linearSessionId,
+        { type: "response", body: "Work stopped as requested." },
+        false,
+      );
+      return;
+    }
+
     const basePrompt = event.promptContext ?? "Please help with this issue.";
     // Inject previous context if we had to recreate the session
     const prompt = previousContext
@@ -367,10 +389,16 @@ export class EventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session");
 
-      await this.opencodeClient.session.abort({
-        sessionID: opcodeSessionId,
-        directory: workdir,
-      });
+      try {
+        await this.opencodeClient.session.abort({
+          sessionID: opcodeSessionId,
+          directory: workdir,
+        });
+      } catch (abortError) {
+        const errorMessage =
+          abortError instanceof Error ? abortError.message : String(abortError);
+        log.warn("Failed to abort session", { error: errorMessage });
+      }
 
       await this.linear.postActivity(
         linearSessionId,
