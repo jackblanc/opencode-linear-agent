@@ -43,30 +43,21 @@ RUN curl -fsSL https://opencode.ai/install | bash && \
     find /root -name opencode -type f 2>/dev/null | head -1 | xargs -I {} cp {} /usr/local/bin/opencode && \
     chmod +x /usr/local/bin/opencode
 
-# Create directory structure aligned with Cloudflare conventions
-RUN mkdir -p /home/repos \
-             /workspace \
-             /workspace/data \
+# Create directory structure for mounted volumes
+RUN mkdir -p /home/user/projects \
              /home/user/.config/opencode \
              /home/user/.local/share/opencode \
-             /home/user/.local/bin && \
-    chown -R user:user /home/repos /workspace /home/user
-
-# Copy OpenCode configuration and plugins
-COPY --chown=user:user opencode.json /home/user/.config/opencode/opencode.json
-COPY --chown=user:user AGENTS.md /home/user/AGENTS.md
-COPY --chown=user:user plugin/ /home/user/.config/opencode/plugin/
+             /home/user/.ssh && \
+    chown -R user:user /home/user
 
 # Environment variables
 ENV HOME=/home/user
 ENV CI=true
 ENV COMMAND_TIMEOUT_MS=600000
-ENV REPOS_DIR=/home/repos
-ENV WORKSPACE_DIR=/workspace
 ENV PATH="/home/user/.local/bin:${PATH}"
 
-# Set working directory
-WORKDIR /workspace
+# Set working directory to projects
+WORKDIR /home/user/projects
 
 # Run as non-root user
 USER user

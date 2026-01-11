@@ -64,14 +64,15 @@ The project uses a pure SSE/SDK approach (no plugins):
 
 ### Container Paths
 
-The opencode container uses `/home/user` as HOME and Cloudflare-aligned directory structure:
+The opencode container is a pass-through to the host - it mounts your local projects, config, and auth directly:
 
-| Path                                | Purpose                    |
-| ----------------------------------- | -------------------------- |
-| `/home/repos/<repo>`                | Mounted repositories       |
-| `/workspace/<repo>/<issue-id>`      | Git worktrees per session  |
-| `/home/user/.config/opencode/`      | OpenCode configuration     |
-| `/home/user/.local/share/opencode/` | OpenCode data (auth, logs) |
+| Container Path                     | Host Path                 | Purpose                  |
+| ---------------------------------- | ------------------------- | ------------------------ |
+| `/home/user/projects`              | `~/projects`              | Your repositories        |
+| `/home/user/opencode-worktrees`    | `~/opencode-worktrees`    | Session worktrees        |
+| `/home/user/.config/opencode`      | `~/.config/opencode`      | OpenCode config          |
+| `/home/user/.local/share/opencode` | `~/.local/share/opencode` | Auth, logs (no copying!) |
+| `/home/user/.ssh`                  | `~/.ssh`                  | SSH keys for git         |
 
 ### Security Layers
 
@@ -121,12 +122,8 @@ linear-opencode-agent/
 │   │   ├── config.example.json      # Example config file
 │   │   └── config.json              # Docker config (gitignored)
 │   │
-│   ├── opencode/                # OpenCode sandbox environment (formerly environment)
-│   │   ├── Dockerfile           # Extends official OpenCode image with dev tools
-│   │   ├── opencode.json        # OpenCode config with Linear + Context7 MCPs
-│   │   ├── AGENTS.md            # Agent instructions for sandbox
-│   │   └── plugin/
-│   │       └── commit-guard.ts  # Commit guard plugin
+│   ├── opencode/                # OpenCode container environment
+│   │   └── Dockerfile           # Ubuntu-based image with dev tools
 │   │
 │   └── agent/                   # (DEPRECATED: Cloudflare Workers entry point removed)
 │       └── ...                  # Deleted in favor of two-container architecture
@@ -203,19 +200,19 @@ linear-opencode-agent/
    opencode mcp auth linear    # Authenticate Linear MCP
    ```
 
-6. **Build and start the stack:**
+6. **Ensure you have an AGENTS.md file:**
+
+   The container mounts your local OpenCode config from `~/.config/opencode/`. Make sure you have:
+   - `~/.config/opencode/opencode.json` - Your OpenCode configuration
+   - `~/.config/opencode/AGENTS.md` - Your agent instructions
+
+   If you don't have these, the container will use fallback defaults from `packages/opencode/`.
+
+7. **Build and start the stack:**
 
    ```bash
    docker compose build
    docker compose up -d
-   ```
-
-7. **Copy auth files to container:**
-
-   ```bash
-   docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
-   docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
-   docker compose restart opencode
    ```
 
 8. **Configure Linear webhook** to point to your Cloudflare Tunnel URL (e.g., `https://linear-agent.yourdomain.com/webhook/linear`)
@@ -234,11 +231,6 @@ linear-opencode-agent/
 # Rebuild containers after code changes
 docker compose build
 docker compose up -d
-
-# Copy auth files after re-authenticating
-docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
-docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
-docker compose restart opencode
 
 # View all logs
 docker compose logs -f
@@ -261,11 +253,11 @@ docker compose logs cloudflared
 
 **"ENOENT: git"**: Rebuild containers - `docker compose build && docker compose up -d`
 
-**OpenCode auth expired**: Copy auth files again:
+**OpenCode auth expired**: Re-authenticate on host (container uses host auth directly):
 
 ```bash
-docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
-docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
+opencode                    # Re-authenticate Claude Max
+opencode mcp auth linear    # Re-authenticate Linear MCP
 docker compose restart opencode
 ```
 
