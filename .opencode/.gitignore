@@ -1,0 +1,6 @@
+# OpenCode auto-generated files
+node_modules/
+bun.lock
+
+# Local config overrides (if any)
+*.local.json
