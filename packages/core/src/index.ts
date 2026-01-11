@@ -4,8 +4,11 @@
  * This package contains:
  * - EventProcessor: Main entry point for processing Linear webhook events
  * - SessionManager: Manages OpenCode session lifecycle
- * - Interfaces for external dependencies (LinearAdapter, SessionRepository)
+ * - Interfaces for external dependencies (LinearService, SessionRepository)
  */
+
+// Re-export Result from better-result for convenience
+export { Result } from "better-result";
 
 // Main processor
 export { EventProcessor } from "./EventProcessor";
@@ -20,9 +23,15 @@ export { SessionManager } from "./session/SessionManager";
 export type { SessionState } from "./session/SessionState";
 export type { SessionRepository } from "./session/SessionRepository";
 
-// Linear adapter interface and implementation
-export type { LinearAdapter, ElicitationSignal } from "./linear/LinearAdapter";
-export { LinearClientAdapter } from "./linear/LinearClientAdapter";
+// Linear service interface and implementation
+export type {
+  LinearService,
+  LinearIssue,
+  LinearLabel,
+  LinearAttachment,
+  ElicitationSignal,
+} from "./linear/LinearService";
+export { LinearServiceImpl } from "./linear/LinearServiceImpl";
 export type {
   ActivityContent,
   PlanItem,
@@ -58,3 +67,14 @@ export { base64Encode, base64Decode } from "./utils/encode";
 // Logging
 export { Log, createLogger, initLogger, defaultLogger } from "./logger";
 export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
+
+// Errors
+export * from "./errors";
+
+// OpenCode service wrapper
+export { OpencodeService } from "./opencode";
+export type {
+  WorktreeResult,
+  OpencodeSessionResult,
+  MessageWithParts,
+} from "./opencode";
