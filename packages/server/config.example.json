@@ -13,7 +13,7 @@
     "token": "YOUR_GITHUB_TOKEN"
   },
   "paths": {
-    "repos": "/home/repos",
+    "repos": "/home/user/projects",
     "workspace": "/workspace",
     "data": "/data"
   }
