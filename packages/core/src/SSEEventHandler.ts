@@ -1,13 +1,14 @@
 import type {
-  OpencodeClient,
   Event as OpencodeEvent,
   ToolPart,
   TextPart,
   Todo,
   Part,
 } from "@opencode-ai/sdk/v2";
-import type { LinearAdapter } from "./linear/LinearAdapter";
+import { Result } from "better-result";
+import type { LinearService } from "./linear/LinearService";
 import type { PlanItem } from "./linear/types";
+import type { OpencodeService } from "./opencode/OpencodeService";
 import type { Logger } from "./logger";
 
 /**
@@ -210,10 +211,10 @@ export class SSEEventHandler {
   private postedFinalResponse = false;
 
   constructor(
-    private readonly linear: LinearAdapter,
+    private readonly linear: LinearService,
     private readonly linearSessionId: string,
     private readonly opencodeSessionId: string,
-    private readonly opcodeClient: OpencodeClient,
+    private readonly opencode: OpencodeService,
     private readonly log: Logger,
     private readonly workdir: string | null = null,
   ) {}
@@ -456,18 +457,17 @@ export class SSEEventHandler {
 
     this.log.info("Auto-approving permission", { requestId: id, permission });
 
-    try {
-      // Use the SDK's permission reply endpoint
-      await this.opcodeClient.permission.reply({
-        requestID: id,
-        reply: "always",
-      });
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+    const result = await this.opencode.replyPermission(
+      id,
+      "always",
+      this.workdir ?? undefined,
+    );
+
+    if (Result.isError(result)) {
       this.log.error("Failed to reply to permission", {
         requestId: id,
-        error: errorMessage,
+        error: result.error.message,
+        errorType: result.error._tag,
       });
     }
   }

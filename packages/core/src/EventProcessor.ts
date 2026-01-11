@@ -1,12 +1,11 @@
-import type {
-  OpencodeClient,
-  Event as OpencodeEvent,
-} from "@opencode-ai/sdk/v2";
+import type { Event as OpencodeEvent } from "@opencode-ai/sdk/v2";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
-import type { LinearAdapter } from "./linear/LinearAdapter";
+import { Result } from "better-result";
+import type { LinearService } from "./linear/LinearService";
 import type { SessionRepository } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import { SSEEventHandler } from "./SSEEventHandler";
+import type { OpencodeService } from "./opencode/OpencodeService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
 
@@ -91,13 +90,13 @@ export class EventProcessor {
   private readonly config: EventProcessorConfig;
 
   constructor(
-    private readonly opencodeClient: OpencodeClient,
-    private readonly linear: LinearAdapter,
+    private readonly opencode: OpencodeService,
+    private readonly linear: LinearService,
     sessions: SessionRepository,
     private readonly repoDirectory: string,
     config?: Partial<EventProcessorConfig>,
   ) {
-    this.sessionManager = new SessionManager(opencodeClient, sessions);
+    this.sessionManager = new SessionManager(opencode, sessions);
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -121,122 +120,113 @@ export class EventProcessor {
 
     log.info("Processing event", { action: event.action });
 
-    try {
-      // Get existing state to check for existing worktree
-      const existingState =
-        await this.sessionManager["repository"].get(linearSessionId);
+    // Get existing state to check for existing worktree
+    const existingState =
+      await this.sessionManager["repository"].get(linearSessionId);
 
-      let workdir: string;
-      let branchName: string;
+    let workdir: string;
+    let branchName: string;
 
-      if (existingState?.workdir) {
-        // Reuse existing worktree
-        workdir = existingState.workdir;
-        branchName = existingState.branchName;
+    if (existingState?.workdir) {
+      // Reuse existing worktree
+      workdir = existingState.workdir;
+      branchName = existingState.branchName;
 
-        log.info("Reusing existing worktree", { workdir, branchName });
-      } else {
-        // Create worktree via OpenCode native API
-        await this.linear.postStageActivity(linearSessionId, "git_setup");
+      log.info("Reusing existing worktree", { workdir, branchName });
+    } else {
+      // Create worktree via OpenCode native API
+      await this.linear.postStageActivity(linearSessionId, "git_setup");
 
-        log.info("Creating worktree via OpenCode", {
-          repoDirectory: this.repoDirectory,
-        });
+      log.info("Creating worktree via OpenCode", {
+        repoDirectory: this.repoDirectory,
+      });
 
-        const worktreeResult = await this.opencodeClient.worktree.create({
-          directory: this.repoDirectory,
-          worktreeCreateInput: {
-            name: issue,
-            startCommand: this.config.startCommand,
-          },
-        });
-
-        if (!worktreeResult.data) {
-          // Extract error details from SDK response if available
-          const errorDetails =
-            worktreeResult.error?.errors
-              ?.map((e: Record<string, unknown>) =>
-                typeof e === "object" ? JSON.stringify(e) : String(e),
-              )
-              .join("; ") ?? "no data returned";
-          throw new Error(`Failed to create worktree: ${errorDetails}`);
-        }
-
-        workdir = worktreeResult.data.directory;
-        branchName = worktreeResult.data.branch;
-
-        log.info("Worktree created", { workdir, branchName });
-      }
-
-      // Post session ready stage activity with branch info
-      await this.linear.postStageActivity(
-        linearSessionId,
-        "session_ready",
-        `Branch: \`${branchName}\``,
+      const worktreeResult = await this.opencode.createWorktree(
+        this.repoDirectory,
+        issue,
+        this.config.startCommand,
       );
 
-      // Get or create OpenCode session
-      const sessionResult = await this.sessionManager.getOrCreateSession(
+      if (Result.isError(worktreeResult)) {
+        log.error("Error creating worktree", {
+          error: worktreeResult.error.message,
+          errorType: worktreeResult.error._tag,
+        });
+        await this.linear.postError(linearSessionId, worktreeResult.error);
+        return;
+      }
+
+      workdir = worktreeResult.value.directory;
+      branchName = worktreeResult.value.branch;
+
+      log.info("Worktree created", { workdir, branchName });
+    }
+
+    // Post session ready stage activity with branch info
+    await this.linear.postStageActivity(
+      linearSessionId,
+      "session_ready",
+      `Branch: \`${branchName}\``,
+    );
+
+    // Get or create OpenCode session
+    const sessionResult = await this.sessionManager.getOrCreateSession(
+      linearSessionId,
+      issue,
+      branchName,
+      workdir,
+    );
+
+    if (Result.isError(sessionResult)) {
+      log.error("Error getting/creating session", {
+        error: sessionResult.error.message,
+        errorType: sessionResult.error._tag,
+      });
+      await this.linear.postError(linearSessionId, sessionResult.error);
+      return;
+    }
+
+    const session = sessionResult.value;
+    const opcodeSessionId = session.opcodeSessionId;
+
+    // Add OpenCode session ID to logger context
+    log.tag("opcodeSession", opcodeSessionId.slice(0, 8));
+    log.tag("opcodeSessionId", opcodeSessionId);
+
+    log.info("OpenCode session ready", {
+      workdir,
+      isNewSession: session.isNewSession,
+      hasPreviousContext: !!session.previousContext,
+    });
+
+    // Set external link to OpenCode UI
+    // Format: /{base64_encoded_workdir}/session/{sessionId}
+    // Use configured OpenCode URL (should be localhost for security)
+    const opcodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
+    const encodedWorkdir = base64Encode(workdir);
+    const externalLink = `${opcodeBaseUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
+    await this.linear.setExternalLink(linearSessionId, externalLink);
+
+    if (event.action === "created") {
+      await this.handleCreated(
+        event,
+        opcodeSessionId,
         linearSessionId,
         issue,
-        branchName,
         workdir,
+        session.previousContext,
+        log,
       );
-      const opcodeSessionId = sessionResult.opcodeSessionId;
-
-      // Add OpenCode session ID to logger context
-      log.tag("opcodeSession", opcodeSessionId.slice(0, 8));
-      log.tag("opcodeSessionId", opcodeSessionId);
-
-      log.info("OpenCode session ready", {
+    } else if (event.action === "prompted") {
+      await this.handlePrompted(
+        event,
+        opcodeSessionId,
+        linearSessionId,
+        issue,
         workdir,
-        isNewSession: sessionResult.isNewSession,
-        hasPreviousContext: !!sessionResult.previousContext,
-      });
-
-      // Set external link to OpenCode UI
-      // Format: /{base64_encoded_workdir}/session/{sessionId}
-      // Use configured OpenCode URL (should be localhost for security)
-      const opcodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
-      const encodedWorkdir = base64Encode(workdir);
-      const externalLink = `${opcodeBaseUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
-      await this.linear.setExternalLink(linearSessionId, externalLink);
-
-      if (event.action === "created") {
-        await this.handleCreated(
-          event,
-          opcodeSessionId,
-          linearSessionId,
-          issue,
-          workdir,
-          sessionResult.previousContext,
-          log,
-        );
-      } else if (event.action === "prompted") {
-        await this.handlePrompted(
-          event,
-          opcodeSessionId,
-          linearSessionId,
-          issue,
-          workdir,
-          sessionResult.previousContext,
-          log,
-        );
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-
-      log.error("Error processing event", {
-        error: errorMessage,
-        stack: errorStack,
-      });
-
-      // Report error to Linear
-      await this.linear.postError(linearSessionId, error);
-
-      throw error; // Re-throw for queue retry
+        session.previousContext,
+        log,
+      );
     }
   }
 
@@ -254,16 +244,14 @@ export class EventProcessor {
   ): Promise<void> {
     log.info("Subscribing to OpenCode event stream");
 
-    const eventStream = await this.opencodeClient.event.subscribe({
-      directory: workdir,
-    });
+    const eventStream = await this.opencode.subscribe(workdir);
 
     // Create the SSE event handler to process events and post to Linear
     const handler = new SSEEventHandler(
       this.linear,
       linearSessionId,
       opencodeSessionId,
-      this.opencodeClient,
+      this.opencode,
       log.clone().tag("service", "sse-handler"),
       workdir,
     );
@@ -298,15 +286,15 @@ export class EventProcessor {
 
     // Send prompt and subscribe to events concurrently
     await Promise.all([
-      this.opencodeClient.session.prompt({
-        sessionID: opcodeSessionId,
-        directory: workdir,
-        model: {
+      this.opencode.prompt(
+        opcodeSessionId,
+        workdir,
+        {
           providerID: this.config.providerID,
           modelID: this.config.modelID,
         },
-        parts: [{ type: "text", text: prompt }],
-      }),
+        [{ type: "text", text: prompt }],
+      ),
       this.subscribeAndWaitForCompletion(
         opcodeSessionId,
         linearSessionId,
@@ -325,7 +313,7 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    issue: string,
+    _issue: string,
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
@@ -333,15 +321,16 @@ export class EventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session");
 
-      try {
-        await this.opencodeClient.session.abort({
-          sessionID: opcodeSessionId,
-          directory: workdir,
+      const abortResult = await this.opencode.abortSession(
+        opcodeSessionId,
+        workdir,
+      );
+
+      if (Result.isError(abortResult)) {
+        log.warn("Failed to abort session", {
+          error: abortResult.error.message,
+          errorType: abortResult.error._tag,
         });
-      } catch (abortError) {
-        const errorMessage =
-          abortError instanceof Error ? abortError.message : String(abortError);
-        log.warn("Failed to abort session", { error: errorMessage });
       }
 
       await this.linear.postActivity(
@@ -380,7 +369,7 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    issue: string,
+    _issue: string,
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
@@ -389,15 +378,16 @@ export class EventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session");
 
-      try {
-        await this.opencodeClient.session.abort({
-          sessionID: opcodeSessionId,
-          directory: workdir,
+      const abortResult = await this.opencode.abortSession(
+        opcodeSessionId,
+        workdir,
+      );
+
+      if (Result.isError(abortResult)) {
+        log.warn("Failed to abort session", {
+          error: abortResult.error.message,
+          errorType: abortResult.error._tag,
         });
-      } catch (abortError) {
-        const errorMessage =
-          abortError instanceof Error ? abortError.message : String(abortError);
-        log.warn("Failed to abort session", { error: errorMessage });
       }
 
       await this.linear.postActivity(
