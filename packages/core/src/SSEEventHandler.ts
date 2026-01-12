@@ -4,17 +4,25 @@ import type {
   TextPart,
   Todo,
   Part,
+  QuestionRequest,
 } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import type { LinearService } from "./linear/LinearService";
 import type { PlanItem } from "./linear/types";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import type { Logger } from "./logger";
+import type {
+  PendingQuestion,
+  QuestionInfo,
+} from "./session/SessionRepository";
 
 /**
  * Result from handling an SSE event
  */
-export type SSEEventResult = { action: "continue" } | { action: "break" };
+export type SSEEventResult =
+  | { action: "continue" }
+  | { action: "break" }
+  | { action: "question_asked"; pendingQuestion: PendingQuestion };
 
 /**
  * Tool name mapping for friendly action names
@@ -288,14 +296,12 @@ export class SSEEventHandler {
       return { action: "continue" };
     }
 
-    // Note: question.asked events are NOT auto-rejected.
-    // Questions from the agent should be answered by the user via Linear or OpenCode UI.
-    // We just log them for observability.
+    // Handle question.asked events - post elicitations to Linear and return pending question data
     if (event.type === "question.asked") {
-      this.log.info("Question asked - awaiting user response", {
-        requestId: event.properties.id,
-        questionCount: event.properties.questions?.length ?? 0,
-      });
+      const pending = await this.handleQuestionAsked(event.properties);
+      if (pending) {
+        return { action: "question_asked", pendingQuestion: pending };
+      }
       return { action: "continue" };
     }
 
@@ -529,6 +535,66 @@ export class SSEEventHandler {
         errorType: result.error._tag,
       });
     }
+  }
+
+  /**
+   * Handle question.asked events - post elicitations to Linear
+   *
+   * Posts one elicitation per question with a select signal, then returns
+   * the pending question data for the caller to store.
+   */
+  private async handleQuestionAsked(
+    properties: QuestionRequest,
+  ): Promise<PendingQuestion | null> {
+    const { id, sessionID, questions } = properties;
+
+    // Only process for our session
+    if (sessionID !== this.opencodeSessionId) {
+      return null;
+    }
+
+    this.log.info("Question asked - posting elicitations to Linear", {
+      requestId: id,
+      questionCount: questions.length,
+    });
+
+    // Convert OpenCode question format to our internal format
+    const questionInfos: QuestionInfo[] = questions.map((q) => ({
+      question: q.question,
+      header: q.header,
+      options: q.options.map((opt) => ({
+        label: opt.label,
+        description: opt.description,
+      })),
+      multiple: q.multiple,
+    }));
+
+    // Post elicitation for each question
+    for (const q of questionInfos) {
+      // Build option values from labels
+      const options = q.options.map((opt) => ({ value: opt.label }));
+
+      // Format body with question and option descriptions
+      const optionsList = q.options
+        .map((opt) => `- **${opt.label}**: ${opt.description}`)
+        .join("\n");
+      const body = `${q.question}\n\n${optionsList}`;
+
+      await this.linear.postElicitation(this.linearSessionId, body, "select", {
+        options,
+      });
+    }
+
+    // Return pending question data for caller to store
+    return {
+      requestId: id,
+      opcodeSessionId: sessionID,
+      linearSessionId: this.linearSessionId,
+      workdir: this.workdir ?? "",
+      questions: questionInfos,
+      answers: questionInfos.map(() => null), // Initialize all as unanswered
+      createdAt: Date.now(),
+    };
   }
 
   /**

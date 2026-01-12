@@ -9,6 +9,7 @@ import type {
   SessionRepository,
   SessionState,
   WorktreeInfo,
+  PendingQuestion,
 } from "@linear-opencode-agent/core";
 
 /**
@@ -20,6 +21,11 @@ const SESSION_PREFIX = "session:";
  * Key prefix for worktree storage (indexed by issue ID)
  */
 const WORKTREE_PREFIX = "worktree:";
+
+/**
+ * Key prefix for pending question storage
+ */
+const QUESTION_PREFIX = "question:";
 
 /**
  * File-based SessionRepository implementation
@@ -49,5 +55,22 @@ export class FileSessionRepository implements SessionRepository {
 
   async findWorktreeByIssue(issueId: string): Promise<WorktreeInfo | null> {
     return this.kv.get<WorktreeInfo>(`${WORKTREE_PREFIX}${issueId}`);
+  }
+
+  async getPendingQuestion(
+    linearSessionId: string,
+  ): Promise<PendingQuestion | null> {
+    return this.kv.get<PendingQuestion>(`${QUESTION_PREFIX}${linearSessionId}`);
+  }
+
+  async savePendingQuestion(question: PendingQuestion): Promise<void> {
+    await this.kv.put(
+      `${QUESTION_PREFIX}${question.linearSessionId}`,
+      question,
+    );
+  }
+
+  async deletePendingQuestion(linearSessionId: string): Promise<void> {
+    await this.kv.delete(`${QUESTION_PREFIX}${linearSessionId}`);
   }
 }

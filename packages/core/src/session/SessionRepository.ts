@@ -9,6 +9,44 @@ export interface WorktreeInfo {
 }
 
 /**
+ * A question option from OpenCode's mcp_question tool
+ */
+export interface QuestionOption {
+  label: string;
+  description: string;
+}
+
+/**
+ * A single question from OpenCode's mcp_question tool
+ */
+export interface QuestionInfo {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiple?: boolean;
+}
+
+/**
+ * A pending question asked by OpenCode that's awaiting user response via Linear
+ */
+export interface PendingQuestion {
+  /** OpenCode question request ID */
+  requestId: string;
+  /** OpenCode session ID */
+  opcodeSessionId: string;
+  /** Linear session ID */
+  linearSessionId: string;
+  /** Working directory for OpenCode calls */
+  workdir: string;
+  /** The questions asked */
+  questions: QuestionInfo[];
+  /** Responses collected so far (null = not yet answered) */
+  answers: Array<string[] | null>;
+  /** Timestamp when question was asked */
+  createdAt: number;
+}
+
+/**
  * Repository for session state persistence
  */
 export interface SessionRepository {
@@ -32,4 +70,19 @@ export interface SessionRepository {
    * Used to share worktrees across multiple agent sessions on the same issue
    */
   findWorktreeByIssue(issueId: string): Promise<WorktreeInfo | null>;
+
+  /**
+   * Get pending question for a Linear session
+   */
+  getPendingQuestion(linearSessionId: string): Promise<PendingQuestion | null>;
+
+  /**
+   * Save pending question
+   */
+  savePendingQuestion(question: PendingQuestion): Promise<void>;
+
+  /**
+   * Delete pending question
+   */
+  deletePendingQuestion(linearSessionId: string): Promise<void>;
 }

@@ -210,6 +210,31 @@ export class OpencodeService {
   }
 
   /**
+   * Reply to a question request from the AI assistant
+   *
+   * @param requestId - The question request ID from question.asked event
+   * @param answers - Array of answers, one per question. Each answer is an array of selected option labels.
+   * @param directory - Working directory for the session
+   */
+  async replyQuestion(
+    requestId: string,
+    answers: Array<Array<string>>,
+    directory?: string,
+  ): Promise<Result<void, OpencodeServiceError>> {
+    const result = await this.client.question.reply({
+      requestID: requestId,
+      directory,
+      answers,
+    });
+
+    if (result.error) {
+      return Result.err(mapOpencodeError(result.error));
+    }
+
+    return Result.ok(undefined);
+  }
+
+  /**
    * Extract error details from SDK response
    */
   private extractErrorDetails(error: unknown): string {
