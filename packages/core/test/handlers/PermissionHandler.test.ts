@@ -1,183 +1,154 @@
 import { describe, test, expect } from "bun:test";
+import type { PermissionRequest } from "@opencode-ai/sdk/v2";
 import { processPermissionAsked } from "../../src/handlers/PermissionHandler";
+import type { PostElicitationAction, Action } from "../../src/actions/types";
+
+function createPermissionRequest(
+  overrides: Partial<PermissionRequest> = {},
+): PermissionRequest {
+  return {
+    id: "perm-1",
+    sessionID: "opencode-456",
+    permission: "Bash",
+    patterns: [],
+    metadata: {},
+    always: [],
+    ...overrides,
+  };
+}
+
+function isPostElicitationAction(
+  action: Action,
+): action is PostElicitationAction {
+  return action.type === "postElicitation";
+}
 
 describe("processPermissionAsked", () => {
   const ctx = {
+    linearSessionId: "linear-123",
     opencodeSessionId: "opencode-456",
     workdir: "/workdir",
   };
 
-  test("should return replyPermission action with always", () => {
-    const properties = {
-      id: "perm-1",
-      sessionID: "opencode-456",
-      permission: "write_file",
-    };
+  test("should return elicitation action and pending permission", () => {
+    const properties = createPermissionRequest();
 
-    const actions = processPermissionAsked(properties, ctx);
+    const result = processPermissionAsked(properties, ctx);
 
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toEqual({
-      type: "replyPermission",
-      requestId: "perm-1",
-      reply: "always",
-      directory: "/workdir",
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "postElicitation",
+      sessionId: "linear-123",
+      signal: "select",
     });
+    expect(result.pendingPermission).toBeDefined();
+    expect(result.pendingPermission?.requestId).toBe("perm-1");
+    expect(result.pendingPermission?.permission).toBe("Bash");
   });
 
   test("should skip events for other sessions", () => {
-    const properties = {
-      id: "perm-1",
+    const properties = createPermissionRequest({
       sessionID: "other-session",
-      permission: "write_file",
-    };
+    });
 
-    const actions = processPermissionAsked(properties, ctx);
+    const result = processPermissionAsked(properties, ctx);
 
-    expect(actions).toHaveLength(0);
+    expect(result.actions).toHaveLength(0);
+    expect(result.pendingPermission).toBeUndefined();
+  });
+
+  test("should include patterns in elicitation body", () => {
+    const properties = createPermissionRequest({
+      patterns: ["/path/to/file.ts", "*.json"],
+    });
+
+    const result = processPermissionAsked(properties, ctx);
+
+    expect(result.actions[0]).toMatchObject({
+      type: "postElicitation",
+    });
+    const action = result.actions[0];
+    if (action && isPostElicitationAction(action)) {
+      expect(action.body).toContain("`/path/to/file.ts`");
+      expect(action.body).toContain("`*.json`");
+    } else {
+      throw new Error("Expected postElicitation action");
+    }
+  });
+
+  test("should include approval options in metadata", () => {
+    const properties = createPermissionRequest();
+
+    const result = processPermissionAsked(properties, ctx);
+
+    const action = result.actions[0];
+    if (action && isPostElicitationAction(action) && action.metadata) {
+      const options = action.metadata;
+      if ("options" in options && Array.isArray(options.options)) {
+        const values = options.options.map((o) => o.value);
+        expect(values).toContain("Approve");
+        expect(values).toContain("Approve Always");
+        expect(values).toContain("Reject");
+      } else {
+        throw new Error("Expected options in metadata");
+      }
+    } else {
+      throw new Error("Expected postElicitation action with metadata");
+    }
+  });
+
+  test("should store correct data in pending permission", () => {
+    const properties = createPermissionRequest({
+      id: "perm-unique",
+      permission: "Edit",
+      patterns: ["/src/**/*.ts"],
+      metadata: { custom: "data" },
+    });
+
+    const result = processPermissionAsked(properties, ctx);
+
+    expect(result.pendingPermission).toEqual({
+      requestId: "perm-unique",
+      opcodeSessionId: "opencode-456",
+      linearSessionId: "linear-123",
+      workdir: "/workdir",
+      permission: "Edit",
+      patterns: ["/src/**/*.ts"],
+      metadata: { custom: "data" },
+      createdAt: expect.any(Number),
+    });
   });
 
   test("should handle null workdir", () => {
     const ctxNoWorkdir = {
+      linearSessionId: "linear-123",
       opencodeSessionId: "opencode-456",
       workdir: null,
     };
 
-    const properties = {
-      id: "perm-1",
-      sessionID: "opencode-456",
-      permission: "write_file",
-    };
+    const properties = createPermissionRequest();
 
-    const actions = processPermissionAsked(properties, ctxNoWorkdir);
+    const result = processPermissionAsked(properties, ctxNoWorkdir);
 
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toEqual({
-      type: "replyPermission",
-      requestId: "perm-1",
-      reply: "always",
-      directory: undefined,
-    });
+    expect(result.pendingPermission?.workdir).toBe("");
   });
 
-  test("should auto-approve bash execution permissions", () => {
-    const properties = {
-      id: "perm-1",
-      sessionID: "opencode-456",
-      permission: "bash_execute",
-    };
-
-    const actions = processPermissionAsked(properties, ctx);
-
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({
-      type: "replyPermission",
-      reply: "always",
-    });
-  });
-
-  test("should auto-approve mcp tool permissions", () => {
-    const properties = {
-      id: "perm-1",
-      sessionID: "opencode-456",
-      permission: "mcp_tool",
-    };
-
-    const actions = processPermissionAsked(properties, ctx);
-
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toMatchObject({
-      type: "replyPermission",
-      reply: "always",
-    });
-  });
-
-  test("should handle additional properties in event", () => {
-    const properties = {
-      id: "perm-1",
-      sessionID: "opencode-456",
-      permission: "write_file",
-      filePath: "/path/to/file.ts",
-      extra: "ignored",
-    };
-
-    const actions = processPermissionAsked(properties, ctx);
-
-    expect(actions).toHaveLength(1);
-    expect(actions[0]).toEqual({
-      type: "replyPermission",
-      requestId: "perm-1",
-      reply: "always",
-      directory: "/workdir",
-    });
-  });
-
-  test("should handle empty workdir string", () => {
-    const ctxEmptyWorkdir = {
-      opencodeSessionId: "opencode-456",
-      workdir: "",
-    };
-
-    const properties = {
-      id: "perm-1",
-      sessionID: "opencode-456",
-      permission: "write_file",
-    };
-
-    const actions = processPermissionAsked(properties, ctxEmptyWorkdir);
-
-    expect(actions).toHaveLength(1);
-    // Empty string passes the ?? check, so it becomes ""
-    expect(actions[0]).toEqual({
-      type: "replyPermission",
-      requestId: "perm-1",
-      reply: "always",
-      directory: "",
-    });
-  });
-
-  test("should use the correct request ID from properties", () => {
-    const properties1 = {
-      id: "unique-id-123",
-      sessionID: "opencode-456",
-      permission: "write_file",
-    };
-
-    const properties2 = {
-      id: "another-id-456",
-      sessionID: "opencode-456",
-      permission: "bash_execute",
-    };
-
-    const actions1 = processPermissionAsked(properties1, ctx);
-    const actions2 = processPermissionAsked(properties2, ctx);
-
-    expect(actions1[0]).toMatchObject({ requestId: "unique-id-123" });
-    expect(actions2[0]).toMatchObject({ requestId: "another-id-456" });
-  });
-
-  test("should always reply with 'always' regardless of permission type", () => {
-    const permissionTypes = [
-      "write_file",
-      "read_file",
-      "bash_execute",
-      "mcp_tool",
-      "network_access",
-      "unknown_permission",
-    ];
+  test("should handle different permission types", () => {
+    const permissionTypes = ["Bash", "Write", "Edit", "Read"];
 
     for (const permission of permissionTypes) {
-      const properties = {
-        id: `perm-${permission}`,
-        sessionID: "opencode-456",
-        permission,
-      };
+      const properties = createPermissionRequest({ permission });
 
-      const actions = processPermissionAsked(properties, ctx);
+      const result = processPermissionAsked(properties, ctx);
 
-      expect(actions[0]).toMatchObject({
-        reply: "always",
-      });
+      expect(result.actions).toHaveLength(1);
+      const action = result.actions[0];
+      if (action && isPostElicitationAction(action)) {
+        expect(action.body).toContain(`Permission Request: ${permission}`);
+      } else {
+        throw new Error("Expected postElicitation action");
+      }
+      expect(result.pendingPermission?.permission).toBe(permission);
     }
   });
 });
