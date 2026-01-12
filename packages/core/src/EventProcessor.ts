@@ -55,10 +55,6 @@ function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
  * Configuration for the EventProcessor
  */
 export interface EventProcessorConfig {
-  /** Default model provider ID */
-  providerID: string;
-  /** Default model ID */
-  modelID: string;
   /** Command to run after worktree creation (e.g., "bun install") */
   startCommand?: string;
   /** OpenCode server URL for external links (should be localhost for security) */
@@ -66,8 +62,6 @@ export interface EventProcessorConfig {
 }
 
 const DEFAULT_CONFIG: EventProcessorConfig = {
-  providerID: "anthropic",
-  modelID: "claude-sonnet-4-20250514",
   startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
@@ -286,15 +280,9 @@ export class EventProcessor {
 
     // Send prompt and subscribe to events concurrently
     await Promise.all([
-      this.opencode.prompt(
-        opcodeSessionId,
-        workdir,
-        {
-          providerID: this.config.providerID,
-          modelID: this.config.modelID,
-        },
-        [{ type: "text", text: prompt }],
-      ),
+      this.opencode.prompt(opcodeSessionId, workdir, [
+        { type: "text", text: prompt },
+      ]),
       this.subscribeAndWaitForCompletion(
         opcodeSessionId,
         linearSessionId,
@@ -304,6 +292,30 @@ export class EventProcessor {
     ]);
 
     log.info("OpenCode session completed");
+  }
+
+  /**
+   * Build issue context header from webhook payload
+   */
+  private buildIssueContext(event: AgentSessionEventWebhookPayload): string {
+    const issue = event.agentSession.issue;
+    if (!issue) {
+      return "";
+    }
+
+    const parts: string[] = [
+      `# Linear Issue: ${issue.identifier}`,
+      "",
+      `**Title:** ${issue.title}`,
+    ];
+
+    if (issue.url) {
+      parts.push(`**URL:** ${issue.url}`);
+    }
+
+    parts.push("", "---", "");
+
+    return parts.join("\n");
   }
 
   /**
@@ -341,11 +353,10 @@ export class EventProcessor {
       return;
     }
 
+    // Build context: issue header + previous context (if any) + Linear's promptContext
+    const issueContext = this.buildIssueContext(event);
     const basePrompt = event.promptContext ?? "Please help with this issue.";
-    // Inject previous context if we had to recreate the session
-    const prompt = previousContext
-      ? `${previousContext}${basePrompt}`
-      : basePrompt;
+    const prompt = `${issueContext}${previousContext ?? ""}${basePrompt}`;
 
     log.info("Starting new session with prompt", {
       promptLength: prompt.length,
@@ -403,10 +414,15 @@ export class EventProcessor {
       event.promptContext ??
       "Please continue.";
 
-    // Inject previous context if we had to recreate the session (e.g., after server restart)
-    const prompt = previousContext
-      ? `${previousContext}${basePrompt}`
-      : basePrompt;
+    // If session was recreated, inject issue context + previous context
+    // Otherwise, just use the base prompt (agent already has context from initial prompt)
+    let prompt: string;
+    if (previousContext) {
+      const issueContext = this.buildIssueContext(event);
+      prompt = `${issueContext}${previousContext}${basePrompt}`;
+    } else {
+      prompt = basePrompt;
+    }
 
     log.info("Sending follow-up prompt", {
       promptLength: prompt.length,

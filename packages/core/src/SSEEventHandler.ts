@@ -315,7 +315,7 @@ export class SSEEventHandler {
           action: getToolActionName(tool, false),
           parameter: extractToolParameter(tool, state.input, this.workdir),
         },
-        false, // persistent
+        true, // ephemeral - will be replaced by the completed action
       );
     } else if (state.status === "completed") {
       // Clean up running state tracking
