@@ -31,7 +31,7 @@ import {
 } from "@linear-opencode-agent/core";
 import { loadConfig, getWorkerUrl, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
-import { RepoResolver } from "./RepoResolver";
+import { resolveRepoPath } from "./RepoResolver";
 import { join } from "node:path";
 
 /**
@@ -79,8 +79,6 @@ function createDirectDispatcher(
   });
   const opencode = new OpencodeService(opencodeClient);
 
-  const availableRepos = Object.keys(config.repos ?? {});
-
   return {
     async dispatch(event: AgentSessionEventWebhookPayload): Promise<void> {
       const organizationId = event.organizationId;
@@ -114,8 +112,11 @@ function createDirectDispatcher(
       const linear = new LinearServiceImpl(accessToken);
 
       // Resolve which repository to use for this issue
-      const repoResolver = RepoResolver.fromConfig(linear, config);
-      const resolveResult = await repoResolver.resolve(issueId);
+      const resolveResult = await resolveRepoPath(
+        linear,
+        issueId,
+        config.projectsPath,
+      );
 
       // Handle resolution errors
       if (Result.isError(resolveResult)) {
@@ -127,24 +128,9 @@ function createDirectDispatcher(
       }
 
       const resolved = resolveResult.value;
-      if (!resolved) {
-        const errorMessage =
-          `**Could not determine which repository to use for this issue.**\n\n` +
-          `To fix this, add one of the following:\n` +
-          `- A \`repo:*\` label (e.g., \`repo:linear-opencode-agent\`)\n` +
-          `- A GitHub link in the issue description\n\n` +
-          `Available repositories: ${availableRepos.join(", ")}`;
-
-        await linear.postError(linearSessionId, new Error(errorMessage));
-        log.error("Could not resolve repository", { availableRepos });
-        return;
-      }
-
-      log.info("Resolved repository for issue", {
-        issueId,
-        repoKey: resolved.key,
-        repoUrl: resolved.config.remoteUrl,
-        localPath: resolved.config.localPath,
+      log.info("Using repository path", {
+        repoPath: resolved.path,
+        repoName: resolved.repoName,
       });
 
       // Create event processor with repo directory
@@ -153,7 +139,7 @@ function createDirectDispatcher(
         opencode,
         linear,
         sessionRepository,
-        resolved.config.localPath,
+        resolved.path,
         { opencodeUrl: config.opencode.url },
       );
 
@@ -254,29 +240,14 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   // Load configuration
   const config = await loadConfig();
 
-  // Auto-discover repositories from filesystem
-  const { discoverRepos } = await import("./RepoDiscovery");
-  const discoveredRepos = await discoverRepos(config.paths.repos);
-
-  // Merge discovered repos with explicitly configured repos (explicit config wins)
-  const allRepos = { ...discoveredRepos, ...config.repos };
-
-  // Update config with merged repos
-  config.repos = allRepos;
-
-  const configuredRepos = Object.keys(allRepos);
   log.info("Configuration loaded", {
     port: config.port,
     publicHostname: config.publicHostname,
     opencodeUrl: config.opencode.url,
-    discoveredRepos: Object.keys(discoveredRepos).length,
-    configuredRepos,
-    defaultRepo: config.defaultRepo,
-    worktreesPath: config.paths.workspace,
+    projectsPath: config.projectsPath,
   });
 
   // Initialize storage
-  // Use a single FileStore for all data, or separate stores for different concerns
   const dataPath = join(config.paths.data, "store.json");
 
   const kv = new FileStore(dataPath);
@@ -285,7 +256,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 
   log.info("Storage initialized", { dataPath });
 
-  // Create event dispatcher (git operations created per-request based on issue)
+  // Create event dispatcher
   const dispatcher = createDirectDispatcher(
     config,
     tokenStore,
