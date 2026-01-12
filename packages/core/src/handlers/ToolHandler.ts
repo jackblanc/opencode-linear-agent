@@ -1,6 +1,6 @@
 import type { ToolPart } from "@opencode-ai/sdk/v2";
-import type { LinearService } from "../linear/LinearService";
-import type { Logger } from "../logger";
+import type { HandlerState } from "../session/SessionState";
+import type { Action, HandlerResult } from "../actions/types";
 
 /**
  * Tool name mapping for friendly action names
@@ -207,90 +207,117 @@ function getToolThought(
 }
 
 /**
- * Handles tool part events from OpenCode and posts activities to Linear.
+ * Context needed for tool handler processing
  */
-export class ToolHandler {
-  /** Track tool parts we've seen in running state */
-  private runningTools = new Set<string>();
+export interface ToolHandlerContext {
+  linearSessionId: string;
+  workdir: string | null;
+}
 
-  constructor(
-    private readonly linear: LinearService,
-    private readonly linearSessionId: string,
-    private readonly log: Logger,
-    private readonly workdir: string | null = null,
-  ) {}
+/**
+ * Process a tool part event - pure function
+ *
+ * Takes current state and returns new state + actions.
+ * No side effects, no I/O.
+ */
+export function processToolPart(
+  part: ToolPart,
+  state: HandlerState,
+  ctx: ToolHandlerContext,
+): HandlerResult<HandlerState> {
+  const { state: toolState, tool, id } = part;
+  const actions: Action[] = [];
 
-  /**
-   * Handle a tool part update
-   */
-  async handleToolPart(part: ToolPart): Promise<void> {
-    const { state, tool, id } = part;
-
-    if (state.status === "running") {
-      // Only post running state once per tool
-      if (this.runningTools.has(id)) {
-        return;
-      }
-      this.runningTools.add(id);
-
-      // Post contextual thought if this is a meaningful operation
-      const thought = getToolThought(tool, state.input);
-      if (thought) {
-        await this.linear.postActivity(
-          this.linearSessionId,
-          { type: "thought", body: thought },
-          true, // ephemeral - will be replaced by the action result
-        );
-      }
-
-      this.log.info("Tool starting", { tool });
-
-      await this.linear.postActivity(
-        this.linearSessionId,
-        {
-          type: "action",
-          action: getToolActionName(tool, false),
-          parameter: extractToolParameter(tool, state.input, this.workdir),
-        },
-        true, // ephemeral - will be replaced by the completed action
-      );
-    } else if (state.status === "completed") {
-      // Clean up running state tracking
-      this.runningTools.delete(id);
-
-      this.log.info("Tool completed", {
-        tool,
-        outputLength: state.output.length,
-      });
-
-      await this.linear.postActivity(
-        this.linearSessionId,
-        {
-          type: "action",
-          action: getToolActionName(tool, true),
-          parameter: extractToolParameter(tool, state.input, this.workdir),
-          result: truncateOutput(
-            replacePathsInOutput(state.output, this.workdir),
-          ),
-        },
-        false, // persistent
-      );
-    } else if (state.status === "error") {
-      // Clean up running state tracking
-      this.runningTools.delete(id);
-
-      this.log.info("Tool error", { tool, error: state.error });
-
-      await this.linear.postActivity(
-        this.linearSessionId,
-        {
-          type: "action",
-          action: getToolActionName(tool, true),
-          parameter: extractToolParameter(tool, state.input, this.workdir),
-          result: `Error: ${truncateOutput(replacePathsInOutput(state.error, this.workdir))}`,
-        },
-        false, // persistent
-      );
+  if (toolState.status === "running") {
+    // Only post running state once per tool
+    if (state.runningTools.has(id)) {
+      return { state, actions: [] };
     }
+
+    // Create new state with this tool added to running set
+    const newState: HandlerState = {
+      ...state,
+      runningTools: new Set([...state.runningTools, id]),
+    };
+
+    // Post contextual thought if this is a meaningful operation
+    const thought = getToolThought(tool, toolState.input);
+    if (thought) {
+      actions.push({
+        type: "postActivity",
+        sessionId: ctx.linearSessionId,
+        content: { type: "thought", body: thought },
+        ephemeral: true,
+      });
+    }
+
+    // Post running action activity
+    actions.push({
+      type: "postActivity",
+      sessionId: ctx.linearSessionId,
+      content: {
+        type: "action",
+        action: getToolActionName(tool, false),
+        parameter: extractToolParameter(tool, toolState.input, ctx.workdir),
+      },
+      ephemeral: true,
+    });
+
+    return { state: newState, actions };
   }
+
+  if (toolState.status === "completed") {
+    // Clean up running state tracking
+    const newRunningTools = new Set(state.runningTools);
+    newRunningTools.delete(id);
+    const newState: HandlerState = {
+      ...state,
+      runningTools: newRunningTools,
+    };
+
+    // Post completed action activity
+    actions.push({
+      type: "postActivity",
+      sessionId: ctx.linearSessionId,
+      content: {
+        type: "action",
+        action: getToolActionName(tool, true),
+        parameter: extractToolParameter(tool, toolState.input, ctx.workdir),
+        result: truncateOutput(
+          replacePathsInOutput(toolState.output, ctx.workdir),
+        ),
+      },
+      ephemeral: false,
+    });
+
+    return { state: newState, actions };
+  }
+
+  if (toolState.status === "error") {
+    // Clean up running state tracking
+    const newRunningTools = new Set(state.runningTools);
+    newRunningTools.delete(id);
+    const newState: HandlerState = {
+      ...state,
+      runningTools: newRunningTools,
+    };
+
+    // Post error action activity
+    actions.push({
+      type: "postActivity",
+      sessionId: ctx.linearSessionId,
+      content: {
+        type: "action",
+        action: getToolActionName(tool, true),
+        parameter: extractToolParameter(tool, toolState.input, ctx.workdir),
+        result: `Error: ${truncateOutput(replacePathsInOutput(toolState.error, ctx.workdir))}`,
+      },
+      ephemeral: false,
+    });
+
+    return { state: newState, actions };
+  }
+
+  // Unknown status - no change
+  return { state, actions: [] };
 }
