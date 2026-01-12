@@ -81,6 +81,28 @@ function toRelativePath(absolutePath: string, workdir: string | null): string {
 }
 
 /**
+ * Replace all absolute paths in a string with relative paths
+ * Handles tool output that may contain multiple file paths
+ */
+function replacePathsInOutput(output: string, workdir: string | null): string {
+  if (!workdir) {
+    // Try worktree pattern replacement even without explicit workdir
+    return output.replace(
+      /\/[^\s:]+\/\.local\/share\/opencode\/worktree\/[^/]+\/[^/]+\/([^\s:]+)/g,
+      "$1",
+    );
+  }
+
+  // Escape special regex chars in workdir for use in pattern
+  const escapedWorkdir = workdir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // Match workdir followed by path characters (not whitespace or common delimiters)
+  const pattern = new RegExp(`${escapedWorkdir}/?([^\\s:]+)`, "g");
+
+  return output.replace(pattern, "$1");
+}
+
+/**
  * Extract parameter from tool input for display
  */
 function extractToolParameter(
@@ -332,7 +354,9 @@ export class SSEEventHandler {
           type: "action",
           action: getToolActionName(tool, true),
           parameter: extractToolParameter(tool, state.input, this.workdir),
-          result: truncateOutput(state.output),
+          result: truncateOutput(
+            replacePathsInOutput(state.output, this.workdir),
+          ),
         },
         false, // persistent
       );
@@ -348,7 +372,7 @@ export class SSEEventHandler {
           type: "action",
           action: getToolActionName(tool, true),
           parameter: extractToolParameter(tool, state.input, this.workdir),
-          result: `Error: ${truncateOutput(state.error)}`,
+          result: `Error: ${truncateOutput(replacePathsInOutput(state.error, this.workdir))}`,
         },
         false, // persistent
       );
