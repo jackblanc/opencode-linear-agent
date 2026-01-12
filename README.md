@@ -2,7 +2,7 @@
 
 An AI coding agent for Linear that uses OpenCode to handle delegated issues. Supports two deployment modes:
 
-1. **Local Docker Compose** - Uses Docker containers with Tailscale Funnel for public webhook access
+1. **Local Development** - Webhook server in Docker, OpenCode running natively via launchd
 2. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
 
 ## Features
@@ -19,9 +19,34 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
 ### Prerequisites
 
 - Docker & Docker Compose
-- Tailscale account with Funnel enabled
+- OpenCode running as a launchd service (see [Environment Setup](#environment-setup))
+- Cloudflare Tunnel configured for public webhook access
 - Linear OAuth app configured
-- OpenCode with Claude Max OAuth authenticated locally
+
+### Environment Setup
+
+OpenCode runs natively on your host machine as a launchd service. This is managed via home-manager in `~/environment`:
+
+```nix
+# In ~/environment/nix/modules/personal.nix
+launchd.agents.opencode = {
+  enable = true;
+  config = {
+    Label = "com.jackblanc.opencode";
+    ProgramArguments = [ "${opencode}/bin/opencode" "serve" "--port" "4096" "--hostname" "127.0.0.1" ];
+    RunAtLoad = true;
+    KeepAlive = true;
+  };
+};
+```
+
+Manage the service with:
+
+```bash
+launchctl start com.jackblanc.opencode   # Start
+launchctl stop com.jackblanc.opencode    # Stop
+launchctl list | grep opencode           # Check status
+```
 
 ### Setup
 
@@ -33,27 +58,13 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
    bun install
    ```
 
-2. **Copy environment template:**
-
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Configure `.env`:**
-
-   ```bash
-   GITHUB_TOKEN=ghp_...
-   TS_AUTHKEY=tskey-auth-...     # From Tailscale admin console
-   TAILSCALE_HOSTNAME=linear-agent
-   ```
-
-4. **Create `config.docker.json`** (repos are auto-discovered):
+2. **Create `config.docker.json`:**
 
    ```json
    {
      "port": 3000,
-     "tailscaleHostname": "your-hostname.your-tailnet.ts.net",
-     "opencode": { "url": "http://opencode:4096" },
+     "publicHostname": "your-tunnel-hostname.example.com",
+     "opencode": { "url": "http://host.docker.internal:4096" },
      "linear": {
        "clientId": "your-client-id",
        "clientSecret": "your-client-secret",
@@ -62,84 +73,66 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
      },
      "github": { "token": "ghp_..." },
      "paths": {
-       "repos": "/home/repos",
+       "repos": "/home/user/projects",
        "workspace": "/workspace",
        "data": "/data"
      }
    }
    ```
 
-   Note: Repositories are auto-discovered from `paths.repos`. You can optionally
-   add explicit `repos` config to override auto-discovery for specific repos.
-
-5. **Authenticate OpenCode (first time only on host):**
+3. **Ensure OpenCode is running:**
 
    ```bash
-   opencode                    # Follow OAuth prompts for Claude Max
-   opencode mcp auth linear    # Authenticate Linear MCP
+   curl http://localhost:4096  # Should return HTML
    ```
 
-6. **Build and start the stack:**
+4. **Build and start the webhook server:**
 
    ```bash
    docker compose build
    docker compose up -d
    ```
 
-7. **Copy auth files to container:**
-
-   ```bash
-   docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
-   docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
-   docker compose restart opencode
-   ```
-
-8. **Get your public webhook URL:**
-
-   ```bash
-   docker compose exec tailscale tailscale funnel status
-   ```
-
-9. **Configure Linear webhook** to point to: `https://your-hostname.ts.net/webhook/linear`
+5. **Configure Linear webhook** to point to your Cloudflare Tunnel URL: `https://your-hostname.example.com/webhook/linear`
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│ Webhook Server (linear-webhook container)                │
-│                                                          │
-│  - Receives Linear webhooks                              │
-│  - Verifies signatures + org ID                          │
-│  - Resolves repo from issue GitHub links                 │
-│  - Creates git worktrees per session                     │
-│  - Manages OpenCode sessions via SDK                     │
-│                                                          │
-│  SSEEventHandler                                         │
-│  - message.part.updated → Post tool activities to Linear │
-│  - todo.updated → Sync to Linear agent plan              │
-│  - permission.updated → Auto-approve all                 │
-│  - session.idle → Signal completion                      │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Webhook Server (Docker container)                            │
+│                                                              │
+│  - Receives Linear webhooks via Cloudflare Tunnel            │
+│  - Verifies signatures + org ID                              │
+│  - Resolves repo from issue GitHub links                     │
+│  - Creates git worktrees per session                         │
+│  - Manages OpenCode sessions via SDK                         │
+│                                                              │
+│  SSEEventHandler                                             │
+│  - message.part.updated → Post tool activities to Linear     │
+│  - todo.updated → Sync to Linear agent plan                  │
+│  - permission.updated → Auto-approve all                     │
+│  - session.idle → Signal completion                          │
+└──────────────────────────────────────────────────────────────┘
          │                              │
          ▼                              ▼
     Linear API                   OpenCode Server
-                                 (opencode container)
-                                 /home/user/...
+                                 (native launchd service)
+                                 http://localhost:4096
 ```
 
-### Container Architecture
+### Service Architecture
 
-| Container        | Purpose                         | Ports           |
-| ---------------- | ------------------------------- | --------------- |
-| `linear-webhook` | Webhook server, session manager | 3000 (local)    |
-| `opencode`       | AI coding agent                 | 4096 (internal) |
-| `tailscale`      | Exposes webhook via Funnel      | 443 (public)    |
+| Service          | Type   | Purpose                         | Port |
+| ---------------- | ------ | ------------------------------- | ---- |
+| `webhook-server` | Docker | Webhook server, session manager | 3000 |
+| `cloudflared`    | Docker | Cloudflare Tunnel               | -    |
+| `opencode`       | Native | AI coding agent (launchd)       | 4096 |
 
 ### Security
 
 1. **Webhook signature verification** - Linear SDK verifies HMAC signatures
 2. **Organization ID allowlist** - Rejects webhooks from other Linear orgs
-3. **Tailscale Funnel** - Public endpoint only exposed via Tailscale
+3. **Cloudflare Tunnel** - Public endpoint protected by Cloudflare
 4. **Session isolation** - Each session runs in its own git worktree
 
 ## Usage
@@ -156,21 +149,22 @@ An AI coding agent for Linear that uses OpenCode to handle delegated issues. Sup
 ## Common Commands
 
 ```bash
-# Rebuild containers after code changes
+# Rebuild webhook server after code changes
 docker compose build
 docker compose up -d
 
-# Copy auth files after re-authenticating
-docker compose cp ~/.local/share/opencode/auth.json opencode:/home/user/.local/share/opencode/auth.json
-docker compose cp ~/.local/share/opencode/mcp-auth.json opencode:/home/user/.local/share/opencode/mcp-auth.json
-docker compose restart opencode
+# View webhook server logs
+docker compose logs -f webhook-server
 
-# View logs
-docker compose logs -f linear-webhook
-docker compose logs -f opencode
+# Check OpenCode server status (native)
+launchctl list | grep opencode
+curl http://localhost:4096
 
-# Check Tailscale status
-docker compose exec tailscale tailscale funnel status
+# Restart OpenCode server
+launchctl stop com.jackblanc.opencode && launchctl start com.jackblanc.opencode
+
+# View OpenCode logs
+tail -f ~/.local/share/opencode/launchd.log
 ```
 
 ## Scheduled Linear Orchestration (macOS)
@@ -255,10 +249,8 @@ linear-opencode-agent/
 │   │   │   └── git/                  # Git worktree management
 │   │   └── Dockerfile
 │   │
-│   ├── environment/             # OpenCode sandbox environment
-│   │   ├── Dockerfile           # Extends official OpenCode image
-│   │   ├── opencode.json        # OpenCode config with MCPs
-│   │   ├── AGENTS.md            # Agent instructions
+│   ├── opencode/                # OpenCode Docker image (legacy, for reference)
+│   │   ├── Dockerfile           # OpenCode container config
 │   │   └── plugin/              # OpenCode plugins
 │   │
 │   ├── linear/                  # Cloudflare Worker entry point

@@ -1,50 +1,25 @@
 services:
   # Webhook server - handles OAuth, webhooks from Linear, and routes to OpenCode
+  # NOTE: Requires OpenCode server running on host via launchd (see ~/environment)
   webhook-server:
     build:
       context: .
       dockerfile: packages/server/Dockerfile
     ports:
-      - "3000:3000" # Local access only
+      - "127.0.0.1:3000:3000" # Localhost only - not exposed to local network
     volumes:
       # Mount config file
       - ./config.docker.json:/app/packages/server/config.json:ro
-      # Mount repos for discovery (same path as opencode container)
+      # Mount repos for discovery
       - ${PROJECTS_DIR:-~/projects}:/home/user/projects:ro
       # Persistent data (tokens, sessions)
       - server-data:/data
     environment:
       - NODE_ENV=production
       - LOG_FORMAT=pretty
-      - OPENCODE_URL=http://opencode:4096
-    depends_on:
-      - opencode
-    networks:
-      - linear-agent
-
-  # OpenCode server - AI coding agent
-  # Pass-through to host: uses host's projects, config, auth, git identity
-  opencode:
-    build: packages/opencode
-    ports:
-      - "127.0.0.1:4096:4096" # Localhost only - access OpenCode UI
-    volumes:
-      # Pass-through: host projects directory (read-write for git operations)
-      - ${PROJECTS_DIR:-~/projects}:/home/user/projects:cached
-      # Pass-through: host worktrees directory (isolated from projects)
-      - ${WORKTREES_DIR:-~/opencode-worktrees}:/home/user/opencode-worktrees
-      # Pass-through: host OpenCode config
-      - ${OPENCODE_CONFIG_DIR:-~/.config/opencode}:/home/user/.config/opencode:ro
-      # Pass-through: host OpenCode data (auth, logs) - no more copying auth files!
-      - ${OPENCODE_DATA_DIR:-~/.local/share/opencode}:/home/user/.local/share/opencode
-      # Pass-through: host SSH keys for git operations
-      - ~/.ssh:/home/user/.ssh:ro
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GIT_AUTHOR_NAME=Jack Blanc
-      - GIT_AUTHOR_EMAIL=jackblanc0@icloud.com
-      - GIT_COMMITTER_NAME=Jack Blanc
-      - GIT_COMMITTER_EMAIL=jackblanc0@icloud.com
+    extra_hosts:
+      # Allow container to reach host's OpenCode server
+      - "host.docker.internal:host-gateway"
     networks:
       - linear-agent
 
