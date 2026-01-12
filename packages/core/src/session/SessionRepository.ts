@@ -47,6 +47,28 @@ export interface PendingQuestion {
 }
 
 /**
+ * A pending permission request from OpenCode that's awaiting user approval via Linear
+ */
+export interface PendingPermission {
+  /** OpenCode permission request ID */
+  requestId: string;
+  /** OpenCode session ID */
+  opcodeSessionId: string;
+  /** Linear session ID */
+  linearSessionId: string;
+  /** Working directory for OpenCode calls */
+  workdir: string;
+  /** Permission type (e.g., "Bash", "Write", "Edit") */
+  permission: string;
+  /** File patterns that need permission */
+  patterns: string[];
+  /** Additional metadata from the permission request */
+  metadata: Record<string, unknown>;
+  /** Timestamp when permission was requested */
+  createdAt: number;
+}
+
+/**
  * Repository for session state persistence
  */
 export interface SessionRepository {
@@ -85,4 +107,21 @@ export interface SessionRepository {
    * Delete pending question
    */
   deletePendingQuestion(linearSessionId: string): Promise<void>;
+
+  /**
+   * Get pending permission for a Linear session
+   */
+  getPendingPermission(
+    linearSessionId: string,
+  ): Promise<PendingPermission | null>;
+
+  /**
+   * Save pending permission
+   */
+  savePendingPermission(permission: PendingPermission): Promise<void>;
+
+  /**
+   * Delete pending permission
+   */
+  deletePendingPermission(linearSessionId: string): Promise<void>;
 }

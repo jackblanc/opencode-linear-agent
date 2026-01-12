@@ -28,6 +28,7 @@ export type {
   // Handler result types
   HandlerResult,
   HandlerResultWithQuestion,
+  HandlerResultWithPermission,
 } from "./types";
 
 export { ActionExecutor } from "./executor";

@@ -5,6 +5,7 @@ import type { LinearService } from "./linear/LinearService";
 import type {
   SessionRepository,
   PendingQuestion,
+  PendingPermission,
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import { WorktreeManager } from "./session/WorktreeManager";
@@ -264,6 +265,17 @@ export class LinearEventProcessor {
         );
         return result;
       }
+
+      if (result.action === "permission_asked") {
+        log.info(
+          "Permission asked - saving pending permission and waiting for user response",
+          {
+            requestId: result.pendingPermission.requestId,
+            permission: result.pendingPermission.permission,
+          },
+        );
+        return result;
+      }
     }
 
     // Stream ended without explicit break - treat as break
@@ -326,6 +338,17 @@ export class LinearEventProcessor {
       });
       await this.sessions.savePendingQuestion(result.pendingQuestion);
       log.info("Pending question saved");
+      return;
+    }
+
+    // Handle permission_asked - save pending permission for later response
+    if (result.action === "permission_asked") {
+      log.info("Saving pending permission", {
+        requestId: result.pendingPermission.requestId,
+        linearSessionId: result.pendingPermission.linearSessionId,
+      });
+      await this.sessions.savePendingPermission(result.pendingPermission);
+      log.info("Pending permission saved");
       return;
     }
 
@@ -427,6 +450,23 @@ export class LinearEventProcessor {
       event.promptContext ??
       "Please continue.";
 
+    // Check if there's a pending permission for this session
+    const pendingPermission =
+      await this.sessions.getPendingPermission(linearSessionId);
+
+    if (pendingPermission) {
+      await this.handlePermissionResponse(
+        pendingPermission,
+        userResponse,
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+        previousContext,
+        log,
+      );
+      return;
+    }
+
     // Check if there's a pending question for this session
     const pendingQuestion =
       await this.sessions.getPendingQuestion(linearSessionId);
@@ -444,7 +484,7 @@ export class LinearEventProcessor {
       return;
     }
 
-    // No pending question - treat as a normal follow-up prompt
+    // No pending question or permission - treat as a normal follow-up prompt
     const prompt = this.promptBuilder.buildFollowUpPrompt(
       event,
       userResponse,
@@ -604,6 +644,169 @@ export class LinearEventProcessor {
       });
       await this.sessions.savePendingQuestion(result.pendingQuestion);
     }
+
+    // Handle if a permission was asked
+    if (result.action === "permission_asked") {
+      log.info("Permission asked after question answered", {
+        requestId: result.pendingPermission.requestId,
+      });
+      await this.sessions.savePendingPermission(result.pendingPermission);
+    }
+  }
+
+  /**
+   * Handle a user response to a pending permission request
+   *
+   * The user can either:
+   * 1. Select "Approve" - approve once
+   * 2. Select "Approve Always" - approve for all future requests of this type
+   * 3. Select "Reject" - reject the permission
+   * 4. Send a different message - treat as a new prompt and reject the permission
+   */
+  private async handlePermissionResponse(
+    pending: PendingPermission,
+    userResponse: string,
+    opcodeSessionId: string,
+    linearSessionId: string,
+    workdir: string,
+    previousContext: string | undefined,
+    log: Logger,
+  ): Promise<void> {
+    log.info("Received response while permission pending", {
+      requestId: pending.requestId,
+      responseLength: userResponse.length,
+      permission: pending.permission,
+    });
+
+    // Map user responses to permission reply types
+    const permissionOptions = ["Approve", "Approve Always", "Reject"];
+    const matchedOption = this.matchPermissionOption(
+      userResponse,
+      permissionOptions,
+    );
+
+    if (!matchedOption) {
+      // User response doesn't match any option - they're ignoring the permission
+      // Reject the permission and send as a regular follow-up prompt
+      log.info(
+        "User response doesn't match any permission option - rejecting and treating as new prompt",
+        {
+          response: userResponse.slice(0, 100),
+        },
+      );
+
+      await this.opencode.replyPermission(pending.requestId, "reject", workdir);
+      await this.sessions.deletePendingPermission(linearSessionId);
+      await this.sendFollowUpPrompt(
+        userResponse,
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+        previousContext,
+        log,
+      );
+      return;
+    }
+
+    // Map the option to the OpenCode reply type
+    let reply: "once" | "always" | "reject";
+    if (matchedOption === "Approve") {
+      reply = "once";
+    } else if (matchedOption === "Approve Always") {
+      reply = "always";
+    } else {
+      reply = "reject";
+    }
+
+    log.info("Matched user response to permission option", {
+      userResponse: userResponse.slice(0, 50),
+      matchedOption,
+      reply,
+    });
+
+    // Reply to the permission request
+    const replyResult = await this.opencode.replyPermission(
+      pending.requestId,
+      reply,
+      workdir,
+    );
+
+    // Clean up pending permission regardless of result
+    await this.sessions.deletePendingPermission(linearSessionId);
+
+    if (Result.isError(replyResult)) {
+      log.error("Failed to reply to permission", {
+        error: replyResult.error.message,
+        errorType: replyResult.error._tag,
+      });
+      await this.linear.postError(linearSessionId, replyResult.error);
+      return;
+    }
+
+    // Subscribe and wait for OpenCode to continue processing
+    log.info("Permission responded - waiting for OpenCode to continue", {
+      reply,
+    });
+
+    const result = await this.subscribeAndWaitForCompletion(
+      opcodeSessionId,
+      linearSessionId,
+      workdir,
+      log,
+    );
+
+    // Handle if a question was asked
+    if (result.action === "question_asked") {
+      log.info("Question asked after permission responded", {
+        requestId: result.pendingQuestion.requestId,
+      });
+      await this.sessions.savePendingQuestion(result.pendingQuestion);
+    }
+
+    // Handle if another permission was asked
+    if (result.action === "permission_asked") {
+      log.info("Another permission asked", {
+        requestId: result.pendingPermission.requestId,
+      });
+      await this.sessions.savePendingPermission(result.pendingPermission);
+    }
+  }
+
+  /**
+   * Try to match user response to a permission option
+   *
+   * Returns the matched option if found, null otherwise.
+   */
+  private matchPermissionOption(
+    userResponse: string,
+    options: string[],
+  ): string | null {
+    const normalized = userResponse.trim().toLowerCase();
+
+    // First try exact match (case-insensitive)
+    for (const opt of options) {
+      if (opt.toLowerCase() === normalized) {
+        return opt;
+      }
+    }
+
+    // Then try if response starts with option
+    for (const opt of options) {
+      if (normalized.startsWith(opt.toLowerCase())) {
+        return opt;
+      }
+    }
+
+    // Finally try if response contains option as a whole word
+    for (const opt of options) {
+      const optLower = opt.toLowerCase();
+      const regex = new RegExp(`\\b${this.escapeRegex(optLower)}\\b`, "i");
+      if (regex.test(userResponse)) {
+        return opt;
+      }
+    }
+
+    return null;
   }
 
   /**

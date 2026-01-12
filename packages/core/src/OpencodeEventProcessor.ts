@@ -1,6 +1,14 @@
-import type { Event as OpencodeEvent, Part, Todo } from "@opencode-ai/sdk/v2";
+import type {
+  Event as OpencodeEvent,
+  Part,
+  Todo,
+  PermissionRequest,
+} from "@opencode-ai/sdk/v2";
 import type { LinearService } from "./linear/LinearService";
-import type { PendingQuestion } from "./session/SessionRepository";
+import type {
+  PendingQuestion,
+  PendingPermission,
+} from "./session/SessionRepository";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import type { Logger } from "./logger";
 import type { HandlerState } from "./session/SessionState";
@@ -20,7 +28,8 @@ import {
 export type OpencodeEventResult =
   | { action: "continue" }
   | { action: "break" }
-  | { action: "question_asked"; pendingQuestion: PendingQuestion };
+  | { action: "question_asked"; pendingQuestion: PendingQuestion }
+  | { action: "permission_asked"; pendingPermission: PendingPermission };
 
 /**
  * Processes events from OpenCode and posts activities to Linear.
@@ -66,7 +75,10 @@ export class OpencodeEventProcessor {
     }
 
     if (event.type === "permission.asked") {
-      await this.handlePermissionAsked(event.properties);
+      const pending = await this.handlePermissionAsked(event.properties);
+      if (pending) {
+        return { action: "permission_asked", pendingPermission: pending };
+      }
       return { action: "continue" };
     }
 
@@ -167,25 +179,26 @@ export class OpencodeEventProcessor {
   /**
    * Handle permission.asked events
    */
-  private async handlePermissionAsked(properties: {
-    id: string;
-    sessionID: string;
-    permission: string;
-    [key: string]: unknown;
-  }): Promise<void> {
-    const actions = processPermissionAsked(properties, {
+  private async handlePermissionAsked(
+    properties: PermissionRequest,
+  ): Promise<PendingPermission | null> {
+    const result = processPermissionAsked(properties, {
+      linearSessionId: this.linearSessionId,
       opencodeSessionId: this.opencodeSessionId,
       workdir: this.workdir,
     });
 
-    if (actions.length > 0) {
-      this.log.info("Auto-approving permission", {
+    if (result.pendingPermission) {
+      this.log.info("Permission asked - posting elicitation to Linear", {
         requestId: properties.id,
         permission: properties.permission,
+        patterns: properties.patterns,
       });
     }
 
-    await this.actionExecutor.executeAll(actions);
+    await this.actionExecutor.executeAll(result.actions);
+
+    return result.pendingPermission ?? null;
   }
 
   /**

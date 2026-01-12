@@ -1,51 +1,75 @@
-import type { Action } from "../actions/types";
+import type { PermissionRequest } from "@opencode-ai/sdk/v2";
+import type { PendingPermission } from "../session/SessionRepository";
+import type { Action, HandlerResultWithPermission } from "../actions/types";
 
 /**
  * Context needed for permission handler processing
  */
 export interface PermissionHandlerContext {
+  linearSessionId: string;
   opencodeSessionId: string;
   workdir: string | null;
 }
 
 /**
- * Properties from permission.asked event
- */
-export interface PermissionAskedProperties {
-  id: string;
-  sessionID: string;
-  permission: string;
-  [key: string]: unknown;
-}
-
-/**
  * Process a permission.asked event - pure function
  *
- * Auto-approves all permissions since the user has already
- * granted trust by delegating the work.
+ * Posts an elicitation to Linear with approval options, then returns
+ * the pending permission data for the orchestrator to store.
  *
- * PermissionHandler doesn't need HandlerState - it's stateless.
+ * PermissionHandler returns a PendingPermission that needs to be stored
+ * by the orchestrator.
  *
- * Takes event properties and returns actions.
+ * Takes event properties and returns actions + pending permission.
  * No side effects, no I/O.
  */
 export function processPermissionAsked(
-  properties: PermissionAskedProperties,
+  properties: PermissionRequest,
   ctx: PermissionHandlerContext,
-): Action[] {
-  const { id, sessionID } = properties;
+): HandlerResultWithPermission {
+  const { id, sessionID, permission, patterns, metadata } = properties;
 
   // Only process for our session
   if (sessionID !== ctx.opencodeSessionId) {
-    return [];
+    return { actions: [] };
   }
 
-  return [
+  // Format permission request for display
+  const patternsList =
+    patterns.length > 0
+      ? `\n\n**Patterns:**\n${patterns.map((p) => `- \`${p}\``).join("\n")}`
+      : "";
+
+  const body = `**Permission Request: ${permission}**${patternsList}\n\nPlease approve or reject this tool call.`;
+
+  // Options for the user to select
+  const options = [
+    { value: "Approve" },
+    { value: "Approve Always" },
+    { value: "Reject" },
+  ];
+
+  const actions: Action[] = [
     {
-      type: "replyPermission",
-      requestId: id,
-      reply: "always",
-      directory: ctx.workdir ?? undefined,
+      type: "postElicitation",
+      sessionId: ctx.linearSessionId,
+      body,
+      signal: "select",
+      metadata: { options },
     },
   ];
+
+  // Build pending permission for storage
+  const pendingPermission: PendingPermission = {
+    requestId: id,
+    opcodeSessionId: sessionID,
+    linearSessionId: ctx.linearSessionId,
+    workdir: ctx.workdir ?? "",
+    permission,
+    patterns,
+    metadata,
+    createdAt: Date.now(),
+  };
+
+  return { actions, pendingPermission };
 }
