@@ -135,12 +135,13 @@ function createDirectDispatcher(
 
       // Create event processor with repo directory
       // OpenCode handles worktree creation natively
+      // Note: opencodeUrl defaults to localhost:4096 for external links
+      // config.opencode.url is only used for internal Docker communication
       const processor = new EventProcessor(
         opencode,
         linear,
         sessionRepository,
         resolved.path,
-        { opencodeUrl: config.opencode.url },
       );
 
       // Process the event directly (this is the key difference from Cloudflare)

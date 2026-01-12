@@ -21,7 +21,10 @@ export type { SSEEventResult } from "./SSEEventHandler";
 // Session management
 export { SessionManager } from "./session/SessionManager";
 export type { SessionState } from "./session/SessionState";
-export type { SessionRepository } from "./session/SessionRepository";
+export type {
+  SessionRepository,
+  WorktreeInfo,
+} from "./session/SessionRepository";
 
 // Linear service interface and implementation
 export type {
