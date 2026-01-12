@@ -96,6 +96,26 @@ export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
 // Errors
 export * from "./errors";
 
+// Actions - outputs from event processing
+export type {
+  // Linear actions (→ LinearService)
+  LinearAction,
+  PostActivityAction,
+  PostElicitationAction,
+  UpdatePlanAction,
+  PostErrorAction,
+  // OpenCode actions (→ OpencodeService)
+  OpencodeAction,
+  ReplyPermissionAction,
+  ReplyQuestionAction,
+  // Combined type
+  Action,
+  // Executor types
+  ActionExecutionError,
+  ActionResult,
+} from "./actions";
+export { ActionExecutor } from "./actions";
+
 // OpenCode service wrapper
 export { OpencodeService } from "./opencode";
 export type {
