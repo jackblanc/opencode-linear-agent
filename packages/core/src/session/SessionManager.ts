@@ -197,9 +197,8 @@ export class SessionManager {
       hasPreviousContext: !!previousContext,
     });
 
-    // Use issue identifier as title prefix (e.g., "CODE-72")
-    // OpenCode will auto-generate the rest of the title from the conversation
-    const sessionResult = await this.opencode.createSession(issue, workdir);
+    // Don't pass a title - OpenCode auto-generates titles based on the first prompt
+    const sessionResult = await this.opencode.createSession(workdir);
 
     if (Result.isError(sessionResult)) {
       log.error("Failed to create OpenCode session", {

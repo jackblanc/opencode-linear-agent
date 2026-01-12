@@ -98,13 +98,13 @@ export class OpencodeService {
 
   /**
    * Create a new session
+   *
+   * Title is not passed - OpenCode auto-generates titles based on the first prompt
    */
   async createSession(
-    title: string,
     directory: string,
   ): Promise<Result<OpencodeSessionResult, OpencodeServiceError>> {
     const result = await this.client.session.create({
-      title,
       directory,
     });
 
