@@ -318,4 +318,61 @@ export class LinearServiceImpl implements LinearService {
 
     return result;
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // Issue Update Methods
+  // ─────────────────────────────────────────────────────────────
+
+  async moveIssueToInProgress(
+    issueId: string,
+  ): Promise<Result<void, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        // Get the issue to find its team
+        const issue = await this.client.issue(issueId);
+        const team = await issue.team;
+
+        if (!team) {
+          throw new Error("Issue has no associated team");
+        }
+
+        // Query the team's workflow states to find the first "started" status
+        // Per Linear docs: filter by type "started" and select lowest position
+        const states = await team.states({
+          filter: { type: { eq: "started" } },
+        });
+
+        if (states.nodes.length === 0) {
+          throw new Error("Team has no started workflow states");
+        }
+
+        // Sort by position and take the first one (lowest position = first in workflow)
+        const sortedStates = states.nodes.toSorted(
+          (a, b) => a.position - b.position,
+        );
+        const inProgressState = sortedStates[0];
+
+        this.log.info("Moving issue to In Progress", {
+          issueId,
+          stateId: inProgressState.id,
+          stateName: inProgressState.name,
+        });
+
+        // Update the issue's state
+        await issue.update({ stateId: inProgressState.id });
+      },
+      catch: mapLinearError,
+    });
+
+    if (Result.isError(result)) {
+      this.log.error("Failed to move issue to In Progress", {
+        issueId,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+      return Result.err(result.error);
+    }
+
+    return Result.ok(undefined);
+  }
 }

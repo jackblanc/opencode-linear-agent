@@ -150,6 +150,20 @@ export class LinearEventProcessor {
 
     const { workdir, branchName } = worktreeResult.value;
 
+    // Move issue to "In Progress" status when agent starts work
+    // Per Linear best practices, always move to started status when work begins
+    const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
+    if (issueId) {
+      const statusResult = await this.linear.moveIssueToInProgress(issueId);
+      if (Result.isError(statusResult)) {
+        // Log but don't fail - status update is not critical
+        log.warn("Failed to move issue to In Progress", {
+          error: statusResult.error.message,
+          errorType: statusResult.error._tag,
+        });
+      }
+    }
+
     // Post session ready stage activity with branch info
     await this.linear.postStageActivity(
       linearSessionId,
