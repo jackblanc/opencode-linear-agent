@@ -15,7 +15,8 @@
     "lint:fix": "oxlint --fix",
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
-    "check": "bun run typecheck && bun run lint:check && bun run format:check",
+    "knip": "knip",
+    "check": "bun run typecheck && bun run lint:check && bun run format:check && bun run knip",
     "fix": "bun run lint:fix && bun run format:fix"
   },
   "devDependencies": {

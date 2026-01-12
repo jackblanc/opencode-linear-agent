@@ -15,3 +15,7 @@ pre-commit:
     - name: format
       glob: "*.{ts,tsx,js,jsx,json,md,yml,yaml}"
       run: bun run format:check
+
+    - name: knip
+      glob: "*.{ts,tsx}"
+      run: bun run knip
