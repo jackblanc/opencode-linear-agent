@@ -66,8 +66,8 @@ export interface EventProcessorConfig {
 }
 
 const DEFAULT_CONFIG: EventProcessorConfig = {
-  providerID: "opencode",
-  modelID: "minimax-m2.1-free",
+  providerID: "anthropic",
+  modelID: "claude-sonnet-4-20250514",
   startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
