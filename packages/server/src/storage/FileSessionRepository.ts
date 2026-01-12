@@ -10,6 +10,7 @@ import type {
   SessionState,
   WorktreeInfo,
   PendingQuestion,
+  PendingPermission,
 } from "@linear-opencode-agent/core";
 
 /**
@@ -26,6 +27,11 @@ const WORKTREE_PREFIX = "worktree:";
  * Key prefix for pending question storage
  */
 const QUESTION_PREFIX = "question:";
+
+/**
+ * Key prefix for pending permission storage
+ */
+const PERMISSION_PREFIX = "permission:";
 
 /**
  * File-based SessionRepository implementation
@@ -72,5 +78,24 @@ export class FileSessionRepository implements SessionRepository {
 
   async deletePendingQuestion(linearSessionId: string): Promise<void> {
     await this.kv.delete(`${QUESTION_PREFIX}${linearSessionId}`);
+  }
+
+  async getPendingPermission(
+    linearSessionId: string,
+  ): Promise<PendingPermission | null> {
+    return this.kv.get<PendingPermission>(
+      `${PERMISSION_PREFIX}${linearSessionId}`,
+    );
+  }
+
+  async savePendingPermission(permission: PendingPermission): Promise<void> {
+    await this.kv.put(
+      `${PERMISSION_PREFIX}${permission.linearSessionId}`,
+      permission,
+    );
+  }
+
+  async deletePendingPermission(linearSessionId: string): Promise<void> {
+    await this.kv.delete(`${PERMISSION_PREFIX}${linearSessionId}`);
   }
 }

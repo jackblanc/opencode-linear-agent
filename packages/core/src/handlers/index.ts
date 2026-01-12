@@ -28,7 +28,6 @@ export {
 export {
   processPermissionAsked,
   type PermissionHandlerContext,
-  type PermissionAskedProperties,
 } from "./PermissionHandler";
 
 export {

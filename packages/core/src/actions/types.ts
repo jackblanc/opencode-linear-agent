@@ -4,7 +4,10 @@ import type {
   SignalMetadata,
 } from "../linear/types";
 import type { ElicitationSignal } from "../linear/LinearService";
-import type { PendingQuestion } from "../session/SessionRepository";
+import type {
+  PendingQuestion,
+  PendingPermission,
+} from "../session/SessionRepository";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Linear Actions - executed against LinearService
@@ -135,4 +138,14 @@ export interface HandlerResultWithQuestion<
   TState,
 > extends HandlerResult<TState> {
   pendingQuestion?: PendingQuestion;
+}
+
+/**
+ * Handler result for permission requests
+ *
+ * Used by PermissionHandler - simpler since it doesn't need handler state
+ */
+export interface HandlerResultWithPermission {
+  actions: Action[];
+  pendingPermission?: PendingPermission;
 }

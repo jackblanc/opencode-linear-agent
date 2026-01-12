@@ -39,7 +39,6 @@ export type {
   TodoHandlerContext,
   TodoUpdatedProperties,
   PermissionHandlerContext,
-  PermissionAskedProperties,
   QuestionHandlerContext,
 } from "./handlers";
 
@@ -61,6 +60,7 @@ export type {
   // Handler result types
   HandlerResult,
   HandlerResultWithQuestion,
+  HandlerResultWithPermission,
   // Executor types
   ActionExecutionError,
   ActionResult,
@@ -77,6 +77,7 @@ export type {
   SessionRepository,
   WorktreeInfo,
   PendingQuestion,
+  PendingPermission,
   QuestionInfo,
   QuestionOption,
 } from "./session/SessionRepository";
