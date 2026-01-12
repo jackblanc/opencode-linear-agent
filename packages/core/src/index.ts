@@ -18,8 +18,22 @@ export type { EventProcessorConfig } from "./EventProcessor";
 export { SSEEventHandler } from "./SSEEventHandler";
 export type { SSEEventResult } from "./SSEEventHandler";
 
+// SSE event handlers (delegates)
+export {
+  ToolHandler,
+  TextHandler,
+  TodoHandler,
+  PermissionHandler,
+  QuestionHandler,
+  getToolActionName,
+  extractToolParameter,
+} from "./handlers";
+
 // Session management
 export { SessionManager } from "./session/SessionManager";
+export { WorktreeManager } from "./session/WorktreeManager";
+export type { WorktreeResolution } from "./session/WorktreeManager";
+export { PromptBuilder } from "./session/PromptBuilder";
 export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,

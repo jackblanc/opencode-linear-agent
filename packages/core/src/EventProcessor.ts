@@ -7,6 +7,8 @@ import type {
   PendingQuestion,
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
+import { WorktreeManager } from "./session/WorktreeManager";
+import { PromptBuilder } from "./session/PromptBuilder";
 import { SSEEventHandler } from "./SSEEventHandler";
 import type { SSEEventResult } from "./SSEEventHandler";
 import type { OpencodeService } from "./opencode/OpencodeService";
@@ -78,44 +80,39 @@ function hasStopSignal(activity: { signal?: string | null }): boolean {
 }
 
 /**
- * System instructions prepended to every agent prompt.
- * Ensures consistent behavior across all sessions.
- */
-const SYSTEM_INSTRUCTIONS = `
-## Important: Always Create a Pull Request
-
-When you complete work on an issue, you MUST create a pull request. Follow these rules:
-
-1. **Always push your changes and create a PR** when the work is complete
-2. **If you're uncertain** about the implementation or need clarification, ask the user BEFORE pushing - but still plan to create a PR after getting answers
-3. **Never say "done" or "completed"** without having created and pushed a PR
-4. Use \`gh pr create\` to create the pull request with a clear title and description
-
-The PR is how your work gets reviewed and merged. An issue is not complete until there's a PR.
-
----
-
-`;
-
-/**
  * Main entry point for processing Linear webhook events.
  *
  * This class is platform-agnostic and receives all dependencies via constructor injection.
  * Uses OpenCode's native worktree management instead of custom git operations.
+ *
+ * Delegates to specialized managers:
+ * - WorktreeManager: Worktree creation/reuse logic
+ * - SessionManager: OpenCode session lifecycle
+ * - PromptBuilder: Context injection and prompt construction
  */
 export class EventProcessor {
   private readonly sessionManager: SessionManager;
+  private readonly worktreeManager: WorktreeManager;
+  private readonly promptBuilder: PromptBuilder;
   private readonly config: EventProcessorConfig;
 
   constructor(
     private readonly opencode: OpencodeService,
     private readonly linear: LinearService,
-    sessions: SessionRepository,
+    private readonly sessions: SessionRepository,
     private readonly repoDirectory: string,
     config?: Partial<EventProcessorConfig>,
   ) {
-    this.sessionManager = new SessionManager(opencode, sessions);
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.sessionManager = new SessionManager(opencode, sessions);
+    this.worktreeManager = new WorktreeManager(
+      opencode,
+      linear,
+      sessions,
+      repoDirectory,
+      this.config.startCommand,
+    );
+    this.promptBuilder = new PromptBuilder();
   }
 
   /**
@@ -138,62 +135,19 @@ export class EventProcessor {
 
     log.info("Processing event", { action: event.action });
 
-    // Get existing state for this specific Linear session
-    const existingState =
-      await this.sessionManager["repository"].get(linearSessionId);
+    // Resolve or create worktree
+    const worktreeResult = await this.worktreeManager.resolveWorktree(
+      linearSessionId,
+      issue,
+      log,
+    );
 
-    let workdir: string;
-    let branchName: string;
-
-    if (existingState?.workdir) {
-      // Same Linear session - reuse everything
-      workdir = existingState.workdir;
-      branchName = existingState.branchName;
-
-      log.info("Reusing existing session worktree", { workdir, branchName });
-    } else {
-      // New Linear session - check if there's an existing worktree for this issue
-      const existingWorktree =
-        await this.sessionManager["repository"].findWorktreeByIssue(issue);
-
-      if (existingWorktree) {
-        // Reuse worktree from a previous session on the same issue
-        workdir = existingWorktree.workdir;
-        branchName = existingWorktree.branchName;
-
-        log.info("Reusing worktree from previous session on same issue", {
-          workdir,
-          branchName,
-        });
-      } else {
-        // No existing worktree - create one via OpenCode
-        await this.linear.postStageActivity(linearSessionId, "git_setup");
-
-        log.info("Creating worktree via OpenCode", {
-          repoDirectory: this.repoDirectory,
-        });
-
-        const worktreeResult = await this.opencode.createWorktree(
-          this.repoDirectory,
-          issue,
-          this.config.startCommand,
-        );
-
-        if (Result.isError(worktreeResult)) {
-          log.error("Error creating worktree", {
-            error: worktreeResult.error.message,
-            errorType: worktreeResult.error._tag,
-          });
-          await this.linear.postError(linearSessionId, worktreeResult.error);
-          return;
-        }
-
-        workdir = worktreeResult.value.directory;
-        branchName = worktreeResult.value.branch;
-
-        log.info("Worktree created", { workdir, branchName });
-      }
+    if (Result.isError(worktreeResult)) {
+      await this.linear.postError(linearSessionId, worktreeResult.error);
+      return;
     }
+
+    const { workdir, branchName } = worktreeResult.value;
 
     // Post session ready stage activity with branch info
     await this.linear.postStageActivity(
@@ -245,7 +199,6 @@ export class EventProcessor {
         event,
         opcodeSessionId,
         linearSessionId,
-        issue,
         workdir,
         session.previousContext,
         log,
@@ -255,7 +208,6 @@ export class EventProcessor {
         event,
         opcodeSessionId,
         linearSessionId,
-        issue,
         workdir,
         session.previousContext,
         log,
@@ -372,38 +324,12 @@ export class EventProcessor {
         requestId: result.pendingQuestion.requestId,
         linearSessionId: result.pendingQuestion.linearSessionId,
       });
-      await this.sessionManager["repository"].savePendingQuestion(
-        result.pendingQuestion,
-      );
+      await this.sessions.savePendingQuestion(result.pendingQuestion);
       log.info("Pending question saved");
       return;
     }
 
     log.info("OpenCode session completed");
-  }
-
-  /**
-   * Build issue context header from webhook payload
-   */
-  private buildIssueContext(event: AgentSessionEventWebhookPayload): string {
-    const issue = event.agentSession.issue;
-    if (!issue) {
-      return "";
-    }
-
-    const parts: string[] = [
-      `# Linear Issue: ${issue.identifier}`,
-      "",
-      `**Title:** ${issue.title}`,
-    ];
-
-    if (issue.url) {
-      parts.push(`**URL:** ${issue.url}`);
-    }
-
-    parts.push("", "---", "");
-
-    return parts.join("\n");
   }
 
   /**
@@ -413,7 +339,6 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    _issue: string,
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
@@ -441,10 +366,11 @@ export class EventProcessor {
       return;
     }
 
-    // Build context: system instructions + issue header + previous context (if any) + Linear's promptContext
-    const issueContext = this.buildIssueContext(event);
-    const basePrompt = event.promptContext ?? "Please help with this issue.";
-    const prompt = `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext ?? ""}${basePrompt}`;
+    // Build prompt with system instructions + issue context + previous context
+    const prompt = this.promptBuilder.buildCreatedPrompt(
+      event,
+      previousContext,
+    );
 
     log.info("Starting new session with prompt", {
       promptLength: prompt.length,
@@ -468,7 +394,6 @@ export class EventProcessor {
     event: AgentSessionEventWebhookPayload,
     opcodeSessionId: string,
     linearSessionId: string,
-    _issue: string,
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
@@ -504,9 +429,7 @@ export class EventProcessor {
 
     // Check if there's a pending question for this session
     const pendingQuestion =
-      await this.sessionManager["repository"].getPendingQuestion(
-        linearSessionId,
-      );
+      await this.sessions.getPendingQuestion(linearSessionId);
 
     if (pendingQuestion) {
       await this.handleQuestionResponse(
@@ -522,15 +445,11 @@ export class EventProcessor {
     }
 
     // No pending question - treat as a normal follow-up prompt
-    // If session was recreated, inject system instructions + issue context + previous context
-    // Otherwise, just use the base prompt (agent already has context from initial prompt)
-    let prompt: string;
-    if (previousContext) {
-      const issueContext = this.buildIssueContext(event);
-      prompt = `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext}${userResponse}`;
-    } else {
-      prompt = userResponse;
-    }
+    const prompt = this.promptBuilder.buildFollowUpPrompt(
+      event,
+      userResponse,
+      previousContext,
+    );
 
     log.info("Sending follow-up prompt", {
       promptLength: prompt.length,
@@ -580,9 +499,7 @@ export class EventProcessor {
       log.warn(
         "All questions already answered - clearing pending and treating as follow-up",
       );
-      await this.sessionManager["repository"].deletePendingQuestion(
-        linearSessionId,
-      );
+      await this.sessions.deletePendingQuestion(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
         opcodeSessionId,
@@ -611,9 +528,7 @@ export class EventProcessor {
           availableOptions: currentQuestion.options.map((o) => o.label),
         },
       );
-      await this.sessionManager["repository"].deletePendingQuestion(
-        linearSessionId,
-      );
+      await this.sessions.deletePendingQuestion(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
         opcodeSessionId,
@@ -638,7 +553,7 @@ export class EventProcessor {
 
     if (!allAnswered) {
       // More questions to answer - save updated pending question and wait
-      await this.sessionManager["repository"].savePendingQuestion(pending);
+      await this.sessions.savePendingQuestion(pending);
       log.info("Waiting for more question responses", {
         answered: pending.answers.filter((a) => a !== null).length,
         total: pending.questions.length,
@@ -661,9 +576,7 @@ export class EventProcessor {
     );
 
     // Clean up pending question regardless of result
-    await this.sessionManager["repository"].deletePendingQuestion(
-      linearSessionId,
-    );
+    await this.sessions.deletePendingQuestion(linearSessionId);
 
     if (Result.isError(replyResult)) {
       log.error("Failed to reply to question", {
@@ -689,9 +602,7 @@ export class EventProcessor {
       log.info("Another question asked", {
         requestId: result.pendingQuestion.requestId,
       });
-      await this.sessionManager["repository"].savePendingQuestion(
-        result.pendingQuestion,
-      );
+      await this.sessions.savePendingQuestion(result.pendingQuestion);
     }
   }
 
@@ -753,12 +664,10 @@ export class EventProcessor {
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
-    let prompt: string;
-    if (previousContext) {
-      prompt = `${SYSTEM_INSTRUCTIONS}${previousContext}${userResponse}`;
-    } else {
-      prompt = userResponse;
-    }
+    const prompt = this.promptBuilder.buildFollowUpWithoutEvent(
+      userResponse,
+      previousContext,
+    );
 
     log.info("Sending follow-up prompt", {
       promptLength: prompt.length,
