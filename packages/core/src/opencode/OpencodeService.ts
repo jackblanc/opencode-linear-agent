@@ -175,6 +175,28 @@ export class OpencodeService {
   }
 
   /**
+   * Reject a question request
+   *
+   * For autonomous agents, questions should be rejected since there's no
+   * interactive user to answer them. The agent should make its own decisions.
+   */
+  async rejectQuestion(
+    requestID: string,
+    directory?: string,
+  ): Promise<Result<void, OpencodeServiceError>> {
+    const result = await this.client.question.reject({
+      requestID,
+      directory,
+    });
+
+    if (result.error) {
+      return Result.err(mapOpencodeError(result.error));
+    }
+
+    return Result.ok(undefined);
+  }
+
+  /**
    * Send a prompt to a session
    * Uses the model configured in the OpenCode server
    */
