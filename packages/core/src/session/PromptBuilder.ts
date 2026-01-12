@@ -23,7 +23,7 @@ The PR is how your work gets reviewed and merged. An issue is not complete until
 /**
  * Builds prompts for OpenCode sessions.
  *
- * Extracted from EventProcessor to isolate prompt construction logic:
+ * Extracted from LinearEventProcessor to isolate prompt construction logic:
  * - Building issue context headers
  * - Injecting system instructions
  * - Combining previous context with new prompts

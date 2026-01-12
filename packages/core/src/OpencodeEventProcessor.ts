@@ -10,15 +10,15 @@ import { PermissionHandler } from "./handlers/PermissionHandler";
 import { QuestionHandler } from "./handlers/QuestionHandler";
 
 /**
- * Result from handling an SSE event
+ * Result from processing an OpenCode event
  */
-export type SSEEventResult =
+export type OpencodeEventResult =
   | { action: "continue" }
   | { action: "break" }
   | { action: "question_asked"; pendingQuestion: PendingQuestion };
 
 /**
- * Handles SSE events from OpenCode and posts activities to Linear.
+ * Processes events from OpenCode and posts activities to Linear.
  *
  * This replaces the plugin-based approach with a pure SDK/SSE approach,
  * keeping all Linear communication in the worker instead of the container.
@@ -30,7 +30,7 @@ export type SSEEventResult =
  * - PermissionHandler: Auto-approval logic
  * - QuestionHandler: Elicitation posting
  */
-export class SSEEventHandler {
+export class OpencodeEventProcessor {
   private readonly toolHandler: ToolHandler;
   private readonly textHandler: TextHandler;
   private readonly todoHandler: TodoHandler;
@@ -73,7 +73,7 @@ export class SSEEventHandler {
    *
    * @returns SSEEventResult indicating whether to continue, break, or retry
    */
-  async handleEvent(event: OpencodeEvent): Promise<SSEEventResult> {
+  async handleEvent(event: OpencodeEvent): Promise<OpencodeEventResult> {
     // Handle specific event types we care about
     // Other event types (message.updated, session.created, etc.) are logged but not acted upon
     if (event.type === "message.part.updated") {
@@ -179,7 +179,7 @@ export class SSEEventHandler {
       name?: string;
       data?: { message?: string };
     };
-  }): Promise<SSEEventResult> {
+  }): Promise<OpencodeEventResult> {
     const { error } = properties;
 
     let errorMessage = "Unknown error";

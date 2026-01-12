@@ -16,7 +16,7 @@ export interface WorktreeResolution {
 /**
  * Manages worktree creation and reuse logic.
  *
- * Extracted from EventProcessor to isolate worktree-related concerns:
+ * Extracted from LinearEventProcessor to isolate worktree-related concerns:
  * - Reusing worktrees from existing sessions
  * - Reusing worktrees from previous sessions on the same issue
  * - Creating new worktrees via OpenCode

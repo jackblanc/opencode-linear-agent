@@ -9,8 +9,8 @@ import type {
 import { SessionManager } from "./session/SessionManager";
 import { WorktreeManager } from "./session/WorktreeManager";
 import { PromptBuilder } from "./session/PromptBuilder";
-import { SSEEventHandler } from "./SSEEventHandler";
-import type { SSEEventResult } from "./SSEEventHandler";
+import { OpencodeEventProcessor } from "./OpencodeEventProcessor";
+import type { OpencodeEventResult } from "./OpencodeEventProcessor";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
@@ -58,16 +58,16 @@ function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
 }
 
 /**
- * Configuration for the EventProcessor
+ * Configuration for the LinearEventProcessor
  */
-export interface EventProcessorConfig {
+export interface LinearEventProcessorConfig {
   /** Command to run after worktree creation (e.g., "bun install") */
   startCommand?: string;
   /** OpenCode server URL for external links (should be localhost for security) */
   opencodeUrl?: string;
 }
 
-const DEFAULT_CONFIG: EventProcessorConfig = {
+const DEFAULT_CONFIG: LinearEventProcessorConfig = {
   startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
@@ -90,18 +90,18 @@ function hasStopSignal(activity: { signal?: string | null }): boolean {
  * - SessionManager: OpenCode session lifecycle
  * - PromptBuilder: Context injection and prompt construction
  */
-export class EventProcessor {
+export class LinearEventProcessor {
   private readonly sessionManager: SessionManager;
   private readonly worktreeManager: WorktreeManager;
   private readonly promptBuilder: PromptBuilder;
-  private readonly config: EventProcessorConfig;
+  private readonly config: LinearEventProcessorConfig;
 
   constructor(
     private readonly opencode: OpencodeService,
     private readonly linear: LinearService,
     private readonly sessions: SessionRepository,
     private readonly repoDirectory: string,
-    config?: Partial<EventProcessorConfig>,
+    config?: Partial<LinearEventProcessorConfig>,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.sessionManager = new SessionManager(opencode, sessions);
@@ -216,28 +216,28 @@ export class EventProcessor {
   }
 
   /**
-   * Subscribe to OpenCode event stream, process events via SSEEventHandler,
+   * Subscribe to OpenCode event stream, process events via OpencodeEventProcessor,
    * and return when session completes (idle, error, question asked, or retry needed).
    *
-   * @returns The final SSEEventResult indicating how the session ended
+   * @returns The final OpencodeEventResult indicating how the session ended
    */
   private async subscribeAndWaitForCompletion(
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     log: Logger,
-  ): Promise<SSEEventResult> {
+  ): Promise<OpencodeEventResult> {
     log.info("Subscribing to OpenCode event stream");
 
     const eventStream = await this.opencode.subscribe(workdir);
 
-    // Create the SSE event handler to process events and post to Linear
-    const handler = new SSEEventHandler(
+    // Create the OpenCode event processor to handle events and post to Linear
+    const handler = new OpencodeEventProcessor(
       this.linear,
       linearSessionId,
       opencodeSessionId,
       this.opencode,
-      log.clone().tag("service", "sse-handler"),
+      log.clone().tag("service", "opencode-processor"),
       workdir,
     );
 

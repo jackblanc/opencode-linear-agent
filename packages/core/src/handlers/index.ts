@@ -2,7 +2,7 @@
  * SSE Event Handlers
  *
  * These handlers process specific OpenCode SSE events and post activities to Linear.
- * They are used by SSEEventHandler to delegate event processing.
+ * They are used by OpencodeEventProcessor to delegate event processing.
  */
 
 export {
