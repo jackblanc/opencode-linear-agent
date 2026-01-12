@@ -64,3 +64,12 @@ jobs:
 
       - name: Check for unused code
         run: bun run knip
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build webhook server image
+        run: docker build -f packages/server/Dockerfile -t linear-webhook-server:ci .
