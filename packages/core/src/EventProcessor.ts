@@ -114,7 +114,7 @@ export class EventProcessor {
 
     log.info("Processing event", { action: event.action });
 
-    // Get existing state to check for existing worktree
+    // Get existing state for this specific Linear session
     const existingState =
       await this.sessionManager["repository"].get(linearSessionId);
 
@@ -122,38 +122,53 @@ export class EventProcessor {
     let branchName: string;
 
     if (existingState?.workdir) {
-      // Reuse existing worktree
+      // Same Linear session - reuse everything
       workdir = existingState.workdir;
       branchName = existingState.branchName;
 
-      log.info("Reusing existing worktree", { workdir, branchName });
+      log.info("Reusing existing session worktree", { workdir, branchName });
     } else {
-      // Create worktree via OpenCode native API
-      await this.linear.postStageActivity(linearSessionId, "git_setup");
+      // New Linear session - check if there's an existing worktree for this issue
+      const existingWorktree =
+        await this.sessionManager["repository"].findWorktreeByIssue(issue);
 
-      log.info("Creating worktree via OpenCode", {
-        repoDirectory: this.repoDirectory,
-      });
+      if (existingWorktree) {
+        // Reuse worktree from a previous session on the same issue
+        workdir = existingWorktree.workdir;
+        branchName = existingWorktree.branchName;
 
-      const worktreeResult = await this.opencode.createWorktree(
-        this.repoDirectory,
-        issue,
-        this.config.startCommand,
-      );
-
-      if (Result.isError(worktreeResult)) {
-        log.error("Error creating worktree", {
-          error: worktreeResult.error.message,
-          errorType: worktreeResult.error._tag,
+        log.info("Reusing worktree from previous session on same issue", {
+          workdir,
+          branchName,
         });
-        await this.linear.postError(linearSessionId, worktreeResult.error);
-        return;
+      } else {
+        // No existing worktree - create one via OpenCode
+        await this.linear.postStageActivity(linearSessionId, "git_setup");
+
+        log.info("Creating worktree via OpenCode", {
+          repoDirectory: this.repoDirectory,
+        });
+
+        const worktreeResult = await this.opencode.createWorktree(
+          this.repoDirectory,
+          issue,
+          this.config.startCommand,
+        );
+
+        if (Result.isError(worktreeResult)) {
+          log.error("Error creating worktree", {
+            error: worktreeResult.error.message,
+            errorType: worktreeResult.error._tag,
+          });
+          await this.linear.postError(linearSessionId, worktreeResult.error);
+          return;
+        }
+
+        workdir = worktreeResult.value.directory;
+        branchName = worktreeResult.value.branch;
+
+        log.info("Worktree created", { workdir, branchName });
       }
-
-      workdir = worktreeResult.value.directory;
-      branchName = worktreeResult.value.branch;
-
-      log.info("Worktree created", { workdir, branchName });
     }
 
     // Post session ready stage activity with branch info
