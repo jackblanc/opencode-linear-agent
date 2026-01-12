@@ -85,6 +85,7 @@ export class SessionManager {
   async getOrCreateSession(
     linearSessionId: string,
     issue: string,
+    issueTitle: string | undefined,
     branchName: string,
     workdir: string,
   ): Promise<Result<SessionResult, OpencodeServiceError>> {
@@ -130,6 +131,7 @@ export class SessionManager {
       return this.createNewSession(
         linearSessionId,
         issue,
+        issueTitle,
         branchName,
         workdir,
         existingState,
@@ -142,6 +144,7 @@ export class SessionManager {
     return this.createNewSession(
       linearSessionId,
       issue,
+      issueTitle,
       branchName,
       workdir,
       null,
@@ -187,6 +190,7 @@ export class SessionManager {
   private async createNewSession(
     linearSessionId: string,
     issue: string,
+    issueTitle: string | undefined,
     branchName: string,
     workdir: string,
     existingState: SessionState | null,
@@ -197,10 +201,9 @@ export class SessionManager {
       hasPreviousContext: !!previousContext,
     });
 
-    const sessionResult = await this.opencode.createSession(
-      `Linear Issue ${issue}`,
-      workdir,
-    );
+    // Format: "CODE-## Title" or just "CODE-##" if no title
+    const title = issueTitle ? `${issue} ${issueTitle}` : issue;
+    const sessionResult = await this.opencode.createSession(title, workdir);
 
     if (Result.isError(sessionResult)) {
       log.error("Failed to create OpenCode session", {
