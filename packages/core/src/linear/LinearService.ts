@@ -131,4 +131,24 @@ export interface LinearService {
   getIssueAttachments(
     issueId: string,
   ): Promise<Result<LinearAttachment[], LinearServiceError>>;
+
+  // ─────────────────────────────────────────────────────────────
+  // Issue Update Methods
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Update issue status to "In Progress" (first started status)
+   *
+   * Per Linear best practices: "If your agent is delegated to work on an issue
+   * that is not in a started, completed, or canceled status type, move the
+   * issue to the first status in started when your agent begins work."
+   *
+   * This method moves the issue to the team's first "started" status (lowest position)
+   * regardless of current status (even if already "In Review").
+   *
+   * @param issueId - The issue ID to update
+   */
+  moveIssueToInProgress(
+    issueId: string,
+  ): Promise<Result<void, LinearServiceError>>;
 }
