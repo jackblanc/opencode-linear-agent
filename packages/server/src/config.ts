@@ -7,16 +7,6 @@ import { resolve, dirname } from "node:path";
 import { Log } from "@linear-opencode-agent/core";
 
 /**
- * Repository configuration
- */
-export interface RepoConfig {
-  /** Local path to the repository (e.g., ~/projects/reservations) */
-  localPath: string;
-  /** Remote URL for git operations (e.g., https://github.com/owner/repo) */
-  remoteUrl: string;
-}
-
-/**
  * Configuration structure
  */
 export interface Config {
@@ -34,21 +24,9 @@ export interface Config {
     /** IP addresses allowed to send webhooks (Linear's IPs) */
     webhookIps: string[];
   };
-  github: {
-    token: string;
-  };
-  /** @deprecated Use `repos` instead. Single repo config for backwards compatibility. */
-  repo?: RepoConfig;
-  /** Multiple repository configurations, keyed by GitHub URL pattern */
-  repos?: Record<string, RepoConfig>;
-  /** Default repo key to use when no GitHub link is found on issue */
-  defaultRepo?: string;
+  projectsPath: string;
   paths: {
-    /** Directory containing repositories (e.g., /home/repos) */
-    repos: string;
-    /** Directory for session worktrees (e.g., /workspace) */
-    workspace: string;
-    /** Directory for persistent data (e.g., /workspace/data) */
+    /** Directory for persistent data (e.g., /data) */
     data: string;
   };
 }
@@ -129,51 +107,15 @@ function validateConfig(config: unknown): config is Config {
     }
   }
 
-  // Check github
-  const github = getObject(config, "github");
-  if (!github || typeof github.token !== "string") {
+  // Check projectsPath
+  if (typeof config.projectsPath !== "string") {
+    log.error("projectsPath must be a string");
     return false;
-  }
-
-  // Check repo(s) - support both single `repo` and multiple `repos` (optional for auto-discovery)
-  const repo = getObject(config, "repo");
-  const repos = getObject(config, "repos");
-
-  if (repo) {
-    // Validate single repo format
-    if (
-      typeof repo.localPath !== "string" ||
-      typeof repo.remoteUrl !== "string"
-    ) {
-      return false;
-    }
-  }
-
-  if (repos) {
-    // Validate multi-repo format
-    for (const [key, repoConfig] of Object.entries(repos)) {
-      if (!isObject(repoConfig)) {
-        log.error(`Invalid repo config for key: ${key}`);
-        return false;
-      }
-      if (
-        typeof repoConfig.localPath !== "string" ||
-        typeof repoConfig.remoteUrl !== "string"
-      ) {
-        log.error(`Missing localPath or remoteUrl for repo: ${key}`);
-        return false;
-      }
-    }
   }
 
   // Check paths
   const paths = getObject(config, "paths");
-  if (
-    !paths ||
-    typeof paths.repos !== "string" ||
-    typeof paths.workspace !== "string" ||
-    typeof paths.data !== "string"
-  ) {
+  if (!paths || typeof paths.data !== "string") {
     return false;
   }
 
@@ -230,39 +172,14 @@ export async function loadConfig(): Promise<Config> {
     );
   }
 
-  // Expand paths in repo configs
+  // Expand paths
   const config: Config = {
     ...rawConfig,
+    projectsPath: expandPath(rawConfig.projectsPath),
     paths: {
-      repos: expandPath(rawConfig.paths.repos),
-      workspace: expandPath(rawConfig.paths.workspace),
       data: expandPath(rawConfig.paths.data),
     },
   };
-
-  // Expand single repo path (backward compat)
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
-  if (rawConfig.repo) {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
-    config.repo = {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
-      localPath: expandPath(rawConfig.repo.localPath),
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional backward compat
-      remoteUrl: rawConfig.repo.remoteUrl,
-    };
-  }
-
-  // Expand multi-repo paths
-  if (rawConfig.repos) {
-    config.repos = {};
-    for (const [key, repoConfig] of Object.entries(rawConfig.repos)) {
-      const rc = repoConfig as { localPath: string; remoteUrl: string };
-      config.repos[key] = {
-        localPath: expandPath(rc.localPath),
-        remoteUrl: rc.remoteUrl,
-      };
-    }
-  }
 
   return config;
 }

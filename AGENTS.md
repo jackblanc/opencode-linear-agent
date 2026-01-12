@@ -25,7 +25,7 @@ This is a Linear AI agent that integrates OpenCode to handle delegated issues. I
 
 - Responds to Linear issue delegations and @mentions
 - Streams real-time progress as Linear activities
-- Resolves repository from GitHub links in issues
+- Resolves repository from issue `repo:` labels
 - Creates isolated git worktrees per session
 - Uses OAuth for both Claude Max and Linear MCP (no API keys)
 - IP allowlisting via Cloudflare Access for webhook security
@@ -46,7 +46,7 @@ The project uses a pure SSE/SDK approach (no plugins):
 │                                                          │
 │  - Receives Linear webhooks                              │
 │  - Verifies signatures + org ID                          │
-│  - Resolves repo from issue GitHub links                 │
+│  - Resolves repo from issue labels                       │
 │  - Creates git worktrees                                 │
 │  - Manages OpenCode sessions via SDK                     │
 │                                                          │
@@ -68,8 +68,6 @@ The opencode container is a pass-through to the host - it mounts your local proj
 
 | Container Path                     | Host Path                 | Purpose                  |
 | ---------------------------------- | ------------------------- | ------------------------ |
-| `/home/user/projects`              | `~/projects`              | Your repositories        |
-| `/home/user/opencode-worktrees`    | `~/opencode-worktrees`    | Session worktrees        |
 | `/home/user/.config/opencode`      | `~/.config/opencode`      | OpenCode config          |
 | `/home/user/.local/share/opencode` | `~/.local/share/opencode` | Auth, logs (no copying!) |
 | `/home/user/.ssh`                  | `~/.ssh`                  | SSH keys for git         |
@@ -115,8 +113,7 @@ linear-opencode-agent/
 │   │   ├── src/
 │   │   │   ├── index.ts              # HTTP server + routing
 │   │   │   ├── config.ts             # Configuration loader
-│   │   │   ├── RepoResolver.ts       # Resolve repo from GitHub links
-│   │   │   ├── RepoDiscovery.ts      # Auto-discover repos from mounted directories
+│   │   │   ├── RepoResolver.ts       # Resolve repo from issue labels
 │   │   │   └── storage/              # File-based storage for tokens and sessions
 │   │   ├── Dockerfile               # Bun-based webhook server image
 │   │   ├── config.example.json      # Example config file
@@ -165,33 +162,32 @@ linear-opencode-agent/
 3. **Configure `.env`:**
 
    ```bash
-   GITHUB_TOKEN=ghp_...
    TUNNEL_TOKEN=eyJhIjoiY...     # From Cloudflare Tunnel setup
    ```
 
-4. **Create `config.docker.json`** with Linear secrets (repos are auto-discovered):
+4. **Create `config.docker.json`** with Linear secrets:
 
    ```json
    {
      "port": 3000,
-     "opencode": { "url": "http://opencode:4096" },
+     "publicHostname": "your-hostname.com",
+     "opencode": { "url": "http://host.docker.internal:4096" },
      "linear": {
        "clientId": "your-client-id",
        "clientSecret": "your-client-secret",
        "webhookSecret": "lin_wh_...",
-       "organizationId": "your-org-id"
+       "organizationId": "your-org-id",
+       "webhookIps": ["35.231.147.226", "..."]
      },
-     "github": { "token": "ghp_..." },
+     "projectsPath": "/path/to/your/projects",
      "paths": {
-       "repos": "/home/repos",
-       "workspace": "/workspace",
        "data": "/data"
      }
    }
    ```
 
-   Note: Repositories are auto-discovered from `paths.repos`. You can optionally
-   add explicit `repos` config to override auto-discovery for specific repos.
+   Note: `projectsPath` should be the absolute path to your projects directory on the host.
+   Repositories are resolved from issue labels: `repo:X` → `projectsPath/X`.
 
 5. **Authenticate OpenCode (first time only on host):**
 
@@ -308,10 +304,9 @@ bun run deploy         # Deploy to Cloudflare Workers
 
 ### Required for Local Development
 
-| Variable       | Purpose                  | Example        |
-| -------------- | ------------------------ | -------------- |
-| `TUNNEL_TOKEN` | Cloudflare Tunnel token  | `eyJhIjoiY...` |
-| `GITHUB_TOKEN` | Token for git operations | `ghp_...`      |
+| Variable       | Purpose                 | Example        |
+| -------------- | ----------------------- | -------------- |
+| `TUNNEL_TOKEN` | Cloudflare Tunnel token | `eyJhIjoiY...` |
 
 ### Optional
 
