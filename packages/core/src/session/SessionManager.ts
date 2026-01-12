@@ -197,10 +197,8 @@ export class SessionManager {
       hasPreviousContext: !!previousContext,
     });
 
-    const sessionResult = await this.opencode.createSession(
-      `Linear Issue ${issue}`,
-      workdir,
-    );
+    // Don't pass a title - OpenCode auto-generates titles based on the first prompt
+    const sessionResult = await this.opencode.createSession(workdir);
 
     if (Result.isError(sessionResult)) {
       log.error("Failed to create OpenCode session", {
