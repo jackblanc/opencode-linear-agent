@@ -29,6 +29,7 @@ const TOOL_ACTION_MAP: Record<string, { action: string; pastTense: string }> = {
   task: { action: "Delegating task", pastTense: "Delegated task" },
   todowrite: { action: "Updating plan", pastTense: "Updated plan" },
   todoread: { action: "Reading plan", pastTense: "Read plan" },
+  mcp_question: { action: "Asking question", pastTense: "Asked question" },
 };
 
 /**
@@ -126,10 +127,33 @@ function extractToolParameter(
       return getString(input, "pattern") ?? "pattern";
     case "task":
       return getString(input, "description") ?? "task";
+    case "mcp_question": {
+      // Extract question text from the questions array
+      const questions = input["questions"];
+      if (Array.isArray(questions) && questions.length > 0) {
+        const first = questions[0];
+        if (
+          typeof first === "object" &&
+          first !== null &&
+          "question" in first &&
+          typeof first.question === "string"
+        ) {
+          return first.question.slice(0, 100);
+        }
+      }
+      return "user input";
+    }
     default: {
       const firstKey = Object.keys(input)[0];
       if (firstKey) {
         const value = input[firstKey];
+        // Handle arrays and objects gracefully - don't stringify them directly
+        if (
+          Array.isArray(value) ||
+          (typeof value === "object" && value !== null)
+        ) {
+          return toolName;
+        }
         return String(value).slice(0, 100);
       }
       return toolName;
@@ -261,6 +285,11 @@ export class SSEEventHandler {
 
     if (event.type === "permission.asked") {
       await this.handlePermissionAsked(event.properties);
+      return { action: "continue" };
+    }
+
+    if (event.type === "question.asked") {
+      await this.handleQuestionAsked(event.properties);
       return { action: "continue" };
     }
 
@@ -489,6 +518,46 @@ export class SSEEventHandler {
 
     if (Result.isError(result)) {
       this.log.error("Failed to reply to permission", {
+        requestId: id,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+    }
+  }
+
+  /**
+   * Handle question.asked events - reject all questions
+   *
+   * For an autonomous coding agent working on delegated issues,
+   * questions should be rejected since there's no interactive user
+   * to provide answers. The agent should make its own decisions.
+   */
+  private async handleQuestionAsked(properties: {
+    id: string;
+    sessionID: string;
+    questions: Array<{ question: string; [key: string]: unknown }>;
+    [key: string]: unknown;
+  }): Promise<void> {
+    const { id, sessionID, questions } = properties;
+
+    // Only process for our session
+    if (sessionID !== this.opencodeSessionId) {
+      return;
+    }
+
+    const questionSummary = questions.map((q) => q.question).join(", ");
+    this.log.info("Rejecting question (autonomous agent mode)", {
+      requestId: id,
+      questions: questionSummary,
+    });
+
+    const result = await this.opencode.rejectQuestion(
+      id,
+      this.workdir ?? undefined,
+    );
+
+    if (Result.isError(result)) {
+      this.log.error("Failed to reject question", {
         requestId: id,
         error: result.error.message,
         errorType: result.error._tag,
