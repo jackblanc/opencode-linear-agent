@@ -2,9 +2,13 @@ import type { Event as OpencodeEvent } from "@opencode-ai/sdk/v2";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import type { LinearService } from "./linear/LinearService";
-import type { SessionRepository } from "./session/SessionRepository";
+import type {
+  SessionRepository,
+  PendingQuestion,
+} from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import { SSEEventHandler } from "./SSEEventHandler";
+import type { SSEEventResult } from "./SSEEventHandler";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
@@ -261,7 +265,7 @@ export class EventProcessor {
 
   /**
    * Subscribe to OpenCode event stream, process events via SSEEventHandler,
-   * and return when session completes (idle, error, or retry needed).
+   * and return when session completes (idle, error, question asked, or retry needed).
    *
    * @returns The final SSEEventResult indicating how the session ended
    */
@@ -270,7 +274,7 @@ export class EventProcessor {
     linearSessionId: string,
     workdir: string,
     log: Logger,
-  ): Promise<void> {
+  ): Promise<SSEEventResult> {
     log.info("Subscribing to OpenCode event stream");
 
     const eventStream = await this.opencode.subscribe(workdir);
@@ -292,16 +296,34 @@ export class EventProcessor {
       // Process the event via handler (posts activities to Linear, handles permissions)
       const result = await handler.handleEvent(event);
 
-      // Break if handler signals completion (session.idle or session.error)
+      // Break if handler signals completion (session.idle, session.error, or question asked)
       if (result.action === "break") {
         log.info("Session completed");
-        break;
+        return result;
+      }
+
+      if (result.action === "question_asked") {
+        log.info(
+          "Question asked - saving pending question and waiting for user response",
+          {
+            requestId: result.pendingQuestion.requestId,
+            questionCount: result.pendingQuestion.questions.length,
+          },
+        );
+        return result;
       }
     }
+
+    // Stream ended without explicit break - treat as break
+    return { action: "break" };
   }
 
   /**
    * Execute a prompt and wait for completion
+   *
+   * If a question is asked during execution, saves the pending question
+   * and returns. The question will be handled when the user responds via
+   * a prompted webhook.
    */
   private async executePrompt(
     opcodeSessionId: string,
@@ -313,18 +335,49 @@ export class EventProcessor {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
-    // Send prompt and subscribe to events concurrently
-    await Promise.all([
-      this.opencode.prompt(opcodeSessionId, workdir, [
-        { type: "text", text: prompt },
-      ]),
-      this.subscribeAndWaitForCompletion(
-        opcodeSessionId,
-        linearSessionId,
-        workdir,
-        log,
-      ),
-    ]);
+    // Fire-and-forget the prompt - don't await it
+    // The prompt call may not return until session is idle, but we need to
+    // handle question.asked events before that happens
+    this.opencode
+      .prompt(opcodeSessionId, workdir, [{ type: "text", text: prompt }])
+      .then((result) => {
+        if (Result.isError(result)) {
+          log.error("Prompt failed", {
+            error: result.error.message,
+            errorType: result.error._tag,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        log.error("Prompt threw exception", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    // Subscribe and wait for completion (or question asked)
+    const result = await this.subscribeAndWaitForCompletion(
+      opcodeSessionId,
+      linearSessionId,
+      workdir,
+      log,
+    );
+
+    log.info("subscribeAndWaitForCompletion returned", {
+      action: result.action,
+    });
+
+    // Handle question_asked - save pending question for later response
+    if (result.action === "question_asked") {
+      log.info("Saving pending question", {
+        requestId: result.pendingQuestion.requestId,
+        linearSessionId: result.pendingQuestion.linearSessionId,
+      });
+      await this.sessionManager["repository"].savePendingQuestion(
+        result.pendingQuestion,
+      );
+      log.info("Pending question saved");
+      return;
+    }
 
     log.info("OpenCode session completed");
   }
@@ -444,19 +497,39 @@ export class EventProcessor {
       return;
     }
 
-    const basePrompt =
+    const userResponse =
       event.agentActivity?.content?.body ??
       event.promptContext ??
       "Please continue.";
 
+    // Check if there's a pending question for this session
+    const pendingQuestion =
+      await this.sessionManager["repository"].getPendingQuestion(
+        linearSessionId,
+      );
+
+    if (pendingQuestion) {
+      await this.handleQuestionResponse(
+        pendingQuestion,
+        userResponse,
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+        previousContext,
+        log,
+      );
+      return;
+    }
+
+    // No pending question - treat as a normal follow-up prompt
     // If session was recreated, inject system instructions + issue context + previous context
     // Otherwise, just use the base prompt (agent already has context from initial prompt)
     let prompt: string;
     if (previousContext) {
       const issueContext = this.buildIssueContext(event);
-      prompt = `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext}${basePrompt}`;
+      prompt = `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext}${userResponse}`;
     } else {
-      prompt = basePrompt;
+      prompt = userResponse;
     }
 
     log.info("Sending follow-up prompt", {
@@ -465,6 +538,233 @@ export class EventProcessor {
     });
 
     // Send prompt and wait for completion
+    await this.executePrompt(
+      opcodeSessionId,
+      linearSessionId,
+      workdir,
+      prompt,
+      log,
+    );
+  }
+
+  /**
+   * Handle a user response to a pending question
+   *
+   * The user can either:
+   * 1. Select an option from the elicitation - we forward it to OpenCode
+   * 2. Send a different message - we clear the pending question and send it as a prompt
+   *
+   * For multi-question scenarios, we collect all answers before replying.
+   */
+  private async handleQuestionResponse(
+    pending: PendingQuestion,
+    userResponse: string,
+    opcodeSessionId: string,
+    linearSessionId: string,
+    workdir: string,
+    previousContext: string | undefined,
+    log: Logger,
+  ): Promise<void> {
+    log.info("Received response while question pending", {
+      requestId: pending.requestId,
+      responseLength: userResponse.length,
+      questionCount: pending.questions.length,
+      answeredCount: pending.answers.filter((a) => a !== null).length,
+    });
+
+    // Find the first unanswered question
+    const answerIndex = pending.answers.findIndex((a) => a === null);
+
+    if (answerIndex === -1) {
+      // All questions already answered - this shouldn't happen, but handle gracefully
+      log.warn(
+        "All questions already answered - clearing pending and treating as follow-up",
+      );
+      await this.sessionManager["repository"].deletePendingQuestion(
+        linearSessionId,
+      );
+      await this.sendFollowUpPrompt(
+        userResponse,
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+        previousContext,
+        log,
+      );
+      return;
+    }
+
+    // Try to match user response to an option label
+    const currentQuestion = pending.questions[answerIndex];
+    const matchedLabel = this.matchOptionLabel(
+      userResponse,
+      currentQuestion.options,
+    );
+
+    if (!matchedLabel) {
+      // User response doesn't match any option - they're ignoring the question
+      // Clear pending question and send as a regular follow-up prompt
+      log.info(
+        "User response doesn't match any option - treating as new prompt",
+        {
+          response: userResponse.slice(0, 100),
+          availableOptions: currentQuestion.options.map((o) => o.label),
+        },
+      );
+      await this.sessionManager["repository"].deletePendingQuestion(
+        linearSessionId,
+      );
+      await this.sendFollowUpPrompt(
+        userResponse,
+        opcodeSessionId,
+        linearSessionId,
+        workdir,
+        previousContext,
+        log,
+      );
+      return;
+    }
+
+    // Store the matched label as the answer
+    pending.answers[answerIndex] = [matchedLabel];
+
+    log.info("Matched user response to option", {
+      userResponse: userResponse.slice(0, 50),
+      matchedLabel,
+    });
+
+    // Check if all questions are now answered
+    const allAnswered = pending.answers.every((a) => a !== null);
+
+    if (!allAnswered) {
+      // More questions to answer - save updated pending question and wait
+      await this.sessionManager["repository"].savePendingQuestion(pending);
+      log.info("Waiting for more question responses", {
+        answered: pending.answers.filter((a) => a !== null).length,
+        total: pending.questions.length,
+      });
+      return;
+    }
+
+    // All questions answered - reply to OpenCode
+    log.info("All questions answered - replying to OpenCode", {
+      answerCount: pending.answers.length,
+    });
+
+    // Filter out nulls (we just verified all are non-null above)
+    const answers = pending.answers.filter((a): a is string[] => a !== null);
+
+    const replyResult = await this.opencode.replyQuestion(
+      pending.requestId,
+      answers,
+      workdir,
+    );
+
+    // Clean up pending question regardless of result
+    await this.sessionManager["repository"].deletePendingQuestion(
+      linearSessionId,
+    );
+
+    if (Result.isError(replyResult)) {
+      log.error("Failed to reply to question", {
+        error: replyResult.error.message,
+        errorType: replyResult.error._tag,
+      });
+      await this.linear.postError(linearSessionId, replyResult.error);
+      return;
+    }
+
+    // Subscribe and wait for OpenCode to continue processing
+    log.info("Question answered - waiting for OpenCode to continue");
+
+    const result = await this.subscribeAndWaitForCompletion(
+      opcodeSessionId,
+      linearSessionId,
+      workdir,
+      log,
+    );
+
+    // Handle if another question was asked
+    if (result.action === "question_asked") {
+      log.info("Another question asked", {
+        requestId: result.pendingQuestion.requestId,
+      });
+      await this.sessionManager["repository"].savePendingQuestion(
+        result.pendingQuestion,
+      );
+    }
+  }
+
+  /**
+   * Try to match user response to an option label
+   *
+   * Returns the matched label if found, null otherwise.
+   * Uses case-insensitive matching and also checks if response
+   * contains the label (for partial matches).
+   */
+  private matchOptionLabel(
+    userResponse: string,
+    options: Array<{ label: string; description: string }>,
+  ): string | null {
+    const normalized = userResponse.trim().toLowerCase();
+
+    // First try exact match (case-insensitive)
+    for (const opt of options) {
+      if (opt.label.toLowerCase() === normalized) {
+        return opt.label;
+      }
+    }
+
+    // Then try if response starts with option label
+    for (const opt of options) {
+      if (normalized.startsWith(opt.label.toLowerCase())) {
+        return opt.label;
+      }
+    }
+
+    // Finally try if response contains option label as a whole word
+    for (const opt of options) {
+      const labelLower = opt.label.toLowerCase();
+      // Check if label appears as a word boundary match
+      const regex = new RegExp(`\\b${this.escapeRegex(labelLower)}\\b`, "i");
+      if (regex.test(userResponse)) {
+        return opt.label;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Escape special regex characters in a string
+   */
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /**
+   * Send a follow-up prompt (used when user ignores pending question)
+   */
+  private async sendFollowUpPrompt(
+    userResponse: string,
+    opcodeSessionId: string,
+    linearSessionId: string,
+    workdir: string,
+    previousContext: string | undefined,
+    log: Logger,
+  ): Promise<void> {
+    let prompt: string;
+    if (previousContext) {
+      prompt = `${SYSTEM_INSTRUCTIONS}${previousContext}${userResponse}`;
+    } else {
+      prompt = userResponse;
+    }
+
+    log.info("Sending follow-up prompt", {
+      promptLength: prompt.length,
+      hasPreviousContext: !!previousContext,
+    });
+
     await this.executePrompt(
       opcodeSessionId,
       linearSessionId,

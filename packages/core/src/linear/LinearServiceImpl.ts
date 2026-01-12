@@ -163,9 +163,9 @@ export class LinearServiceImpl implements LinearService {
           content: {
             type: "elicitation",
             body,
-            signalMetadata: metadata,
           },
           signal: mapElicitationSignal(signal),
+          signalMetadata: metadata,
           ephemeral: false,
         }),
       catch: mapLinearError,

@@ -14,6 +14,25 @@ When fetching external documentation, use LLM-optimized formats:
 
 ---
 
+## Source Code References
+
+**CRITICAL: NEVER look at `node_modules` to determine types or API signatures.** Compiled types in node_modules are often incomplete, incorrectly inferred, or missing important context. Always reference source code.
+
+### Available Source Repositories
+
+| Package            | Source Location       | Description                                   |
+| ------------------ | --------------------- | --------------------------------------------- |
+| `@linear/sdk`      | `~/projects/linear`   | Linear SDK - GraphQL client, webhooks, types  |
+| `@opencode-ai/sdk` | `~/projects/opencode` | OpenCode SDK - session management, SSE events |
+
+When you need to understand types or API behavior:
+
+1. **Ask the user** if you don't know where the source code is located
+2. **Read the source code** directly from the repository
+3. **Never guess** based on compiled `.d.ts` files in node_modules
+
+---
+
 ## Project Overview
 
 This is a Linear AI agent that integrates OpenCode to handle delegated issues. It supports two deployment modes:

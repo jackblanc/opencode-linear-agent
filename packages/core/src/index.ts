@@ -24,6 +24,9 @@ export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,
   WorktreeInfo,
+  PendingQuestion,
+  QuestionInfo,
+  QuestionOption,
 } from "./session/SessionRepository";
 
 // Linear service interface and implementation

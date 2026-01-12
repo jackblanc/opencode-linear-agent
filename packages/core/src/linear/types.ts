@@ -9,9 +9,12 @@ export interface AuthSignalMetadata {
 
 /**
  * Metadata for select signal
+ *
+ * Per Linear docs, options should be objects with a `value` field.
+ * If options are GitHub URLs, Linear automatically enriches them with icons.
  */
 export interface SelectSignalMetadata {
-  options: string[];
+  options: Array<{ value: string }>;
 }
 
 /**
@@ -61,11 +64,13 @@ export interface ErrorActivity extends BaseActivityContent {
 
 /**
  * Elicitation activity - requesting user input/clarification
+ *
+ * Note: signalMetadata is passed separately to createAgentActivity,
+ * not as part of content.
  */
 export interface ElicitationActivity extends BaseActivityContent {
   type: "elicitation";
   body: string;
-  signalMetadata?: SignalMetadata;
 }
 
 /**
