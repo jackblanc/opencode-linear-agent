@@ -288,8 +288,14 @@ export class SSEEventHandler {
       return { action: "continue" };
     }
 
+    // Note: question.asked events are NOT auto-rejected.
+    // Questions from the agent should be answered by the user via Linear or OpenCode UI.
+    // We just log them for observability.
     if (event.type === "question.asked") {
-      await this.handleQuestionAsked(event.properties);
+      this.log.info("Question asked - awaiting user response", {
+        requestId: event.properties.id,
+        questionCount: event.properties.questions?.length ?? 0,
+      });
       return { action: "continue" };
     }
 
@@ -518,46 +524,6 @@ export class SSEEventHandler {
 
     if (Result.isError(result)) {
       this.log.error("Failed to reply to permission", {
-        requestId: id,
-        error: result.error.message,
-        errorType: result.error._tag,
-      });
-    }
-  }
-
-  /**
-   * Handle question.asked events - reject all questions
-   *
-   * For an autonomous coding agent working on delegated issues,
-   * questions should be rejected since there's no interactive user
-   * to provide answers. The agent should make its own decisions.
-   */
-  private async handleQuestionAsked(properties: {
-    id: string;
-    sessionID: string;
-    questions: Array<{ question: string; [key: string]: unknown }>;
-    [key: string]: unknown;
-  }): Promise<void> {
-    const { id, sessionID, questions } = properties;
-
-    // Only process for our session
-    if (sessionID !== this.opencodeSessionId) {
-      return;
-    }
-
-    const questionSummary = questions.map((q) => q.question).join(", ");
-    this.log.info("Rejecting question (autonomous agent mode)", {
-      requestId: id,
-      questions: questionSummary,
-    });
-
-    const result = await this.opencode.rejectQuestion(
-      id,
-      this.workdir ?? undefined,
-    );
-
-    if (Result.isError(result)) {
-      this.log.error("Failed to reject question", {
         requestId: id,
         error: result.error.message,
         errorType: result.error._tag,
