@@ -81,15 +81,9 @@ The project uses a pure SSE/SDK approach (no plugins):
                                  (opencode container)
 ```
 
-### Container Paths
+### OpenCode Integration
 
-The opencode container is a pass-through to the host - it mounts your local projects, config, and auth directly:
-
-| Container Path                     | Host Path                 | Purpose                  |
-| ---------------------------------- | ------------------------- | ------------------------ |
-| `/home/user/.config/opencode`      | `~/.config/opencode`      | OpenCode config          |
-| `/home/user/.local/share/opencode` | `~/.local/share/opencode` | Auth, logs (no copying!) |
-| `/home/user/.ssh`                  | `~/.ssh`                  | SSH keys for git         |
+OpenCode runs natively on the host machine as a launchd service, not in a container. The webhook server communicates with it via `http://host.docker.internal:4096`.
 
 ### Security Layers
 
@@ -123,26 +117,22 @@ linear-opencode-agent/
 │   │       ├── session/
 │   │       │   └── SessionManager.ts  # Session lifecycle management
 │   │       ├── linear/
-│   │       │   ├── LinearAdapter.ts   # Linear API interface
+│   │       │   ├── LinearServiceImpl.ts  # Linear API implementation
 │   │       │   └── types.ts           # ActivityContent, PlanItem, etc.
+│   │       ├── opencode/
+│   │       │   └── OpencodeService.ts # OpenCode SDK integration
 │   │       └── webhook/
 │   │           └── handlers.ts        # Webhook verification + dispatch
 │   │
-│   ├── server/                  # Webhook server (formerly local)
-│   │   ├── src/
-│   │   │   ├── index.ts              # HTTP server + routing
-│   │   │   ├── config.ts             # Configuration loader
-│   │   │   ├── RepoResolver.ts       # Resolve repo from issue labels
-│   │   │   └── storage/              # File-based storage for tokens and sessions
-│   │   ├── Dockerfile               # Bun-based webhook server image
-│   │   ├── config.example.json      # Example config file
-│   │   └── config.json              # Docker config (gitignored)
-│   │
-│   ├── opencode/                # OpenCode container environment
-│   │   └── Dockerfile           # Ubuntu-based image with dev tools
-│   │
-│   └── agent/                   # (DEPRECATED: Cloudflare Workers entry point removed)
-│       └── ...                  # Deleted in favor of two-container architecture
+│   └── server/                  # Webhook server (Docker)
+│       ├── src/
+│       │   ├── index.ts              # HTTP server + routing
+│       │   ├── config.ts             # Configuration loader
+│       │   ├── RepoResolver.ts       # Resolve repo from issue labels
+│       │   └── storage/              # File-based storage for tokens and sessions
+│       ├── Dockerfile               # Bun-based webhook server image
+│       ├── config.example.json      # Example config file
+│       └── config.json              # Docker config (gitignored)
 │
 ├── docker-compose.yml           # Local development stack
 ├── cloudflare-tunnel-setup.md   # Guide for setting up Cloudflare Tunnel
@@ -234,11 +224,12 @@ linear-opencode-agent/
 
 ### Container Architecture
 
-| Container        | Purpose                         | Ports           |
-| ---------------- | ------------------------------- | --------------- |
-| `webhook-server` | Webhook server, session manager | 3000 (local)    |
-| `opencode`       | AI coding agent                 | 4096 (internal) |
-| `cloudflared`    | Exposes webhook via tunnel      | N/A (outbound)  |
+| Container        | Purpose                         | Ports        |
+| ---------------- | ------------------------------- | ------------ |
+| `webhook-server` | Webhook server, session manager | 3000 (local) |
+| `cloudflared`    | Exposes webhook via tunnel      | N/A          |
+
+OpenCode runs natively on the host via launchd at `http://localhost:4096`.
 
 ### Useful Commands
 
@@ -268,12 +259,11 @@ docker compose logs cloudflared
 
 **"ENOENT: git"**: Rebuild containers - `docker compose build && docker compose up -d`
 
-**OpenCode auth expired**: Re-authenticate on host (container uses host auth directly):
+**OpenCode auth expired**: Re-authenticate on host:
 
 ```bash
 opencode                    # Re-authenticate Claude Max
 opencode mcp auth linear    # Re-authenticate Linear MCP
-docker compose restart opencode
 ```
 
 ---

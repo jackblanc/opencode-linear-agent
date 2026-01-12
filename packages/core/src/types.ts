@@ -13,34 +13,6 @@ export interface LinearEventMessage {
 }
 
 /**
- * Activity content for Linear
- */
-export interface ActivityContent {
-  type: "thought" | "action" | "response" | "error" | "elicitation";
-  body?: string;
-  action?: string;
-  parameter?: string;
-  result?: string;
-}
-
-/**
- * Git status for determining session completion
- */
-export interface GitStatus {
-  hasUncommittedChanges: boolean;
-  hasUnpushedCommits: boolean;
-  branchName: string;
-}
-
-/**
- * Worktree information
- */
-export interface WorktreeInfo {
-  workdir: string;
-  branchName: string;
-}
-
-/**
  * Result of command execution
  */
 export interface ExecResult {

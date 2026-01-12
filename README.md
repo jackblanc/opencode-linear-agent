@@ -239,22 +239,16 @@ linear-opencode-agent/
 │   │       ├── SSEEventHandler.ts     # Handles OpenCode SSE events
 │   │       ├── session/               # Session lifecycle management
 │   │       ├── linear/                # Linear API interface
+│   │       ├── opencode/              # OpenCode SDK integration
 │   │       └── webhook/               # Webhook verification + dispatch
 │   │
-│   ├── local/                   # Local development server
-│   │   ├── src/
-│   │   │   ├── index.ts              # HTTP server + routing
-│   │   │   ├── config.ts             # Configuration loader
-│   │   │   ├── RepoResolver.ts       # Resolve repo from issue links
-│   │   │   └── git/                  # Git worktree management
-│   │   └── Dockerfile
-│   │
-│   ├── opencode/                # OpenCode Docker image (legacy, for reference)
-│   │   ├── Dockerfile           # OpenCode container config
-│   │   └── plugin/              # OpenCode plugins
-│   │
-│   ├── linear/                  # Cloudflare Worker entry point
-│   └── infrastructure/          # Cloudflare-specific implementations
+│   └── server/                  # Webhook server (Docker)
+│       ├── src/
+│       │   ├── index.ts              # HTTP server + routing
+│       │   ├── config.ts             # Configuration loader
+│       │   ├── RepoResolver.ts       # Resolve repo from issue labels
+│       │   └── storage/              # File-based storage
+│       └── Dockerfile
 │
 ├── docker-compose.yml           # Local development stack
 ├── config.docker.json           # Docker config (gitignored)
