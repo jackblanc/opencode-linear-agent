@@ -176,17 +176,16 @@ export class OpencodeService {
 
   /**
    * Send a prompt to a session
+   * Uses the model configured in the OpenCode server
    */
   async prompt(
     sessionID: string,
     directory: string,
-    model: { providerID: string; modelID: string },
     parts: Array<{ type: "text"; text: string }>,
   ): Promise<Result<void, OpencodeServiceError>> {
     const result = await this.client.session.prompt({
       sessionID,
       directory,
-      model,
       parts,
     });
 

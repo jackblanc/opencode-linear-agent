@@ -55,10 +55,6 @@ function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
  * Configuration for the EventProcessor
  */
 export interface EventProcessorConfig {
-  /** Default model provider ID */
-  providerID: string;
-  /** Default model ID */
-  modelID: string;
   /** Command to run after worktree creation (e.g., "bun install") */
   startCommand?: string;
   /** OpenCode server URL for external links (should be localhost for security) */
@@ -66,8 +62,6 @@ export interface EventProcessorConfig {
 }
 
 const DEFAULT_CONFIG: EventProcessorConfig = {
-  providerID: "anthropic",
-  modelID: "claude-sonnet-4-20250514",
   startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
@@ -120,7 +114,7 @@ export class EventProcessor {
 
     log.info("Processing event", { action: event.action });
 
-    // Get existing state to check for existing worktree
+    // Get existing state for this specific Linear session
     const existingState =
       await this.sessionManager["repository"].get(linearSessionId);
 
@@ -128,38 +122,53 @@ export class EventProcessor {
     let branchName: string;
 
     if (existingState?.workdir) {
-      // Reuse existing worktree
+      // Same Linear session - reuse everything
       workdir = existingState.workdir;
       branchName = existingState.branchName;
 
-      log.info("Reusing existing worktree", { workdir, branchName });
+      log.info("Reusing existing session worktree", { workdir, branchName });
     } else {
-      // Create worktree via OpenCode native API
-      await this.linear.postStageActivity(linearSessionId, "git_setup");
+      // New Linear session - check if there's an existing worktree for this issue
+      const existingWorktree =
+        await this.sessionManager["repository"].findWorktreeByIssue(issue);
 
-      log.info("Creating worktree via OpenCode", {
-        repoDirectory: this.repoDirectory,
-      });
+      if (existingWorktree) {
+        // Reuse worktree from a previous session on the same issue
+        workdir = existingWorktree.workdir;
+        branchName = existingWorktree.branchName;
 
-      const worktreeResult = await this.opencode.createWorktree(
-        this.repoDirectory,
-        issue,
-        this.config.startCommand,
-      );
-
-      if (Result.isError(worktreeResult)) {
-        log.error("Error creating worktree", {
-          error: worktreeResult.error.message,
-          errorType: worktreeResult.error._tag,
+        log.info("Reusing worktree from previous session on same issue", {
+          workdir,
+          branchName,
         });
-        await this.linear.postError(linearSessionId, worktreeResult.error);
-        return;
+      } else {
+        // No existing worktree - create one via OpenCode
+        await this.linear.postStageActivity(linearSessionId, "git_setup");
+
+        log.info("Creating worktree via OpenCode", {
+          repoDirectory: this.repoDirectory,
+        });
+
+        const worktreeResult = await this.opencode.createWorktree(
+          this.repoDirectory,
+          issue,
+          this.config.startCommand,
+        );
+
+        if (Result.isError(worktreeResult)) {
+          log.error("Error creating worktree", {
+            error: worktreeResult.error.message,
+            errorType: worktreeResult.error._tag,
+          });
+          await this.linear.postError(linearSessionId, worktreeResult.error);
+          return;
+        }
+
+        workdir = worktreeResult.value.directory;
+        branchName = worktreeResult.value.branch;
+
+        log.info("Worktree created", { workdir, branchName });
       }
-
-      workdir = worktreeResult.value.directory;
-      branchName = worktreeResult.value.branch;
-
-      log.info("Worktree created", { workdir, branchName });
     }
 
     // Post session ready stage activity with branch info
@@ -286,15 +295,9 @@ export class EventProcessor {
 
     // Send prompt and subscribe to events concurrently
     await Promise.all([
-      this.opencode.prompt(
-        opcodeSessionId,
-        workdir,
-        {
-          providerID: this.config.providerID,
-          modelID: this.config.modelID,
-        },
-        [{ type: "text", text: prompt }],
-      ),
+      this.opencode.prompt(opcodeSessionId, workdir, [
+        { type: "text", text: prompt },
+      ]),
       this.subscribeAndWaitForCompletion(
         opcodeSessionId,
         linearSessionId,
@@ -304,6 +307,30 @@ export class EventProcessor {
     ]);
 
     log.info("OpenCode session completed");
+  }
+
+  /**
+   * Build issue context header from webhook payload
+   */
+  private buildIssueContext(event: AgentSessionEventWebhookPayload): string {
+    const issue = event.agentSession.issue;
+    if (!issue) {
+      return "";
+    }
+
+    const parts: string[] = [
+      `# Linear Issue: ${issue.identifier}`,
+      "",
+      `**Title:** ${issue.title}`,
+    ];
+
+    if (issue.url) {
+      parts.push(`**URL:** ${issue.url}`);
+    }
+
+    parts.push("", "---", "");
+
+    return parts.join("\n");
   }
 
   /**
@@ -341,11 +368,10 @@ export class EventProcessor {
       return;
     }
 
+    // Build context: issue header + previous context (if any) + Linear's promptContext
+    const issueContext = this.buildIssueContext(event);
     const basePrompt = event.promptContext ?? "Please help with this issue.";
-    // Inject previous context if we had to recreate the session
-    const prompt = previousContext
-      ? `${previousContext}${basePrompt}`
-      : basePrompt;
+    const prompt = `${issueContext}${previousContext ?? ""}${basePrompt}`;
 
     log.info("Starting new session with prompt", {
       promptLength: prompt.length,
@@ -403,10 +429,15 @@ export class EventProcessor {
       event.promptContext ??
       "Please continue.";
 
-    // Inject previous context if we had to recreate the session (e.g., after server restart)
-    const prompt = previousContext
-      ? `${previousContext}${basePrompt}`
-      : basePrompt;
+    // If session was recreated, inject issue context + previous context
+    // Otherwise, just use the base prompt (agent already has context from initial prompt)
+    let prompt: string;
+    if (previousContext) {
+      const issueContext = this.buildIssueContext(event);
+      prompt = `${issueContext}${previousContext}${basePrompt}`;
+    } else {
+      prompt = basePrompt;
+    }
 
     log.info("Sending follow-up prompt", {
       promptLength: prompt.length,
