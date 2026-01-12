@@ -1,80 +1,85 @@
 import type { QuestionRequest } from "@opencode-ai/sdk/v2";
-import type { LinearService } from "../linear/LinearService";
 import type {
   PendingQuestion,
   QuestionInfo,
 } from "../session/SessionRepository";
-import type { Logger } from "../logger";
+import type { Action, HandlerResultWithQuestion } from "../actions/types";
+import type { HandlerState } from "../session/SessionState";
 
 /**
- * Handles question.asked events - posts elicitations to Linear.
+ * Context needed for question handler processing
  */
-export class QuestionHandler {
-  constructor(
-    private readonly linear: LinearService,
-    private readonly linearSessionId: string,
-    private readonly opencodeSessionId: string,
-    private readonly log: Logger,
-    private readonly workdir: string | null = null,
-  ) {}
+export interface QuestionHandlerContext {
+  linearSessionId: string;
+  opencodeSessionId: string;
+  workdir: string | null;
+}
 
-  /**
-   * Handle question.asked event - post elicitations to Linear
-   *
-   * Posts one elicitation per question with a select signal, then returns
-   * the pending question data for the caller to store.
-   */
-  async handleQuestionAsked(
-    properties: QuestionRequest,
-  ): Promise<PendingQuestion | null> {
-    const { id, sessionID, questions } = properties;
+/**
+ * Process a question.asked event - pure function
+ *
+ * Posts one elicitation per question with a select signal, then returns
+ * the pending question data for the orchestrator to store.
+ *
+ * QuestionHandler doesn't modify HandlerState but returns a PendingQuestion
+ * that needs to be stored by the orchestrator.
+ *
+ * Takes event properties and returns actions + pending question.
+ * No side effects, no I/O.
+ */
+export function processQuestionAsked(
+  properties: QuestionRequest,
+  state: HandlerState,
+  ctx: QuestionHandlerContext,
+): HandlerResultWithQuestion<HandlerState> {
+  const { id, sessionID, questions } = properties;
 
-    // Only process for our session
-    if (sessionID !== this.opencodeSessionId) {
-      return null;
-    }
-
-    this.log.info("Question asked - posting elicitations to Linear", {
-      requestId: id,
-      questionCount: questions.length,
-    });
-
-    // Convert OpenCode question format to our internal format
-    const questionInfos: QuestionInfo[] = questions.map((q) => ({
-      question: q.question,
-      header: q.header,
-      options: q.options.map((opt) => ({
-        label: opt.label,
-        description: opt.description,
-      })),
-      multiple: q.multiple,
-    }));
-
-    // Post elicitation for each question
-    for (const q of questionInfos) {
-      // Build option values from labels
-      const options = q.options.map((opt) => ({ value: opt.label }));
-
-      // Format body with question and option descriptions
-      const optionsList = q.options
-        .map((opt) => `- **${opt.label}**: ${opt.description}`)
-        .join("\n");
-      const body = `${q.question}\n\n${optionsList}`;
-
-      await this.linear.postElicitation(this.linearSessionId, body, "select", {
-        options,
-      });
-    }
-
-    // Return pending question data for caller to store
-    return {
-      requestId: id,
-      opcodeSessionId: sessionID,
-      linearSessionId: this.linearSessionId,
-      workdir: this.workdir ?? "",
-      questions: questionInfos,
-      answers: questionInfos.map(() => null), // Initialize all as unanswered
-      createdAt: Date.now(),
-    };
+  // Only process for our session
+  if (sessionID !== ctx.opencodeSessionId) {
+    return { state, actions: [] };
   }
+
+  // Convert OpenCode question format to our internal format
+  const questionInfos: QuestionInfo[] = questions.map((q) => ({
+    question: q.question,
+    header: q.header,
+    options: q.options.map((opt) => ({
+      label: opt.label,
+      description: opt.description,
+    })),
+    multiple: q.multiple,
+  }));
+
+  // Build actions for each question elicitation
+  const actions: Action[] = questionInfos.map((q) => {
+    // Build option values from labels
+    const options = q.options.map((opt) => ({ value: opt.label }));
+
+    // Format body with question and option descriptions
+    const optionsList = q.options
+      .map((opt) => `- **${opt.label}**: ${opt.description}`)
+      .join("\n");
+    const body = `${q.question}\n\n${optionsList}`;
+
+    return {
+      type: "postElicitation" as const,
+      sessionId: ctx.linearSessionId,
+      body,
+      signal: "select" as const,
+      metadata: { options },
+    };
+  });
+
+  // Build pending question for storage
+  const pendingQuestion: PendingQuestion = {
+    requestId: id,
+    opcodeSessionId: sessionID,
+    linearSessionId: ctx.linearSessionId,
+    workdir: ctx.workdir ?? "",
+    questions: questionInfos,
+    answers: questionInfos.map(() => null), // Initialize all as unanswered
+    createdAt: Date.now(),
+  };
+
+  return { state, actions, pendingQuestion };
 }

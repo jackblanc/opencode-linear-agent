@@ -23,23 +23,56 @@ export type { LinearEventProcessorConfig as EventProcessorConfig } from "./Linea
 export { OpencodeEventProcessor as SSEEventHandler } from "./OpencodeEventProcessor";
 export type { OpencodeEventResult as SSEEventResult } from "./OpencodeEventProcessor";
 
-// Event handlers (delegates)
+// Pure handler functions
 export {
-  ToolHandler,
-  TextHandler,
-  TodoHandler,
-  PermissionHandler,
-  QuestionHandler,
+  processToolPart,
+  processTextPart,
+  processTodoUpdated,
+  processPermissionAsked,
+  processQuestionAsked,
   getToolActionName,
   extractToolParameter,
 } from "./handlers";
+export type {
+  ToolHandlerContext,
+  TextHandlerContext,
+  TodoHandlerContext,
+  TodoUpdatedProperties,
+  PermissionHandlerContext,
+  PermissionAskedProperties,
+  QuestionHandlerContext,
+} from "./handlers";
+
+// Actions - outputs from event processing
+export { ActionExecutor } from "./actions";
+export type {
+  // Linear actions (→ LinearService)
+  LinearAction,
+  PostActivityAction,
+  PostElicitationAction,
+  UpdatePlanAction,
+  PostErrorAction,
+  // OpenCode actions (→ OpencodeService)
+  OpencodeAction,
+  ReplyPermissionAction,
+  ReplyQuestionAction,
+  // Combined type
+  Action,
+  // Handler result types
+  HandlerResult,
+  HandlerResultWithQuestion,
+  // Executor types
+  ActionExecutionError,
+  ActionResult,
+} from "./actions";
 
 // Session management
 export { SessionManager } from "./session/SessionManager";
 export { WorktreeManager } from "./session/WorktreeManager";
 export type { WorktreeResolution } from "./session/WorktreeManager";
 export { PromptBuilder } from "./session/PromptBuilder";
-export type { SessionState } from "./session/SessionState";
+export type { SessionState, HandlerState } from "./session/SessionState";
+export { createInitialHandlerState } from "./session/SessionState";
 export type {
   SessionRepository,
   WorktreeInfo,
@@ -95,26 +128,6 @@ export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
 
 // Errors
 export * from "./errors";
-
-// Actions - outputs from event processing
-export type {
-  // Linear actions (→ LinearService)
-  LinearAction,
-  PostActivityAction,
-  PostElicitationAction,
-  UpdatePlanAction,
-  PostErrorAction,
-  // OpenCode actions (→ OpencodeService)
-  OpencodeAction,
-  ReplyPermissionAction,
-  ReplyQuestionAction,
-  // Combined type
-  Action,
-  // Executor types
-  ActionExecutionError,
-  ActionResult,
-} from "./actions";
-export { ActionExecutor } from "./actions";
 
 // OpenCode service wrapper
 export { OpencodeService } from "./opencode";
