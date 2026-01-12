@@ -74,6 +74,26 @@ function hasStopSignal(activity: { signal?: string | null }): boolean {
 }
 
 /**
+ * System instructions prepended to every agent prompt.
+ * Ensures consistent behavior across all sessions.
+ */
+const SYSTEM_INSTRUCTIONS = `
+## Important: Always Create a Pull Request
+
+When you complete work on an issue, you MUST create a pull request. Follow these rules:
+
+1. **Always push your changes and create a PR** when the work is complete
+2. **If you're uncertain** about the implementation or need clarification, ask the user BEFORE pushing - but still plan to create a PR after getting answers
+3. **Never say "done" or "completed"** without having created and pushed a PR
+4. Use \`gh pr create\` to create the pull request with a clear title and description
+
+The PR is how your work gets reviewed and merged. An issue is not complete until there's a PR.
+
+---
+
+`;
+
+/**
  * Main entry point for processing Linear webhook events.
  *
  * This class is platform-agnostic and receives all dependencies via constructor injection.
@@ -368,10 +388,10 @@ export class EventProcessor {
       return;
     }
 
-    // Build context: issue header + previous context (if any) + Linear's promptContext
+    // Build context: system instructions + issue header + previous context (if any) + Linear's promptContext
     const issueContext = this.buildIssueContext(event);
     const basePrompt = event.promptContext ?? "Please help with this issue.";
-    const prompt = `${issueContext}${previousContext ?? ""}${basePrompt}`;
+    const prompt = `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext ?? ""}${basePrompt}`;
 
     log.info("Starting new session with prompt", {
       promptLength: prompt.length,
@@ -429,12 +449,12 @@ export class EventProcessor {
       event.promptContext ??
       "Please continue.";
 
-    // If session was recreated, inject issue context + previous context
+    // If session was recreated, inject system instructions + issue context + previous context
     // Otherwise, just use the base prompt (agent already has context from initial prompt)
     let prompt: string;
     if (previousContext) {
       const issueContext = this.buildIssueContext(event);
-      prompt = `${issueContext}${previousContext}${basePrompt}`;
+      prompt = `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext}${basePrompt}`;
     } else {
       prompt = basePrompt;
     }
