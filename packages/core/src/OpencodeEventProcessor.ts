@@ -1,13 +1,18 @@
-import type { Event as OpencodeEvent, Part } from "@opencode-ai/sdk/v2";
+import type { Event as OpencodeEvent, Part, Todo } from "@opencode-ai/sdk/v2";
 import type { LinearService } from "./linear/LinearService";
 import type { PendingQuestion } from "./session/SessionRepository";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import type { Logger } from "./logger";
-import { ToolHandler } from "./handlers/ToolHandler";
-import { TextHandler } from "./handlers/TextHandler";
-import { TodoHandler } from "./handlers/TodoHandler";
-import { PermissionHandler } from "./handlers/PermissionHandler";
-import { QuestionHandler } from "./handlers/QuestionHandler";
+import type { HandlerState } from "./session/SessionState";
+import { createInitialHandlerState } from "./session/SessionState";
+import { ActionExecutor } from "./actions";
+import {
+  processToolPart,
+  processTextPart,
+  processTodoUpdated,
+  processPermissionAsked,
+  processQuestionAsked,
+} from "./handlers";
 
 /**
  * Result from processing an OpenCode event
@@ -23,19 +28,12 @@ export type OpencodeEventResult =
  * This replaces the plugin-based approach with a pure SDK/SSE approach,
  * keeping all Linear communication in the worker instead of the container.
  *
- * Delegates to specialized handlers for each event type:
- * - ToolHandler: Tool part processing, action name mapping
- * - TextHandler: Text part processing, response posting
- * - TodoHandler: Todo sync to Linear plan
- * - PermissionHandler: Auto-approval logic
- * - QuestionHandler: Elicitation posting
+ * Uses pure handler functions that take state as input and return
+ * new state + actions. The ActionExecutor routes actions to services.
  */
 export class OpencodeEventProcessor {
-  private readonly toolHandler: ToolHandler;
-  private readonly textHandler: TextHandler;
-  private readonly todoHandler: TodoHandler;
-  private readonly permissionHandler: PermissionHandler;
-  private readonly questionHandler: QuestionHandler;
+  private readonly actionExecutor: ActionExecutor;
+  private handlerState: HandlerState;
 
   constructor(
     private readonly linear: LinearService,
@@ -45,27 +43,8 @@ export class OpencodeEventProcessor {
     private readonly log: Logger,
     private readonly workdir: string | null = null,
   ) {
-    this.toolHandler = new ToolHandler(linear, linearSessionId, log, workdir);
-    this.textHandler = new TextHandler(linear, linearSessionId, log);
-    this.todoHandler = new TodoHandler(
-      linear,
-      linearSessionId,
-      opencodeSessionId,
-      log,
-    );
-    this.permissionHandler = new PermissionHandler(
-      opencode,
-      opencodeSessionId,
-      log,
-      workdir,
-    );
-    this.questionHandler = new QuestionHandler(
-      linear,
-      linearSessionId,
-      opencodeSessionId,
-      log,
-      workdir,
-    );
+    this.actionExecutor = new ActionExecutor(linear, opencode);
+    this.handlerState = createInitialHandlerState();
   }
 
   /**
@@ -82,20 +61,18 @@ export class OpencodeEventProcessor {
     }
 
     if (event.type === "todo.updated") {
-      await this.todoHandler.handleTodoUpdated(event.properties);
+      await this.handleTodoUpdated(event.properties);
       return { action: "continue" };
     }
 
     if (event.type === "permission.asked") {
-      await this.permissionHandler.handlePermissionAsked(event.properties);
+      await this.handlePermissionAsked(event.properties);
       return { action: "continue" };
     }
 
     // Handle question.asked events - post elicitations to Linear and return pending question data
     if (event.type === "question.asked") {
-      const pending = await this.questionHandler.handleQuestionAsked(
-        event.properties,
-      );
+      const pending = await this.handleQuestionAsked(event.properties);
       if (pending) {
         return { action: "question_asked", pendingQuestion: pending };
       }
@@ -137,10 +114,111 @@ export class OpencodeEventProcessor {
 
     // Handle tool and text parts - other part types are ignored
     if (part.type === "tool") {
-      await this.toolHandler.handleToolPart(part);
+      const result = processToolPart(part, this.handlerState, {
+        linearSessionId: this.linearSessionId,
+        workdir: this.workdir,
+      });
+
+      this.handlerState = result.state;
+      await this.actionExecutor.executeAll(result.actions);
     } else if (part.type === "text") {
-      await this.textHandler.handleTextPart(part);
+      const result = processTextPart(part, this.handlerState, {
+        linearSessionId: this.linearSessionId,
+      });
+
+      this.handlerState = result.state;
+      await this.actionExecutor.executeAll(result.actions);
     }
+  }
+
+  /**
+   * Handle todo.updated events
+   */
+  private async handleTodoUpdated(properties: {
+    sessionID: string;
+    todos: Todo[];
+  }): Promise<void> {
+    this.log.info("Received todo.updated event", {
+      eventSessionID: properties.sessionID,
+      ourSessionID: this.opencodeSessionId,
+      todoCount: properties.todos.length,
+    });
+
+    const actions = processTodoUpdated(properties, {
+      linearSessionId: this.linearSessionId,
+      opencodeSessionId: this.opencodeSessionId,
+    });
+
+    if (actions.length > 0) {
+      this.log.info("Syncing todos to Linear plan", {
+        todoCount: properties.todos.length,
+      });
+    } else {
+      this.log.info("Skipping todo.updated - session ID mismatch");
+    }
+
+    await this.actionExecutor.executeAll(actions);
+
+    if (actions.length > 0) {
+      this.log.info("Plan update complete");
+    }
+  }
+
+  /**
+   * Handle permission.asked events
+   */
+  private async handlePermissionAsked(properties: {
+    id: string;
+    sessionID: string;
+    permission: string;
+    [key: string]: unknown;
+  }): Promise<void> {
+    const actions = processPermissionAsked(properties, {
+      opencodeSessionId: this.opencodeSessionId,
+      workdir: this.workdir,
+    });
+
+    if (actions.length > 0) {
+      this.log.info("Auto-approving permission", {
+        requestId: properties.id,
+        permission: properties.permission,
+      });
+    }
+
+    await this.actionExecutor.executeAll(actions);
+  }
+
+  /**
+   * Handle question.asked events
+   */
+  private async handleQuestionAsked(properties: {
+    id: string;
+    sessionID: string;
+    questions: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string }>;
+      multiple?: boolean;
+    }>;
+  }): Promise<PendingQuestion | null> {
+    const result = processQuestionAsked(properties, this.handlerState, {
+      linearSessionId: this.linearSessionId,
+      opencodeSessionId: this.opencodeSessionId,
+      workdir: this.workdir,
+    });
+
+    this.handlerState = result.state;
+
+    if (result.pendingQuestion) {
+      this.log.info("Question asked - posting elicitations to Linear", {
+        requestId: properties.id,
+        questionCount: properties.questions.length,
+      });
+    }
+
+    await this.actionExecutor.executeAll(result.actions);
+
+    return result.pendingQuestion ?? null;
   }
 
   /**
@@ -150,7 +228,7 @@ export class OpencodeEventProcessor {
    * Otherwise, post a default completion message.
    */
   private async handleSessionIdle(): Promise<void> {
-    const postedFinalResponse = this.textHandler.hasPostedFinalResponse();
+    const postedFinalResponse = this.handlerState.postedFinalResponse;
 
     this.log.info("Session idle", { postedFinalResponse });
 

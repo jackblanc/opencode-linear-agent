@@ -4,6 +4,7 @@ import type {
   SignalMetadata,
 } from "../linear/types";
 import type { ElicitationSignal } from "../linear/LinearService";
+import type { PendingQuestion } from "../session/SessionRepository";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Linear Actions - executed against LinearService
@@ -109,3 +110,29 @@ export type OpencodeAction = ReplyPermissionAction | ReplyQuestionAction;
  * by the ActionExecutor that routes to the appropriate service.
  */
 export type Action = LinearAction | OpencodeAction;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Handler Result Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Result from a pure handler function
+ *
+ * Handlers take state as input and return new state + actions.
+ * No side effects, no I/O - pure functions.
+ */
+export interface HandlerResult<TState> {
+  state: TState;
+  actions: Action[];
+}
+
+/**
+ * Extended handler result that can also return a pending question
+ *
+ * Used by QuestionHandler when a question needs to be stored
+ */
+export interface HandlerResultWithQuestion<
+  TState,
+> extends HandlerResult<TState> {
+  pendingQuestion?: PendingQuestion;
+}

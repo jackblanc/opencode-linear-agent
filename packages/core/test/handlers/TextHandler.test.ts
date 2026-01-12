@@ -1,0 +1,118 @@
+import { describe, test, expect } from "bun:test";
+import type { TextPart } from "@opencode-ai/sdk/v2";
+import { processTextPart } from "../../src/handlers/TextHandler";
+import { createInitialHandlerState } from "../../src/session/SessionState";
+
+describe("processTextPart", () => {
+  const ctx = {
+    linearSessionId: "linear-123",
+  };
+
+  const now = Date.now();
+
+  test("should skip empty text", () => {
+    const part: TextPart = {
+      type: "text",
+      id: "text-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "   ",
+      time: { start: now, end: now + 100 },
+    };
+
+    const state = createInitialHandlerState();
+    const result = processTextPart(part, state, ctx);
+
+    // No change, no actions
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should skip incomplete text parts (no end time)", () => {
+    const part: TextPart = {
+      type: "text",
+      id: "text-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "Hello, world!",
+      time: { start: now },
+    };
+
+    const state = createInitialHandlerState();
+    const result = processTextPart(part, state, ctx);
+
+    // No change, no actions
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should post response activity for complete text", () => {
+    const part: TextPart = {
+      type: "text",
+      id: "text-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "Hello, world!",
+      time: { start: now, end: now + 100 },
+    };
+
+    const state = createInitialHandlerState();
+    const result = processTextPart(part, state, ctx);
+
+    // State should have text part marked as sent
+    expect(result.state.sentTextParts.has("text-1")).toBe(true);
+    // Should mark final response as posted
+    expect(result.state.postedFinalResponse).toBe(true);
+
+    // Should have response activity
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toEqual({
+      type: "postActivity",
+      sessionId: "linear-123",
+      content: { type: "response", body: "Hello, world!" },
+      ephemeral: false,
+    });
+  });
+
+  test("should not duplicate already sent text parts", () => {
+    const part: TextPart = {
+      type: "text",
+      id: "text-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "Hello, world!",
+      time: { start: now, end: now + 100 },
+    };
+
+    // Start with text already sent
+    const state = createInitialHandlerState();
+    state.sentTextParts.add("text-1");
+
+    const result = processTextPart(part, state, ctx);
+
+    // No change, no actions
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should not mutate original state", () => {
+    const part: TextPart = {
+      type: "text",
+      id: "text-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "Hello, world!",
+      time: { start: now, end: now + 100 },
+    };
+
+    const state = createInitialHandlerState();
+    const originalSentTextParts = new Set(state.sentTextParts);
+    const originalPostedFinalResponse = state.postedFinalResponse;
+
+    processTextPart(part, state, ctx);
+
+    // Original state should be unchanged
+    expect(state.sentTextParts).toEqual(originalSentTextParts);
+    expect(state.postedFinalResponse).toBe(originalPostedFinalResponse);
+  });
+});

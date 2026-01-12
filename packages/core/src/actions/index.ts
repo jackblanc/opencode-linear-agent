@@ -25,6 +25,9 @@ export type {
   ReplyQuestionAction,
   // Combined type
   Action,
+  // Handler result types
+  HandlerResult,
+  HandlerResultWithQuestion,
 } from "./types";
 
 export { ActionExecutor } from "./executor";

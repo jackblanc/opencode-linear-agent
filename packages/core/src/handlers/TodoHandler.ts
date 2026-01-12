@@ -1,7 +1,6 @@
 import type { Todo } from "@opencode-ai/sdk/v2";
-import type { LinearService } from "../linear/LinearService";
 import type { PlanItem } from "../linear/types";
-import type { Logger } from "../logger";
+import type { Action } from "../actions/types";
 
 /**
  * Map OpenCode todo status to Linear plan status
@@ -24,49 +23,51 @@ function mapTodoStatus(
 }
 
 /**
- * Handles todo.updated events and syncs to Linear plan.
+ * Context needed for todo handler processing
  */
-export class TodoHandler {
-  constructor(
-    private readonly linear: LinearService,
-    private readonly linearSessionId: string,
-    private readonly opencodeSessionId: string,
-    private readonly log: Logger,
-  ) {}
+export interface TodoHandlerContext {
+  linearSessionId: string;
+  opencodeSessionId: string;
+}
 
-  /**
-   * Handle todo.updated event - sync todos to Linear plan
-   */
-  async handleTodoUpdated(properties: {
-    sessionID: string;
-    todos: Todo[];
-  }): Promise<void> {
-    const { sessionID, todos } = properties;
+/**
+ * Properties from todo.updated event
+ */
+export interface TodoUpdatedProperties {
+  sessionID: string;
+  todos: Todo[];
+}
 
-    this.log.info("Received todo.updated event", {
-      eventSessionID: sessionID,
-      ourSessionID: this.opencodeSessionId,
-      todoCount: todos.length,
-    });
+/**
+ * Process a todo.updated event - pure function
+ *
+ * Syncs todos to Linear plan.
+ * TodoHandler doesn't need HandlerState - it's stateless.
+ *
+ * Takes event properties and returns actions.
+ * No side effects, no I/O.
+ */
+export function processTodoUpdated(
+  properties: TodoUpdatedProperties,
+  ctx: TodoHandlerContext,
+): Action[] {
+  const { sessionID, todos } = properties;
 
-    // Only process for our session
-    if (sessionID !== this.opencodeSessionId) {
-      this.log.info("Skipping todo.updated - session ID mismatch");
-      return;
-    }
-
-    const plan: PlanItem[] = todos.map((todo) => ({
-      content: todo.content,
-      status: mapTodoStatus(todo.status),
-    }));
-
-    this.log.info("Syncing todos to Linear plan", {
-      todoCount: todos.length,
-      items: plan.map((p) => `${p.status}: ${p.content}`),
-    });
-
-    await this.linear.updatePlan(this.linearSessionId, plan);
-
-    this.log.info("Plan update complete");
+  // Only process for our session
+  if (sessionID !== ctx.opencodeSessionId) {
+    return [];
   }
+
+  const plan: PlanItem[] = todos.map((todo) => ({
+    content: todo.content,
+    status: mapTodoStatus(todo.status),
+  }));
+
+  return [
+    {
+      type: "updatePlan",
+      sessionId: ctx.linearSessionId,
+      plan,
+    },
+  ];
 }
