@@ -199,11 +199,9 @@ export class EventProcessor {
     );
 
     // Get or create OpenCode session
-    const issueTitle = event.agentSession.issue?.title;
     const sessionResult = await this.sessionManager.getOrCreateSession(
       linearSessionId,
       issue,
-      issueTitle,
       branchName,
       workdir,
     );
