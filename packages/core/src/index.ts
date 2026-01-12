@@ -2,7 +2,8 @@
  * Core domain logic - platform agnostic
  *
  * This package contains:
- * - EventProcessor: Main entry point for processing Linear webhook events
+ * - LinearEventProcessor: Processes Linear webhook events
+ * - OpencodeEventProcessor: Processes OpenCode SSE events
  * - SessionManager: Manages OpenCode session lifecycle
  * - Interfaces for external dependencies (LinearService, SessionRepository)
  */
@@ -10,16 +11,34 @@
 // Re-export Result from better-result for convenience
 export { Result } from "better-result";
 
-// Main processor
-export { EventProcessor } from "./EventProcessor";
-export type { EventProcessorConfig } from "./EventProcessor";
+// Event processors
+export { LinearEventProcessor } from "./LinearEventProcessor";
+export type { LinearEventProcessorConfig } from "./LinearEventProcessor";
+export { OpencodeEventProcessor } from "./OpencodeEventProcessor";
+export type { OpencodeEventResult } from "./OpencodeEventProcessor";
 
-// SSE event handler
-export { SSEEventHandler } from "./SSEEventHandler";
-export type { SSEEventResult } from "./SSEEventHandler";
+// Backwards compatibility aliases (deprecated - use new names)
+export { LinearEventProcessor as EventProcessor } from "./LinearEventProcessor";
+export type { LinearEventProcessorConfig as EventProcessorConfig } from "./LinearEventProcessor";
+export { OpencodeEventProcessor as SSEEventHandler } from "./OpencodeEventProcessor";
+export type { OpencodeEventResult as SSEEventResult } from "./OpencodeEventProcessor";
+
+// Event handlers (delegates)
+export {
+  ToolHandler,
+  TextHandler,
+  TodoHandler,
+  PermissionHandler,
+  QuestionHandler,
+  getToolActionName,
+  extractToolParameter,
+} from "./handlers";
 
 // Session management
 export { SessionManager } from "./session/SessionManager";
+export { WorktreeManager } from "./session/WorktreeManager";
+export type { WorktreeResolution } from "./session/WorktreeManager";
+export { PromptBuilder } from "./session/PromptBuilder";
 export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,

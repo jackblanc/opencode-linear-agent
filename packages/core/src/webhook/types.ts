@@ -10,7 +10,7 @@ import type { ProcessingStage } from "../linear/types";
  *
  * Implementations:
  * - Cloudflare: Sends to a queue for async processing
- * - Local: Calls EventProcessor directly
+ * - Local: Calls LinearEventProcessor directly
  */
 export interface EventDispatcher {
   /**

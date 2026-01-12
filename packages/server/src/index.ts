@@ -16,7 +16,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
-  EventProcessor,
+  LinearEventProcessor,
   handleAuthorize,
   handleCallback,
   handleWebhook,
@@ -137,7 +137,7 @@ function createDirectDispatcher(
       // OpenCode handles worktree creation natively
       // Note: opencodeUrl defaults to localhost:4096 for external links
       // config.opencode.url is only used for internal Docker communication
-      const processor = new EventProcessor(
+      const processor = new LinearEventProcessor(
         opencode,
         linear,
         sessionRepository,
