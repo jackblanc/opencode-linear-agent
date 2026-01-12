@@ -260,6 +260,67 @@ async function handleEvent(event: Event): Promise<void> {
 | `TextHandler`            | Pure logic for text events           | No - pure function                    |
 | `SessionRepository`      | Persists session state               | Yes - but isolated                    |
 
+#### Events and Actions
+
+Events and Actions are logically coupled to their source/target (Linear or OpenCode), but decoupled from the transport layer. This allows swapping transports (e.g., SSE → plugins) without changing the processing logic.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        EVENTS (inputs)                              │
+├─────────────────────────────────────────────────────────────────────┤
+│  LinearEvent                    │  OpencodeEvent                    │
+│  - SessionCreated               │  - ToolPartUpdated                │
+│  - UserPrompted                 │  - TextPartUpdated                │
+│  - UserSignaled                 │  - TodoUpdated                    │
+│                                 │  - PermissionRequested            │
+│  (today: webhooks)              │  (today: SSE, future: plugins)    │
+└────────────────┬────────────────┴───────────────┬───────────────────┘
+                 │                                │
+                 ▼                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     EVENT PROCESSORS (pure functions)               │
+│  processEvent(event, state) → { actions: Action[], newState }       │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        ACTIONS (outputs)                            │
+├─────────────────────────────────────────────────────────────────────┤
+│  LinearAction                   │  OpencodeAction                   │
+│  - PostActivity                 │  - ReplyPermission                │
+│  - PostElicitation              │  - ReplyQuestion                  │
+│  - UpdatePlan                   │                                   │
+│  - PostError                    │                                   │
+│                                 │                                   │
+│  → LinearService                │  → OpencodeService                │
+└─────────────────────────────────┴───────────────────────────────────┘
+```
+
+**Key points:**
+
+- **Events** come FROM Linear/OpenCode (inputs to processing)
+- **Actions** go TO Linear/OpenCode (outputs from processing)
+- `LinearAction` and `OpencodeAction` are discriminated unions
+- `Action = LinearAction | OpencodeAction` is the combined type
+- `ActionExecutor` routes actions to the correct service based on `action.type`
+
+**Location:** `packages/core/src/actions/`
+
+```typescript
+// Linear actions → LinearService
+type LinearAction =
+  | PostActivityAction
+  | PostElicitationAction
+  | UpdatePlanAction
+  | PostErrorAction;
+
+// OpenCode actions → OpencodeService
+type OpencodeAction = ReplyPermissionAction | ReplyQuestionAction;
+
+// Combined type for ActionExecutor
+type Action = LinearAction | OpencodeAction;
+```
+
 ---
 
 ## Project Structure
