@@ -60,7 +60,7 @@ This is a Linear AI agent that integrates OpenCode to handle delegated issues. I
 The project uses a pure SSE/SDK approach (no plugins):
 
 ```
-┌──────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │ Webhook Server (webhook-server container)                │
 │                                                          │
 │  - Receives Linear webhooks                              │
@@ -69,12 +69,12 @@ The project uses a pure SSE/SDK approach (no plugins):
 │  - Creates git worktrees                                 │
 │  - Manages OpenCode sessions via SDK                     │
 │                                                          │
-│  SSEEventHandler                                         │
+│  OpencodeEventProcessor                                  │
 │  - message.part.updated → Post tool activities to Linear │
 │  - todo.updated → Sync to Linear agent plan              │
 │  - permission.updated → Auto-approve all                 │
 │  - session.idle → Signal completion                      │
-└──────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────┘
          │                              │
          ▼                              ▼
     Linear API                   OpenCode Server
@@ -102,6 +102,163 @@ OpenCode runs natively on the host machine as a launchd service, not in a contai
 - 35.222.25.142
 
 _Note: Linear may update this list occasionally. Check [Linear's webhook documentation](https://linear.app/developers/webhooks) for updates._
+
+---
+
+## Design Principles
+
+### Event Processing Architecture
+
+This application processes events from two sources:
+
+1. **Linear** - Webhook events (session created, user prompted, etc.)
+2. **OpenCode** - SSE stream events (tool calls, text responses, todos, etc.)
+
+**Key Principle: Decouple event transport from event processing.**
+
+The fact that Linear uses webhooks and OpenCode uses SSE is an implementation detail. The core processing logic should be transport-agnostic.
+
+#### Naming Convention
+
+| Concept                        | Name Pattern             | Example                                          |
+| ------------------------------ | ------------------------ | ------------------------------------------------ |
+| Processes events from a source | `{Source}EventProcessor` | `LinearEventProcessor`, `OpencodeEventProcessor` |
+| Handles a specific event type  | `{EventType}Handler`     | `ToolHandler`, `SessionCreatedHandler`           |
+| Manages a specific concern     | `{Concern}Manager`       | `WorktreeManager`, `SessionManager`              |
+| Builds/constructs something    | `{Thing}Builder`         | `PromptBuilder`                                  |
+
+**WRONG naming:**
+
+- `SSEEventHandler` - Couples transport (SSE) with processing
+- `EventProcessor` - Too generic, doesn't identify the source
+
+**CORRECT naming:**
+
+- `OpencodeEventProcessor` - Processes events from OpenCode
+- `LinearEventProcessor` - Processes events from Linear
+
+### Functional State Management
+
+**Core Principle: Processing should be stateless and functional.**
+
+```
+
+receive event → pull state from repository → process (pure function) → persist state → respond
+
+```
+
+#### State Flow
+
+```
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Event Received │
+└─────────────────────────────────────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ Load State from Repository │
+│ SessionRepository.get(sessionId) → SessionState | null │
+└─────────────────────────────────────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ Process Event (PURE FUNCTION) │
+│ processEvent(event, state) → { actions: Action[], newState } │
+│ │
+│ - No side effects │
+│ - No I/O │
+│ - Deterministic output for same input │
+└─────────────────────────────────────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ Execute Actions │
+│ - Post activities to Linear │
+│ - Reply to permissions │
+│ - Send prompts to OpenCode │
+└─────────────────────────────────────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ Persist New State │
+│ SessionRepository.save(newState) │
+└─────────────────────────────────────────────────────────────────────┘
+
+```
+
+#### What This Means in Practice
+
+**WRONG - Stateful handlers with internal state:**
+
+```typescript
+class ToolHandler {
+  private runningTools = new Set<string>(); // BAD: internal state
+
+  async handleToolPart(part: ToolPart): Promise<void> {
+    if (this.runningTools.has(part.id)) return; // BAD: checking internal state
+    this.runningTools.add(part.id); // BAD: mutating internal state
+    // ...
+  }
+}
+```
+
+**CORRECT - Pure processing with external state:**
+
+```typescript
+// State is loaded from repository
+interface SessionState {
+  runningTools: Set<string>;
+  sentTextParts: Set<string>;
+  // ...
+}
+
+// Processing is pure - returns new state + actions
+function processToolPart(
+  part: ToolPart,
+  state: SessionState
+): { state: SessionState; actions: Action[] } {
+  if (state.runningTools.has(part.id)) {
+    return { state, actions: [] };  // No change
+  }
+
+  return {
+    state: {
+      ...state,
+      runningTools: new Set([...state.runningTools, part.id]),
+    },
+    actions: [
+      { type: "postActivity", content: { type: "action", ... } }
+    ],
+  };
+}
+
+// Orchestrator loads state, calls pure function, executes actions, saves state
+async function handleEvent(event: Event): Promise<void> {
+  const state = await repository.get(sessionId);
+  const { state: newState, actions } = processToolPart(event, state);
+  await executeActions(actions);
+  await repository.save(newState);
+}
+```
+
+#### Benefits of Functional Approach
+
+1. **Testability** - Pure functions are trivial to test (no mocking)
+2. **Predictability** - Same input always produces same output
+3. **Debuggability** - State is explicit and inspectable
+4. **Resilience** - Can replay events, recover from crashes
+5. **Concurrency** - No shared mutable state to worry about
+
+#### Handler vs Processor Responsibilities
+
+| Component                | Responsibility                       | Stateful?                             |
+| ------------------------ | ------------------------------------ | ------------------------------------- |
+| `LinearEventProcessor`   | Orchestrates Linear event handling   | No - loads/saves state via repository |
+| `OpencodeEventProcessor` | Orchestrates OpenCode event handling | No - loads/saves state via repository |
+| `ToolHandler`            | Pure logic for tool events           | No - pure function                    |
+| `TextHandler`            | Pure logic for text events           | No - pure function                    |
+| `SessionRepository`      | Persists session state               | Yes - but isolated                    |
 
 ---
 
