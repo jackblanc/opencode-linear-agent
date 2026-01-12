@@ -365,6 +365,141 @@ The project uses oxlint with aggressive rules:
 
 **NEVER use `try`/`catch` blocks unless absolutely necessary.**
 
+This codebase uses **Result types** from `better-result` instead of throwing exceptions. All errors are typed and categorized for consistent handling.
+
+#### Error Handling Strategy
+
+**Core Principle:** Use `Result<T, E>` types for all fallible operations. Never throw exceptions in business logic.
+
+##### Error Categories
+
+| Category        | Description                                          | Action                        | Examples                                        |
+| --------------- | ---------------------------------------------------- | ----------------------------- | ----------------------------------------------- |
+| **Fatal**       | Unrecoverable errors that block the entire operation | Post to Linear + early return | Auth failures, missing repo, invalid webhook    |
+| **Recoverable** | Errors that don't block the main operation           | Log + continue                | Activity posting failures, plan update failures |
+| **Retryable**   | Temporary failures that may succeed on retry         | Log + retry (if applicable)   | Rate limits, network timeouts                   |
+
+##### Pattern by Layer
+
+**1. Service Layer (LinearServiceImpl, OpencodeService)**
+
+- Wrap SDK calls in `Result.tryPromise({ try: ..., catch: mapError })`
+- Return `Result<T, ServiceError>` - never throw
+- Log errors with context before returning `Result.err()`
+
+```typescript
+// CORRECT - Service returns Result
+async postActivity(...): Promise<Result<void, LinearServiceError>> {
+  const result = await Result.tryPromise({
+    try: async () => this.client.createAgentActivity({...}),
+    catch: mapLinearError,
+  });
+
+  if (Result.isError(result)) {
+    this.log.error("Failed to send activity", { error: result.error.message });
+    return Result.err(result.error);
+  }
+  return Result.ok(undefined);
+}
+```
+
+**2. Processor Layer (EventProcessor, SSEEventHandler)**
+
+- Check results with `Result.isError()`
+- Fatal errors → post to Linear + early return
+- Recoverable errors → log + continue processing
+
+```typescript
+// CORRECT - Processor handles fatal vs recoverable
+const worktreeResult = await this.opencode.createWorktree(...);
+if (Result.isError(worktreeResult)) {
+  // FATAL: Can't proceed without worktree
+  await this.linear.postError(sessionId, worktreeResult.error);
+  return;  // Early return, don't throw
+}
+
+// RECOVERABLE: Activity posting failures don't block the session
+await this.linear.postActivity(sessionId, content, false);
+// Result ignored - session continues even if activity fails
+```
+
+**3. HTTP Layer (server/index.ts, webhook handlers)**
+
+- Return appropriate HTTP status codes
+- Never throw - return `Response.json({ error: ... }, { status: ... })`
+
+```typescript
+// CORRECT - HTTP handler returns Response
+if (Result.isError(resolveResult)) {
+  await linear.postError(sessionId, resolveResult.error);
+  return; // Handler completes, webhook returns success
+}
+```
+
+##### Which Errors Are Fatal vs Recoverable?
+
+**Fatal Errors (block the operation):**
+
+- `LinearAuthError` - Can't communicate with Linear
+- `OpencodeProviderAuthError` - Can't use AI provider
+- Worktree creation failure - Can't set up workspace
+- Session creation failure - Can't start work
+
+**Recoverable Errors (log and continue):**
+
+- Activity posting failures - User won't see update, but work continues
+- Plan update failures - Plan won't sync, but work continues
+- External link setting failures - Link won't appear, but work continues
+- Permission reply failures - May need manual approval, but work continues
+
+**Retryable Errors (may succeed on retry):**
+
+- `LinearRateLimitError` - Wait and retry
+- `LinearNetworkError` - Transient, may recover
+- `OpencodeApiError` where `isRetryable: true`
+
+##### Tagged Error Types
+
+All errors extend `TaggedError` from `better-result` with a `_tag` discriminator:
+
+```typescript
+// Linear errors (packages/core/src/errors/linear.ts)
+LinearNotFoundError; // Resource not found
+LinearInvalidInputError; // Bad request data
+LinearRateLimitError; // Rate limited (retryable)
+LinearAuthError; // Auth failed (fatal)
+LinearForbiddenError; // Insufficient permissions
+LinearNetworkError; // Network issue (retryable)
+LinearUnknownError; // Catch-all
+
+// OpenCode errors (packages/core/src/errors/opencode.ts)
+OpencodeProviderAuthError; // Provider auth failed (fatal)
+OpencodeApiError; // API error (check isRetryable)
+OpencodeMessageAbortedError; // User cancelled
+OpencodeOutputLengthError; // Response too long
+OpencodeUnknownError; // Catch-all
+```
+
+##### What NOT to Do
+
+```typescript
+// WRONG - Using try/catch
+try {
+  await this.linear.postActivity(...);
+} catch (error) {
+  console.error(error);  // Don't catch - use Result
+}
+
+// WRONG - Throwing errors
+if (!session) {
+  throw new Error("Session not found");  // Don't throw - return Result
+}
+
+// WRONG - Swallowing errors silently
+await this.linear.postActivity(...);  // OK for recoverable
+// But DO log recoverable errors for observability
+```
+
 #### OpenCode SDK Error Handling
 
 The OpenCode SDK uses `throwOnError: false` by default, meaning errors are returned as part of the response object rather than thrown. **Do NOT wrap SDK calls in try/catch.**
