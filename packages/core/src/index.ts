@@ -96,6 +96,20 @@ export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
 // Errors
 export * from "./errors";
 
+// Actions
+export type {
+  OpencodeAction,
+  PostActivityAction,
+  PostElicitationAction,
+  UpdatePlanAction,
+  ReplyPermissionAction,
+  ReplyQuestionAction,
+  PostErrorAction,
+  ActionExecutionError,
+  ActionResult,
+} from "./actions";
+export { ActionExecutor } from "./actions";
+
 // OpenCode service wrapper
 export { OpencodeService } from "./opencode";
 export type {
