@@ -1,7 +1,7 @@
 /**
  * Metadata for auth signal
  */
-export interface AuthSignalMetadata {
+interface AuthSignalMetadata {
   url: string;
   userId?: string;
   providerName?: string;
@@ -13,7 +13,7 @@ export interface AuthSignalMetadata {
  * Per Linear docs, options should be objects with a `value` field.
  * If options are GitHub URLs, Linear automatically enriches them with icons.
  */
-export interface SelectSignalMetadata {
+interface SelectSignalMetadata {
   options: Array<{ value: string }>;
 }
 
@@ -32,14 +32,14 @@ interface BaseActivityContent {
 /**
  * Thought activity - internal reasoning, ephemeral progress updates
  */
-export interface ThoughtActivity extends BaseActivityContent {
+interface ThoughtActivity extends BaseActivityContent {
   type: "thought";
 }
 
 /**
  * Action activity - tool invocations with optional results
  */
-export interface ActionActivity extends BaseActivityContent {
+interface ActionActivity extends BaseActivityContent {
   type: "action";
   action: string;
   parameter?: string;
@@ -49,7 +49,7 @@ export interface ActionActivity extends BaseActivityContent {
 /**
  * Response activity - completed work, final outputs
  */
-export interface ResponseActivity extends BaseActivityContent {
+interface ResponseActivity extends BaseActivityContent {
   type: "response";
   body: string;
 }
@@ -57,7 +57,7 @@ export interface ResponseActivity extends BaseActivityContent {
 /**
  * Error activity - failures with context
  */
-export interface ErrorActivity extends BaseActivityContent {
+interface ErrorActivity extends BaseActivityContent {
   type: "error";
   body: string;
 }
@@ -68,7 +68,7 @@ export interface ErrorActivity extends BaseActivityContent {
  * Note: signalMetadata is passed separately to createAgentActivity,
  * not as part of content.
  */
-export interface ElicitationActivity extends BaseActivityContent {
+interface ElicitationActivity extends BaseActivityContent {
   type: "elicitation";
   body: string;
 }

@@ -127,7 +127,7 @@ function validateConfig(config: unknown): config is Config {
  *
  * Looks for config.json in:
  * 1. Current working directory
- * 2. Same directory as this file (packages/local/)
+ * 2. Same directory as this file (packages/server/)
  */
 export async function loadConfig(): Promise<Config> {
   const configPaths = [
