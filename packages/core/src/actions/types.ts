@@ -5,6 +5,10 @@ import type {
 } from "../linear/types";
 import type { ElicitationSignal } from "../linear/LinearService";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Linear Actions - executed against LinearService
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Post an activity to a Linear session
  */
@@ -36,6 +40,31 @@ export interface UpdatePlanAction {
 }
 
 /**
+ * Post an error activity to a Linear session
+ */
+export interface PostErrorAction {
+  type: "postError";
+  sessionId: string;
+  error: unknown;
+}
+
+/**
+ * Actions targeting Linear
+ *
+ * These actions are executed against the LinearService to update
+ * session state, post activities, or communicate with users.
+ */
+export type LinearAction =
+  | PostActivityAction
+  | PostElicitationAction
+  | UpdatePlanAction
+  | PostErrorAction;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OpenCode Actions - executed against OpencodeService
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
  * Reply to an OpenCode permission request
  */
 export interface ReplyPermissionAction {
@@ -56,24 +85,27 @@ export interface ReplyQuestionAction {
 }
 
 /**
- * Post an error activity to a Linear session
+ * Actions targeting OpenCode
+ *
+ * These actions are executed against the OpencodeService to respond
+ * to permission requests, questions, or other interactive prompts.
  */
-export interface PostErrorAction {
-  type: "postError";
-  sessionId: string;
-  error: unknown;
-}
+export type OpencodeAction = ReplyPermissionAction | ReplyQuestionAction;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Combined Action Type
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Discriminated union of all actions that processors can emit
+ * All actions that event processors can emit
  *
- * Per AGENTS.md design principles, this decouples "what to do" from "how to do it".
- * Pure processing functions return actions, which are then executed by the ActionExecutor.
+ * Per AGENTS.md design principles:
+ * - Events come FROM Linear/OpenCode (inputs)
+ * - Actions go TO Linear/OpenCode (outputs)
+ * - This decouples "what to do" from "how to do it"
+ * - Transport layer (webhooks, SSE, plugins) is an implementation detail
+ *
+ * Pure processing functions return actions, which are then executed
+ * by the ActionExecutor that routes to the appropriate service.
  */
-export type OpencodeAction =
-  | PostActivityAction
-  | PostElicitationAction
-  | UpdatePlanAction
-  | ReplyPermissionAction
-  | ReplyQuestionAction
-  | PostErrorAction;
+export type Action = LinearAction | OpencodeAction;

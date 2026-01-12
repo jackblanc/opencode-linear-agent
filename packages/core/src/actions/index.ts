@@ -4,19 +4,27 @@
  * This module provides the abstraction layer that decouples "what to do"
  * from "how to do it" per AGENTS.md design principles:
  *
+ * - Events come FROM Linear/OpenCode (inputs)
+ * - Actions go TO Linear/OpenCode (outputs)
  * - Pure processing functions return action objects
- * - ActionExecutor handles the actual side effects
- * - All actions are typed discriminated unions
+ * - ActionExecutor routes actions to the appropriate service
+ * - Transport layer (webhooks, SSE, plugins) is abstracted away
  */
 
+// Action types - organized by target service
 export type {
-  OpencodeAction,
+  // Linear actions
+  LinearAction,
   PostActivityAction,
   PostElicitationAction,
   UpdatePlanAction,
+  PostErrorAction,
+  // OpenCode actions
+  OpencodeAction,
   ReplyPermissionAction,
   ReplyQuestionAction,
-  PostErrorAction,
+  // Combined type
+  Action,
 } from "./types";
 
 export { ActionExecutor } from "./executor";
