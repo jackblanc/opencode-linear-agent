@@ -7,7 +7,6 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
 COPY packages/server/package.json packages/server/package.json
-COPY packages/opencode/package.json packages/opencode/package.json
 
 # Install dependencies
 RUN bun install --frozen-lockfile
