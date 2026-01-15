@@ -2,5 +2,10 @@
 export * from "./linear";
 export * from "./opencode";
 
-// Re-export TaggedError for convenience
-export { TaggedError } from "better-result";
+// Re-export TaggedError and matching utilities for convenience
+export {
+  TaggedError,
+  matchError,
+  matchErrorPartial,
+  isTaggedError,
+} from "better-result";

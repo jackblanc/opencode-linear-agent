@@ -68,7 +68,7 @@ export class OpencodeService {
 
     if (!result.data) {
       const errorDetails = this.extractErrorDetails(result.error);
-      return Result.err(new OpencodeUnknownError(errorDetails));
+      return Result.err(new OpencodeUnknownError({ reason: errorDetails }));
     }
 
     return Result.ok({

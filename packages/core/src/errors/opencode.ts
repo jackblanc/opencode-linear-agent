@@ -10,57 +10,78 @@ import type {
 /**
  * OpenCode provider authentication error
  */
-export class OpencodeProviderAuthError extends TaggedError {
-  readonly _tag = "OpencodeProviderAuthError" as const;
-  constructor(
-    readonly providerID: string,
-    readonly reason: string,
-  ) {
-    super(`Provider auth failed for ${providerID}: ${reason}`);
+export class OpencodeProviderAuthError extends TaggedError(
+  "OpencodeProviderAuthError",
+)<{
+  providerID: string;
+  reason: string;
+  message: string;
+}>() {
+  constructor(args: { providerID: string; reason: string }) {
+    super({
+      ...args,
+      message: `Provider auth failed for ${args.providerID}: ${args.reason}`,
+    });
   }
 }
 
 /**
  * OpenCode API error
  */
-export class OpencodeApiError extends TaggedError {
-  readonly _tag = "OpencodeApiError" as const;
-  constructor(
-    readonly statusCode: number | undefined,
-    readonly reason: string,
-    readonly isRetryable: boolean,
-  ) {
-    super(`API error${statusCode ? ` (${statusCode})` : ""}: ${reason}`);
+export class OpencodeApiError extends TaggedError("OpencodeApiError")<{
+  statusCode: number | undefined;
+  reason: string;
+  isRetryable: boolean;
+  message: string;
+}>() {
+  constructor(args: {
+    statusCode: number | undefined;
+    reason: string;
+    isRetryable: boolean;
+  }) {
+    super({
+      ...args,
+      message: `API error${args.statusCode ? ` (${args.statusCode})` : ""}: ${args.reason}`,
+    });
   }
 }
 
 /**
  * Message was aborted
  */
-export class OpencodeMessageAbortedError extends TaggedError {
-  readonly _tag = "OpencodeMessageAbortedError" as const;
-  constructor(readonly reason: string) {
-    super(`Message aborted: ${reason}`);
+export class OpencodeMessageAbortedError extends TaggedError(
+  "OpencodeMessageAbortedError",
+)<{
+  reason: string;
+  message: string;
+}>() {
+  constructor(args: { reason: string }) {
+    super({ ...args, message: `Message aborted: ${args.reason}` });
   }
 }
 
 /**
  * Message output exceeded length limit
  */
-export class OpencodeOutputLengthError extends TaggedError {
-  readonly _tag = "OpencodeOutputLengthError" as const;
+export class OpencodeOutputLengthError extends TaggedError(
+  "OpencodeOutputLengthError",
+)<{
+  message: string;
+}>() {
   constructor() {
-    super("Message output exceeded length limit");
+    super({ message: "Message output exceeded length limit" });
   }
 }
 
 /**
  * Unknown OpenCode error
  */
-export class OpencodeUnknownError extends TaggedError {
-  readonly _tag = "OpencodeUnknownError" as const;
-  constructor(readonly reason: string) {
-    super(`Unknown OpenCode error: ${reason}`);
+export class OpencodeUnknownError extends TaggedError("OpencodeUnknownError")<{
+  reason: string;
+  message: string;
+}>() {
+  constructor(args: { reason: string }) {
+    super({ ...args, message: `Unknown OpenCode error: ${args.reason}` });
   }
 }
 
@@ -106,26 +127,26 @@ export function mapOpencodeError(error: unknown): OpencodeServiceError {
   if (isOpencodeErrorObject(error)) {
     switch (error.name) {
       case "ProviderAuthError":
-        return new OpencodeProviderAuthError(
-          error.data.providerID,
-          error.data.message,
-        );
+        return new OpencodeProviderAuthError({
+          providerID: error.data.providerID,
+          reason: error.data.message,
+        });
 
       case "APIError":
-        return new OpencodeApiError(
-          error.data.statusCode,
-          error.data.message,
-          error.data.isRetryable,
-        );
+        return new OpencodeApiError({
+          statusCode: error.data.statusCode,
+          reason: error.data.message,
+          isRetryable: error.data.isRetryable,
+        });
 
       case "MessageAbortedError":
-        return new OpencodeMessageAbortedError(error.data.message);
+        return new OpencodeMessageAbortedError({ reason: error.data.message });
 
       case "MessageOutputLengthError":
         return new OpencodeOutputLengthError();
 
       case "UnknownError":
-        return new OpencodeUnknownError(error.data.message);
+        return new OpencodeUnknownError({ reason: error.data.message });
     }
   }
 
@@ -137,7 +158,7 @@ export function mapOpencodeError(error: unknown): OpencodeServiceError {
         ? JSON.stringify(error)
         : String(error);
 
-  return new OpencodeUnknownError(message);
+  return new OpencodeUnknownError({ reason: message });
 }
 
 /**
