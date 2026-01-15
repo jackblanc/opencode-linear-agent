@@ -24,107 +24,135 @@ interface LinearErrorContext {
 /**
  * Resource not found in Linear
  */
-export class LinearNotFoundError extends TaggedError {
-  readonly _tag = "LinearNotFoundError" as const;
-  constructor(
-    readonly resourceType: string,
-    readonly resourceId: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`${resourceType} not found: ${resourceId}`);
+export class LinearNotFoundError extends TaggedError("LinearNotFoundError")<{
+  resourceType: string;
+  resourceId: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: {
+    resourceType: string;
+    resourceId: string;
+    context?: LinearErrorContext;
+  }) {
+    super({
+      ...args,
+      message: `${args.resourceType} not found: ${args.resourceId}`,
+    });
   }
 }
 
 /**
  * Invalid input provided to Linear API
  */
-export class LinearInvalidInputError extends TaggedError {
-  readonly _tag = "LinearInvalidInputError" as const;
-  constructor(
-    readonly field: string,
-    readonly reason: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Invalid input for ${field}: ${reason}`);
+export class LinearInvalidInputError extends TaggedError(
+  "LinearInvalidInputError",
+)<{
+  field: string;
+  reason: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: {
+    field: string;
+    reason: string;
+    context?: LinearErrorContext;
+  }) {
+    super({
+      ...args,
+      message: `Invalid input for ${args.field}: ${args.reason}`,
+    });
   }
 }
 
 /**
  * Rate limited by Linear API
  */
-export class LinearRateLimitError extends TaggedError {
-  readonly _tag = "LinearRateLimitError" as const;
-  constructor(
-    readonly retryAfter?: number,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Rate limited${retryAfter ? `, retry after ${retryAfter}s` : ""}`);
+export class LinearRateLimitError extends TaggedError("LinearRateLimitError")<{
+  retryAfter?: number;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: { retryAfter?: number; context?: LinearErrorContext }) {
+    super({
+      ...args,
+      message: `Rate limited${args.retryAfter ? `, retry after ${args.retryAfter}s` : ""}`,
+    });
   }
 }
 
 /**
  * Authentication failed with Linear
  */
-export class LinearAuthError extends TaggedError {
-  readonly _tag = "LinearAuthError" as const;
-  constructor(
-    readonly reason: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Authentication failed: ${reason}`);
+export class LinearAuthError extends TaggedError("LinearAuthError")<{
+  reason: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: { reason: string; context?: LinearErrorContext }) {
+    super({ ...args, message: `Authentication failed: ${args.reason}` });
   }
 }
 
 /**
  * Forbidden - insufficient permissions
  */
-export class LinearForbiddenError extends TaggedError {
-  readonly _tag = "LinearForbiddenError" as const;
-  constructor(
-    readonly resource: string,
-    readonly action: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Forbidden: cannot ${action} ${resource}`);
+export class LinearForbiddenError extends TaggedError("LinearForbiddenError")<{
+  resource: string;
+  action: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: {
+    resource: string;
+    action: string;
+    context?: LinearErrorContext;
+  }) {
+    super({
+      ...args,
+      message: `Forbidden: cannot ${args.action} ${args.resource}`,
+    });
   }
 }
 
 /**
  * Network error communicating with Linear
  */
-export class LinearNetworkError extends TaggedError {
-  readonly _tag = "LinearNetworkError" as const;
-  constructor(
-    readonly reason: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Network error: ${reason}`);
+export class LinearNetworkError extends TaggedError("LinearNetworkError")<{
+  reason: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: { reason: string; context?: LinearErrorContext }) {
+    super({ ...args, message: `Network error: ${args.reason}` });
   }
 }
 
 /**
  * Feature not accessible (plan limitation)
  */
-export class LinearFeatureNotAccessibleError extends TaggedError {
-  readonly _tag = "LinearFeatureNotAccessibleError" as const;
-  constructor(
-    readonly feature: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Feature not accessible: ${feature}`);
+export class LinearFeatureNotAccessibleError extends TaggedError(
+  "LinearFeatureNotAccessibleError",
+)<{
+  feature: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: { feature: string; context?: LinearErrorContext }) {
+    super({ ...args, message: `Feature not accessible: ${args.feature}` });
   }
 }
 
 /**
  * Unknown Linear error
  */
-export class LinearUnknownError extends TaggedError {
-  readonly _tag = "LinearUnknownError" as const;
-  constructor(
-    readonly reason: string,
-    readonly context?: LinearErrorContext,
-  ) {
-    super(`Unknown Linear error: ${reason}`);
+export class LinearUnknownError extends TaggedError("LinearUnknownError")<{
+  reason: string;
+  context?: LinearErrorContext;
+  message: string;
+}>() {
+  constructor(args: { reason: string; context?: LinearErrorContext }) {
+    super({ ...args, message: `Unknown Linear error: ${args.reason}` });
   }
 }
 
@@ -158,30 +186,34 @@ export function mapLinearError(error: unknown): LinearServiceError {
   if (error instanceof InvalidInputLinearError) {
     const field = error.errors?.[0]?.path?.join(".") ?? "unknown";
     const reason = error.errors?.[0]?.message ?? error.message;
-    return new LinearInvalidInputError(field, reason, context);
+    return new LinearInvalidInputError({ field, reason, context });
   }
 
   if (error instanceof RatelimitedLinearError) {
-    return new LinearRateLimitError(undefined, context);
+    return new LinearRateLimitError({ context });
   }
 
   if (error instanceof AuthenticationLinearError) {
-    return new LinearAuthError(error.message, context);
+    return new LinearAuthError({ reason: error.message, context });
   }
 
   if (error instanceof ForbiddenLinearError) {
-    return new LinearForbiddenError("resource", "access", context);
+    return new LinearForbiddenError({
+      resource: "resource",
+      action: "access",
+      context,
+    });
   }
 
   if (error instanceof NetworkLinearError) {
-    return new LinearNetworkError(error.message, context);
+    return new LinearNetworkError({ reason: error.message, context });
   }
 
   if (error instanceof FeatureNotAccessibleLinearError) {
-    return new LinearFeatureNotAccessibleError("unknown", context);
+    return new LinearFeatureNotAccessibleError({ feature: "unknown", context });
   }
 
   // Unknown error
   const message = error instanceof Error ? error.message : String(error);
-  return new LinearUnknownError(message, context);
+  return new LinearUnknownError({ reason: message, context });
 }
