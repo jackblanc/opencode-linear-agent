@@ -26,6 +26,18 @@
         "bun-types": "^1.2.1",
       },
     },
+    "packages/oauth": {
+      "name": "@linear-opencode-agent/oauth",
+      "version": "1.0.0",
+      "dependencies": {
+        "@linear/sdk": "^68.1.0",
+        "better-result": "^2.0.0",
+        "zod": "^3.24.1",
+      },
+      "devDependencies": {
+        "bun-types": "^1.2.1",
+      },
+    },
     "packages/server": {
       "name": "@linear-opencode-agent/server",
       "version": "1.0.0",
@@ -56,6 +68,8 @@
     "@graphql-typed-document-node/core": ["@graphql-typed-document-node/core@3.2.0", "", { "peerDependencies": { "graphql": "^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0" } }, "sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ=="],
 
     "@linear-opencode-agent/core": ["@linear-opencode-agent/core@workspace:packages/core"],
+
+    "@linear-opencode-agent/oauth": ["@linear-opencode-agent/oauth@workspace:packages/oauth"],
 
     "@linear-opencode-agent/server": ["@linear-opencode-agent/server@workspace:packages/server"],
 
@@ -241,9 +255,11 @@
 
     "walk-up-path": ["walk-up-path@4.0.0", "", {}, "sha512-3hu+tD8YzSLGuFYtPRb48vdhKMi0KQV5sn+uWr8+7dMEq/2G/dtLrdDinkLjqq5TIbIBjYJ4Ax/n3YiaW7QM8A=="],
 
-    "zod": ["zod@4.3.5", "", {}, "sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g=="],
+    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@linear-opencode-agent/server/better-result": ["better-result@1.0.0", "", {}, "sha512-Knd3D8J+eEOWJBbK2dsqAvuEMugd8QxA77bhV/ScAkHcQ5+V7eGulnrWoMXCBSoktJBg70fsZnKOX4kw02ZkIA=="],
+
+    "knip/zod": ["zod@4.3.5", "", {}, "sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g=="],
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
   }
