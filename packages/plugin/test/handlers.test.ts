@@ -160,6 +160,47 @@ describe("handlers pure functions", () => {
       );
       expect(extractParameter("BASH", { command: "ls" })).toBe("ls");
     });
+
+    test("should convert absolute paths to relative when workdir is provided", () => {
+      const workdir = "/home/user/project";
+      expect(
+        extractParameter(
+          "read",
+          { filePath: "/home/user/project/src/file.ts" },
+          workdir,
+        ),
+      ).toBe("src/file.ts");
+      expect(
+        extractParameter(
+          "edit",
+          { filePath: "/home/user/project/package.json" },
+          workdir,
+        ),
+      ).toBe("package.json");
+    });
+
+    test("should handle worktree paths without explicit workdir", () => {
+      expect(
+        extractParameter("read", {
+          filePath:
+            "/Users/jack/.local/share/opencode/worktree/abc123/code-5/packages/core/test/time.test.ts",
+        }),
+      ).toBe("packages/core/test/time.test.ts");
+    });
+
+    test("should return original path if not under workdir", () => {
+      const workdir = "/home/user/project";
+      expect(
+        extractParameter("read", { filePath: "/other/path/file.ts" }, workdir),
+      ).toBe("/other/path/file.ts");
+    });
+
+    test("should handle path exactly at workdir root", () => {
+      const workdir = "/home/user/project";
+      expect(
+        extractParameter("read", { filePath: "/home/user/project" }, workdir),
+      ).toBe("/home/user/project");
+    });
   });
 
   describe("truncate", () => {

@@ -32,6 +32,48 @@ export type Logger = (message: string) => void;
 
 const MAX_OUTPUT_LENGTH = 500;
 
+/**
+ * Convert an absolute path to a relative path from workdir.
+ * Makes logs more readable by removing the long worktree prefix.
+ */
+function toRelativePath(absolutePath: string, workdir: string | null): string {
+  if (workdir && absolutePath.startsWith(workdir)) {
+    let relative = absolutePath.slice(workdir.length);
+    if (relative.startsWith("/")) {
+      relative = relative.slice(1);
+    }
+    return relative || absolutePath;
+  }
+
+  // Worktree paths: /home/user/.local/share/opencode/worktree/<hash>/<issue-slug>/...
+  const worktreeMatch = absolutePath.match(/\/worktree\/[^/]+\/[^/]+\/(.+)$/);
+  if (worktreeMatch?.[1]) {
+    return worktreeMatch[1];
+  }
+
+  return absolutePath;
+}
+
+/**
+ * Replace all absolute paths in a string with relative paths.
+ * Handles tool output that may contain multiple file paths.
+ */
+function replacePathsInOutput(output: string, workdir: string | null): string {
+  let result = output;
+
+  if (workdir) {
+    const escapedWorkdir = workdir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`${escapedWorkdir}/?([^\\s:]+)`, "g");
+    result = result.replace(pattern, "$1");
+  }
+
+  // Also replace worktree patterns even without explicit workdir
+  return result.replace(
+    /\/[^\s:]+\/\.local\/share\/opencode\/worktree\/[^/]+\/[^/]+\/([^\s:]+)/g,
+    "$1",
+  );
+}
+
 const TOOL_ACTION_MAP: Record<string, { action: string; past: string }> = {
   read: { action: "Reading", past: "Read" },
   edit: { action: "Editing", past: "Edited" },
@@ -92,6 +134,7 @@ export function truncate(text: string): string {
 export function extractParameter(
   name: string,
   input: { [key: string]: unknown },
+  workdir: string | null = null,
 ): string {
   const key = name.toLowerCase();
   switch (key) {
@@ -100,8 +143,8 @@ export function extractParameter(
     case "write": {
       const filePath = input["filePath"];
       const path = input["path"];
-      if (isString(filePath)) return filePath;
-      if (isString(path)) return path;
+      if (isString(filePath)) return toRelativePath(filePath, workdir);
+      if (isString(path)) return toRelativePath(path, workdir);
       return "file";
     }
     case "bash": {
@@ -203,6 +246,7 @@ export async function handleToolPart(
 
   const state = part.state;
   const input = getStateInput(state);
+  const workdir = session.linear.workdir || null;
 
   if (state.status === "running") {
     if (!markToolRunning(part.sessionID, part.id)) return;
@@ -224,7 +268,7 @@ export async function handleToolPart(
       {
         type: "action",
         action: getToolActionName(part.tool, false),
-        parameter: extractParameter(part.tool, input),
+        parameter: extractParameter(part.tool, input, workdir),
       },
       true,
     );
@@ -242,8 +286,8 @@ export async function handleToolPart(
       {
         type: "action",
         action: getToolActionName(part.tool, true),
-        parameter: extractParameter(part.tool, input),
-        result: truncate(state.output),
+        parameter: extractParameter(part.tool, input, workdir),
+        result: truncate(replacePathsInOutput(state.output, workdir)),
       },
       false,
     );
@@ -261,8 +305,8 @@ export async function handleToolPart(
       {
         type: "action",
         action: getToolActionName(part.tool, true),
-        parameter: extractParameter(part.tool, input),
-        result: `Error: ${truncate(state.error)}`,
+        parameter: extractParameter(part.tool, input, workdir),
+        result: `Error: ${truncate(replacePathsInOutput(state.error, workdir))}`,
       },
       false,
     );
