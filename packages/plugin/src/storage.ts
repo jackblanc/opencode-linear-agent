@@ -24,8 +24,8 @@ type StoreData = Record<string, StoredValue>;
  * Key prefixes matching the server's storage format
  */
 const ACCESS_TOKEN_PREFIX = "token:access:";
-const PENDING_QUESTION_PREFIX = "pending:question:";
-const PENDING_PERMISSION_PREFIX = "pending:permission:";
+const PENDING_QUESTION_PREFIX = "question:";
+const PENDING_PERMISSION_PREFIX = "permission:";
 
 /**
  * Lock configuration

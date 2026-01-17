@@ -1,4 +1,3 @@
-import type { Event as OpencodeEvent } from "@opencode-ai/sdk/v2";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import type { LinearService } from "./linear/LinearService";
@@ -10,53 +9,9 @@ import type {
 import { SessionManager } from "./session/SessionManager";
 import { WorktreeManager } from "./session/WorktreeManager";
 import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
-import { OpencodeEventProcessor } from "./OpencodeEventProcessor";
-import type { OpencodeEventResult } from "./OpencodeEventProcessor";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
-
-/**
- * High-frequency events that should be DEBUG level
- */
-const DEBUG_EVENTS = new Set([
-  "message.part.updated",
-  "message.updated",
-  "session.updated",
-  "session.diff",
-  "session.status",
-  "lsp.client.diagnostics",
-]);
-
-/**
- * Log an OpenCode event to Worker logs for observability
- */
-function logOpencodeEvent(event: OpencodeEvent, log: Logger): void {
-  // Extract event-specific properties
-  const extra: Record<string, unknown> = { eventType: event.type };
-
-  if ("properties" in event && event.properties) {
-    const props = event.properties as Record<string, unknown>;
-
-    if (props.error) extra.error = props.error;
-    if (props.status) extra.status = props.status;
-    if (props.messageID) extra.messageId = props.messageID;
-    if (props.partID) extra.partId = props.partID;
-    if (props.path) extra.filePath = props.path;
-    if (props.todos && Array.isArray(props.todos)) {
-      extra.todoCount = props.todos.length;
-    }
-  }
-
-  // Use appropriate log level based on event type
-  if (event.type === "session.error") {
-    log.error(`OpenCode: ${event.type}`, extra);
-  } else if (DEBUG_EVENTS.has(event.type)) {
-    log.debug(`OpenCode: ${event.type}`, extra);
-  } else {
-    log.info(`OpenCode: ${event.type}`, extra);
-  }
-}
 
 /**
  * Configuration for the LinearEventProcessor
@@ -241,79 +196,12 @@ export class LinearEventProcessor {
   }
 
   /**
-   * Subscribe to OpenCode event stream, process events via OpencodeEventProcessor,
-   * and return when session completes (idle, error, question asked, or retry needed).
+   * Execute a prompt (fire-and-forget)
    *
-   * @returns The final OpencodeEventResult indicating how the session ended
-   */
-  private async subscribeAndWaitForCompletion(
-    opencodeSessionId: string,
-    linearSessionId: string,
-    workdir: string,
-    log: Logger,
-    issueId: string,
-  ): Promise<OpencodeEventResult> {
-    log.info("Subscribing to OpenCode event stream");
-
-    const eventStream = await this.opencode.subscribe(workdir);
-
-    // Create the OpenCode event processor to handle events and post to Linear
-    const handler = new OpencodeEventProcessor(
-      this.linear,
-      linearSessionId,
-      opencodeSessionId,
-      this.opencode,
-      log.clone().tag("service", "opencode-processor"),
-      workdir,
-      issueId,
-    );
-
-    for await (const event of eventStream.stream) {
-      // Log every event for observability
-      logOpencodeEvent(event, log);
-
-      // Process the event via handler (posts activities to Linear, handles permissions)
-      const result = await handler.handleEvent(event);
-
-      // Break if handler signals completion (session.idle, session.error, or question asked)
-      if (result.action === "break") {
-        log.info("Session completed");
-        return result;
-      }
-
-      if (result.action === "question_asked") {
-        log.info(
-          "Question asked - saving pending question and waiting for user response",
-          {
-            requestId: result.pendingQuestion.requestId,
-            questionCount: result.pendingQuestion.questions.length,
-          },
-        );
-        return result;
-      }
-
-      if (result.action === "permission_asked") {
-        log.info(
-          "Permission asked - saving pending permission and waiting for user response",
-          {
-            requestId: result.pendingPermission.requestId,
-            permission: result.pendingPermission.permission,
-          },
-        );
-        return result;
-      }
-    }
-
-    // Stream ended without explicit break - treat as break
-    return { action: "break" };
-  }
-
-  /**
-   * Execute a prompt and wait for completion
-   *
-   * If a question is asked during execution, saves the pending question
-   * and returns. The question will be handled when the user responds via
-   * a prompted webhook.
+   * The plugin handles all event streaming to Linear.
+   * Questions and permissions are handled by the plugin, which saves
+   * them to the shared store. Responses are handled when the user
+   * responds via a prompted webhook.
    */
   private async executePrompt(
     opcodeSessionId: string,
@@ -321,66 +209,26 @@ export class LinearEventProcessor {
     workdir: string,
     prompt: string,
     log: Logger,
-    issueId: string,
   ): Promise<void> {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
-    // Fire-and-forget the prompt - don't await it
-    // The prompt call may not return until session is idle, but we need to
-    // handle question.asked events before that happens
-    this.opencode
-      .prompt(opcodeSessionId, workdir, [{ type: "text", text: prompt }])
-      .then((result) => {
-        if (Result.isError(result)) {
-          log.error("Prompt failed", {
-            error: result.error.message,
-            errorType: result.error._tag,
-          });
-        }
-      })
-      .catch((error: unknown) => {
-        log.error("Prompt threw exception", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+    // Fire-and-forget the prompt
+    // The plugin handles event streaming to Linear
+    const result = await this.opencode.prompt(opcodeSessionId, workdir, [
+      { type: "text", text: prompt },
+    ]);
+
+    if (Result.isError(result)) {
+      log.error("Prompt failed", {
+        error: result.error.message,
+        errorType: result.error._tag,
       });
-
-    // Subscribe and wait for completion (or question asked)
-    const result = await this.subscribeAndWaitForCompletion(
-      opcodeSessionId,
-      linearSessionId,
-      workdir,
-      log,
-      issueId,
-    );
-
-    log.info("subscribeAndWaitForCompletion returned", {
-      action: result.action,
-    });
-
-    // Handle question_asked - save pending question for later response
-    if (result.action === "question_asked") {
-      log.info("Saving pending question", {
-        requestId: result.pendingQuestion.requestId,
-        linearSessionId: result.pendingQuestion.linearSessionId,
-      });
-      await this.sessions.savePendingQuestion(result.pendingQuestion);
-      log.info("Pending question saved");
+      await this.linear.postError(linearSessionId, result.error);
       return;
     }
 
-    // Handle permission_asked - save pending permission for later response
-    if (result.action === "permission_asked") {
-      log.info("Saving pending permission", {
-        requestId: result.pendingPermission.requestId,
-        linearSessionId: result.pendingPermission.linearSessionId,
-      });
-      await this.sessions.savePendingPermission(result.pendingPermission);
-      log.info("Pending permission saved");
-      return;
-    }
-
-    log.info("OpenCode session completed");
+    log.info("Prompt sent, plugin will handle events");
   }
 
   /**
@@ -437,16 +285,13 @@ export class LinearEventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
-    const issueId = event.agentSession.issue?.identifier ?? "unknown";
-
-    // Send prompt and wait for completion
+    // Send prompt (fire-and-forget - plugin handles events)
     await this.executePrompt(
       opcodeSessionId,
       linearSessionId,
       workdir,
       prompt,
       log,
-      issueId,
     );
   }
 
@@ -545,16 +390,13 @@ export class LinearEventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
-    const issueId = event.agentSession.issue?.identifier ?? "unknown";
-
-    // Send prompt and wait for completion
+    // Send prompt (fire-and-forget - plugin handles events)
     await this.executePrompt(
       opcodeSessionId,
       linearSessionId,
       workdir,
       prompt,
       log,
-      issueId,
     );
   }
 
@@ -687,32 +529,8 @@ export class LinearEventProcessor {
       return;
     }
 
-    // Subscribe and wait for OpenCode to continue processing
-    log.info("Question answered - waiting for OpenCode to continue");
-
-    const result = await this.subscribeAndWaitForCompletion(
-      opcodeSessionId,
-      linearSessionId,
-      workdir,
-      log,
-      pending.issueId,
-    );
-
-    // Handle if another question was asked
-    if (result.action === "question_asked") {
-      log.info("Another question asked", {
-        requestId: result.pendingQuestion.requestId,
-      });
-      await this.sessions.savePendingQuestion(result.pendingQuestion);
-    }
-
-    // Handle if a permission was asked
-    if (result.action === "permission_asked") {
-      log.info("Permission asked after question answered", {
-        requestId: result.pendingPermission.requestId,
-      });
-      await this.sessions.savePendingPermission(result.pendingPermission);
-    }
+    // Reply sent - plugin handles subsequent events
+    log.info("Question reply sent, plugin will handle events");
   }
 
   /**
@@ -805,34 +623,8 @@ export class LinearEventProcessor {
       return;
     }
 
-    // Subscribe and wait for OpenCode to continue processing
-    log.info("Permission responded - waiting for OpenCode to continue", {
-      reply,
-    });
-
-    const result = await this.subscribeAndWaitForCompletion(
-      opcodeSessionId,
-      linearSessionId,
-      workdir,
-      log,
-      pending.issueId,
-    );
-
-    // Handle if a question was asked
-    if (result.action === "question_asked") {
-      log.info("Question asked after permission responded", {
-        requestId: result.pendingQuestion.requestId,
-      });
-      await this.sessions.savePendingQuestion(result.pendingQuestion);
-    }
-
-    // Handle if another permission was asked
-    if (result.action === "permission_asked") {
-      log.info("Another permission asked", {
-        requestId: result.pendingPermission.requestId,
-      });
-      await this.sessions.savePendingPermission(result.pendingPermission);
-    }
+    // Reply sent - plugin handles subsequent events
+    log.info("Permission reply sent, plugin will handle events", { reply });
   }
 
   /**
@@ -950,13 +742,13 @@ export class LinearEventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
+    // Send prompt (fire-and-forget - plugin handles events)
     await this.executePrompt(
       opcodeSessionId,
       linearSessionId,
       workdir,
       prompt,
       log,
-      issueId,
     );
   }
 }

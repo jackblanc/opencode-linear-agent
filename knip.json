@@ -1,4 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": ["**/test/**", ".opencode/**"]
+  "ignore": ["**/test/**", ".opencode/**"],
+  "workspaces": {
+    "packages/plugin": {
+      "entry": ["test/**/*.test.ts"]
+    }
+  }
 }
