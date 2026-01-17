@@ -6,6 +6,8 @@ WORKDIR /app
 # Copy package files first for caching
 COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/package.json
+COPY packages/oauth/package.json packages/oauth/package.json
+COPY packages/plugin/package.json packages/plugin/package.json
 COPY packages/server/package.json packages/server/package.json
 
 # Install dependencies
