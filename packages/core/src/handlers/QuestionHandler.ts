@@ -13,6 +13,7 @@ export interface QuestionHandlerContext {
   linearSessionId: string;
   opencodeSessionId: string;
   workdir: string | null;
+  issueId: string;
 }
 
 /**
@@ -76,6 +77,7 @@ export function processQuestionAsked(
     opcodeSessionId: sessionID,
     linearSessionId: ctx.linearSessionId,
     workdir: ctx.workdir ?? "",
+    issueId: ctx.issueId,
     questions: questionInfos,
     answers: questionInfos.map(() => null), // Initialize all as unanswered
     createdAt: Date.now(),

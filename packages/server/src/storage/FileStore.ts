@@ -146,7 +146,7 @@ export class FileStore implements KeyValueStore {
 
     for (const key of Object.keys(this.data)) {
       const stored = this.data[key];
-      if (stored.expires && now > stored.expires) {
+      if (stored?.expires && now > stored.expires) {
         delete this.data[key];
         cleaned++;
       }

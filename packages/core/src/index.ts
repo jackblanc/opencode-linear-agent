@@ -71,6 +71,7 @@ export { SessionManager } from "./session/SessionManager";
 export { WorktreeManager } from "./session/WorktreeManager";
 export type { WorktreeResolution } from "./session/WorktreeManager";
 export { PromptBuilder } from "./session/PromptBuilder";
+export type { PromptContext } from "./session/PromptBuilder";
 export type { SessionState, HandlerState } from "./session/SessionState";
 export { createInitialHandlerState } from "./session/SessionState";
 export type {

@@ -9,6 +9,7 @@ export interface PermissionHandlerContext {
   linearSessionId: string;
   opencodeSessionId: string;
   workdir: string | null;
+  issueId: string;
 }
 
 /**
@@ -65,6 +66,7 @@ export function processPermissionAsked(
     opcodeSessionId: sessionID,
     linearSessionId: ctx.linearSessionId,
     workdir: ctx.workdir ?? "",
+    issueId: ctx.issueId,
     permission,
     patterns,
     metadata,

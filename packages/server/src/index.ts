@@ -48,8 +48,8 @@ function getClientIp(request: Request): string | null {
   // Fallback to X-Forwarded-For (can contain multiple IPs: "client, proxy1, proxy2")
   const xff = request.headers.get("x-forwarded-for");
   if (xff) {
-    const firstIp = xff.split(",")[0].trim();
-    return firstIp || null;
+    const firstIp = xff.split(",")[0]?.trim();
+    return firstIp ?? null;
   }
 
   return null;
@@ -137,11 +137,16 @@ function createDirectDispatcher(
       // OpenCode handles worktree creation natively
       // Note: opencodeUrl defaults to localhost:4096 for external links
       // config.opencode.url is only used for internal Docker communication
+      const storePath = join(config.paths.data, "store.json");
       const processor = new LinearEventProcessor(
         opencode,
         linear,
         sessionRepository,
         resolved.path,
+        {
+          organizationId,
+          storePath,
+        },
       );
 
       // Process the event directly (this is the key difference from Cloudflare)

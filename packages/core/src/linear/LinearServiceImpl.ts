@@ -352,6 +352,11 @@ export class LinearServiceImpl implements LinearService {
         );
         const inProgressState = sortedStates[0];
 
+        if (!inProgressState) {
+          this.log.warn("No In Progress state found", { issueId });
+          return;
+        }
+
         this.log.info("Moving issue to In Progress", {
           issueId,
           stateId: inProgressState.id,

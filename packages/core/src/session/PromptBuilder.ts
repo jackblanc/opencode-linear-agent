@@ -1,6 +1,31 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 
 /**
+ * Context for building prompts with Linear integration
+ */
+export interface PromptContext {
+  linearSessionId: string;
+  organizationId: string;
+  storePath: string;
+  workdir: string;
+}
+
+/**
+ * Build YAML frontmatter for the plugin to parse
+ */
+function buildFrontmatter(issueId: string, ctx: PromptContext): string {
+  return `---
+linear_session: ${ctx.linearSessionId}
+linear_issue: ${issueId}
+linear_organization: ${ctx.organizationId}
+store_path: ${ctx.storePath}
+workdir: ${ctx.workdir}
+---
+
+`;
+}
+
+/**
  * System instructions prepended to every agent prompt.
  * Ensures consistent behavior across all sessions.
  */
@@ -57,37 +82,45 @@ export class PromptBuilder {
    * Build prompt for new session creation
    *
    * @param event - The webhook payload
+   * @param ctx - Context for Linear integration (session, org, paths)
    * @param previousContext - Optional context from a previous session
-   * @returns The complete prompt with system instructions and context
+   * @returns The complete prompt with frontmatter, system instructions and context
    */
   buildCreatedPrompt(
     event: AgentSessionEventWebhookPayload,
+    ctx: PromptContext,
     previousContext?: string,
   ): string {
+    const issueId = event.agentSession.issue?.identifier ?? "unknown";
+    const frontmatter = buildFrontmatter(issueId, ctx);
     const issueContext = this.buildIssueContext(event);
     const basePrompt = event.promptContext ?? "Please help with this issue.";
-    return `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext ?? ""}${basePrompt}`;
+    return `${frontmatter}${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext ?? ""}${basePrompt}`;
   }
 
   /**
    * Build prompt for follow-up message
    *
-   * If session was recreated (has previousContext), inject system instructions
-   * and issue context. Otherwise, just use the user response.
+   * If session was recreated (has previousContext), inject frontmatter, system instructions
+   * and issue context. Otherwise, just use the user response (frontmatter already in session).
    *
    * @param event - The webhook payload
    * @param userResponse - The user's follow-up message
+   * @param ctx - Context for Linear integration
    * @param previousContext - Optional context from a previous session
    * @returns The prompt to send
    */
   buildFollowUpPrompt(
     event: AgentSessionEventWebhookPayload,
     userResponse: string,
+    ctx: PromptContext,
     previousContext?: string,
   ): string {
     if (previousContext) {
+      const issueId = event.agentSession.issue?.identifier ?? "unknown";
+      const frontmatter = buildFrontmatter(issueId, ctx);
       const issueContext = this.buildIssueContext(event);
-      return `${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext}${userResponse}`;
+      return `${frontmatter}${SYSTEM_INSTRUCTIONS}${issueContext}${previousContext}${userResponse}`;
     }
     return userResponse;
   }
@@ -96,15 +129,20 @@ export class PromptBuilder {
    * Build prompt for follow-up when ignoring a pending question
    *
    * @param userResponse - The user's message
+   * @param issueId - The issue identifier (e.g., "CODE-123")
+   * @param ctx - Context for Linear integration
    * @param previousContext - Optional context from a previous session
    * @returns The prompt to send
    */
   buildFollowUpWithoutEvent(
     userResponse: string,
+    issueId: string,
+    ctx: PromptContext,
     previousContext?: string,
   ): string {
     if (previousContext) {
-      return `${SYSTEM_INSTRUCTIONS}${previousContext}${userResponse}`;
+      const frontmatter = buildFrontmatter(issueId, ctx);
+      return `${frontmatter}${SYSTEM_INSTRUCTIONS}${previousContext}${userResponse}`;
     }
     return userResponse;
   }
