@@ -3,9 +3,12 @@
  *
  * This package contains:
  * - LinearEventProcessor: Processes Linear webhook events
- * - OpencodeEventProcessor: Processes OpenCode SSE events
  * - SessionManager: Manages OpenCode session lifecycle
  * - Interfaces for external dependencies (LinearService, SessionRepository)
+ *
+ * Note: OpenCode event processing is handled by the plugin, not this package.
+ * The LinearEventProcessor sends prompts fire-and-forget, and the plugin
+ * handles all event streaming to Linear.
  */
 
 // Re-export Result from better-result for convenience
@@ -14,14 +17,10 @@ export { Result } from "better-result";
 // Event processors
 export { LinearEventProcessor } from "./LinearEventProcessor";
 export type { LinearEventProcessorConfig } from "./LinearEventProcessor";
-export { OpencodeEventProcessor } from "./OpencodeEventProcessor";
-export type { OpencodeEventResult } from "./OpencodeEventProcessor";
 
 // Backwards compatibility aliases (deprecated - use new names)
 export { LinearEventProcessor as EventProcessor } from "./LinearEventProcessor";
 export type { LinearEventProcessorConfig as EventProcessorConfig } from "./LinearEventProcessor";
-export { OpencodeEventProcessor as SSEEventHandler } from "./OpencodeEventProcessor";
-export type { OpencodeEventResult as SSEEventResult } from "./OpencodeEventProcessor";
 
 // Pure handler functions
 export {

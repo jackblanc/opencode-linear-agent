@@ -73,7 +73,7 @@ function toGerund(verb: string): string {
   return verb + "ing";
 }
 
-function getToolActionName(name: string, completed: boolean): string {
+export function getToolActionName(name: string, completed: boolean): string {
   const mapping = TOOL_ACTION_MAP[name.toLowerCase()];
   if (!mapping) {
     const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
@@ -82,14 +82,14 @@ function getToolActionName(name: string, completed: boolean): string {
   return completed ? mapping.past : mapping.action;
 }
 
-function truncate(text: string): string {
+export function truncate(text: string): string {
   if (text.length > MAX_OUTPUT_LENGTH) {
     return text.slice(0, MAX_OUTPUT_LENGTH) + "...(truncated)";
   }
   return text;
 }
 
-function extractParameter(
+export function extractParameter(
   name: string,
   input: { [key: string]: unknown },
 ): string {
@@ -143,7 +143,7 @@ function extractParameter(
   }
 }
 
-function getToolThought(
+export function getToolThought(
   name: string,
   input: { [key: string]: unknown },
 ): string | null {
@@ -327,7 +327,7 @@ export async function handleTodoUpdated(
   }
 }
 
-function mapTodoStatus(
+export function mapTodoStatus(
   status: string,
 ): "pending" | "inProgress" | "completed" | "canceled" {
   switch (status) {
