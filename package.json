@@ -16,7 +16,7 @@
     "format:check": "prettier --check .",
     "format:fix": "prettier --write .",
     "knip": "knip",
-    "check": "bun run typecheck && bun run lint:check && bun run format:check && bun run knip",
+    "check": "bun run typecheck && bun run lint:check && bun run format:check && bun run knip && bun test",
     "fix": "bun run lint:fix && bun run format:fix"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@ describe("processQuestionAsked", () => {
     linearSessionId: "linear-123",
     opencodeSessionId: "opencode-456",
     workdir: "/workdir",
+    issueId: "CODE-123",
   };
 
   test("should return elicitation actions and pending question", () => {
@@ -117,6 +118,7 @@ describe("processQuestionAsked", () => {
       linearSessionId: "linear-123",
       opencodeSessionId: "opencode-456",
       workdir: null,
+      issueId: "CODE-123",
     };
 
     const properties = {
@@ -179,7 +181,7 @@ describe("processQuestionAsked", () => {
     const state = createInitialHandlerState();
     const result = processQuestionAsked(properties, state, ctx);
 
-    expect(result.pendingQuestion?.questions[0].multiple).toBe(true);
+    expect(result.pendingQuestion?.questions[0]?.multiple).toBe(true);
     expect(result.actions[0]).toMatchObject({
       metadata: {
         options: [
@@ -212,7 +214,7 @@ describe("processQuestionAsked", () => {
       body: "What should we do?\n\n",
       metadata: { options: [] },
     });
-    expect(result.pendingQuestion?.questions[0].options).toHaveLength(0);
+    expect(result.pendingQuestion?.questions[0]?.options).toHaveLength(0);
   });
 
   test("should format elicitation body with markdown", () => {
@@ -400,7 +402,7 @@ describe("processQuestionAsked", () => {
     const result = processQuestionAsked(properties, state, ctx);
 
     // undefined should be preserved
-    expect(result.pendingQuestion?.questions[0].multiple).toBeUndefined();
+    expect(result.pendingQuestion?.questions[0]?.multiple).toBeUndefined();
   });
 
   test("should handle long option descriptions", () => {

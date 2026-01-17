@@ -38,6 +38,8 @@ export interface PendingQuestion {
   linearSessionId: string;
   /** Working directory for OpenCode calls */
   workdir: string;
+  /** Linear issue identifier (e.g., "CODE-123") */
+  issueId: string;
   /** The questions asked */
   questions: QuestionInfo[];
   /** Responses collected so far (null = not yet answered) */
@@ -58,6 +60,8 @@ export interface PendingPermission {
   linearSessionId: string;
   /** Working directory for OpenCode calls */
   workdir: string;
+  /** Linear issue identifier (e.g., "CODE-123") */
+  issueId: string;
   /** Permission type (e.g., "Bash", "Write", "Edit") */
   permission: string;
   /** File patterns that need permission */

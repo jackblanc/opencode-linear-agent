@@ -28,6 +28,7 @@ describe("processPermissionAsked", () => {
     linearSessionId: "linear-123",
     opencodeSessionId: "opencode-456",
     workdir: "/workdir",
+    issueId: "CODE-123",
   };
 
   test("should return elicitation action and pending permission", () => {
@@ -112,6 +113,7 @@ describe("processPermissionAsked", () => {
       opcodeSessionId: "opencode-456",
       linearSessionId: "linear-123",
       workdir: "/workdir",
+      issueId: "CODE-123",
       permission: "Edit",
       patterns: ["/src/**/*.ts"],
       metadata: { custom: "data" },
@@ -124,6 +126,7 @@ describe("processPermissionAsked", () => {
       linearSessionId: "linear-123",
       opencodeSessionId: "opencode-456",
       workdir: null,
+      issueId: "CODE-123",
     };
 
     const properties = createPermissionRequest();

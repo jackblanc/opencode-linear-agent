@@ -51,6 +51,7 @@ export class OpencodeEventProcessor {
     opencode: OpencodeService,
     private readonly log: Logger,
     private readonly workdir: string | null = null,
+    private readonly issueId: string = "unknown",
   ) {
     this.actionExecutor = new ActionExecutor(linear, opencode);
     this.handlerState = createInitialHandlerState();
@@ -186,6 +187,7 @@ export class OpencodeEventProcessor {
       linearSessionId: this.linearSessionId,
       opencodeSessionId: this.opencodeSessionId,
       workdir: this.workdir,
+      issueId: this.issueId,
     });
 
     if (result.pendingPermission) {
@@ -218,6 +220,7 @@ export class OpencodeEventProcessor {
       linearSessionId: this.linearSessionId,
       opencodeSessionId: this.opencodeSessionId,
       workdir: this.workdir,
+      issueId: this.issueId,
     });
 
     this.handlerState = result.state;

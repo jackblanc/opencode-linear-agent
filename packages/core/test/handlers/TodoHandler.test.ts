@@ -192,10 +192,16 @@ describe("processTodoUpdated", () => {
   });
 
   test("should handle large number of todos", () => {
+    const statuses = [
+      "pending",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ] as const;
     const todos = Array.from({ length: 100 }, (_, i) => ({
       id: `todo-${i}`,
       content: `Task ${i}`,
-      status: ["pending", "in_progress", "completed", "cancelled"][i % 4],
+      status: statuses[i % 4] ?? "pending",
       priority: "medium",
     }));
 

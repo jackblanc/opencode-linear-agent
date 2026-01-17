@@ -9,7 +9,7 @@ import type {
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import { WorktreeManager } from "./session/WorktreeManager";
-import { PromptBuilder } from "./session/PromptBuilder";
+import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
 import { OpencodeEventProcessor } from "./OpencodeEventProcessor";
 import type { OpencodeEventResult } from "./OpencodeEventProcessor";
 import type { OpencodeService } from "./opencode/OpencodeService";
@@ -66,9 +66,16 @@ export interface LinearEventProcessorConfig {
   startCommand?: string;
   /** OpenCode server URL for external links (should be localhost for security) */
   opencodeUrl?: string;
+  /** Linear organization ID for OAuth token lookup */
+  organizationId: string;
+  /** Path to shared store file for token and pending state */
+  storePath: string;
 }
 
-const DEFAULT_CONFIG: LinearEventProcessorConfig = {
+const DEFAULT_CONFIG: Omit<
+  LinearEventProcessorConfig,
+  "organizationId" | "storePath"
+> = {
   startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
@@ -102,9 +109,12 @@ export class LinearEventProcessor {
     private readonly linear: LinearService,
     private readonly sessions: SessionRepository,
     private readonly repoDirectory: string,
-    config?: Partial<LinearEventProcessorConfig>,
+    config: LinearEventProcessorConfig,
   ) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+    } as LinearEventProcessorConfig;
     this.sessionManager = new SessionManager(opencode, sessions);
     this.worktreeManager = new WorktreeManager(
       opencode,
@@ -241,6 +251,7 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     log: Logger,
+    issueId: string,
   ): Promise<OpencodeEventResult> {
     log.info("Subscribing to OpenCode event stream");
 
@@ -254,6 +265,7 @@ export class LinearEventProcessor {
       this.opencode,
       log.clone().tag("service", "opencode-processor"),
       workdir,
+      issueId,
     );
 
     for await (const event of eventStream.stream) {
@@ -309,6 +321,7 @@ export class LinearEventProcessor {
     workdir: string,
     prompt: string,
     log: Logger,
+    issueId: string,
   ): Promise<void> {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
@@ -338,6 +351,7 @@ export class LinearEventProcessor {
       linearSessionId,
       workdir,
       log,
+      issueId,
     );
 
     log.info("subscribeAndWaitForCompletion returned", {
@@ -403,9 +417,18 @@ export class LinearEventProcessor {
       return;
     }
 
-    // Build prompt with system instructions + issue context + previous context
+    // Build prompt context for plugin integration
+    const promptCtx: PromptContext = {
+      linearSessionId,
+      organizationId: this.config.organizationId,
+      storePath: this.config.storePath,
+      workdir,
+    };
+
+    // Build prompt with frontmatter + system instructions + issue context + previous context
     const prompt = this.promptBuilder.buildCreatedPrompt(
       event,
+      promptCtx,
       previousContext,
     );
 
@@ -414,6 +437,8 @@ export class LinearEventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
+    const issueId = event.agentSession.issue?.identifier ?? "unknown";
+
     // Send prompt and wait for completion
     await this.executePrompt(
       opcodeSessionId,
@@ -421,6 +446,7 @@ export class LinearEventProcessor {
       workdir,
       prompt,
       log,
+      issueId,
     );
   }
 
@@ -498,10 +524,19 @@ export class LinearEventProcessor {
       return;
     }
 
+    // Build prompt context for plugin integration
+    const promptCtx: PromptContext = {
+      linearSessionId,
+      organizationId: this.config.organizationId,
+      storePath: this.config.storePath,
+      workdir,
+    };
+
     // No pending question or permission - treat as a normal follow-up prompt
     const prompt = this.promptBuilder.buildFollowUpPrompt(
       event,
       userResponse,
+      promptCtx,
       previousContext,
     );
 
@@ -510,6 +545,8 @@ export class LinearEventProcessor {
       hasPreviousContext: !!previousContext,
     });
 
+    const issueId = event.agentSession.issue?.identifier ?? "unknown";
+
     // Send prompt and wait for completion
     await this.executePrompt(
       opcodeSessionId,
@@ -517,6 +554,7 @@ export class LinearEventProcessor {
       workdir,
       prompt,
       log,
+      issueId,
     );
   }
 
@@ -561,12 +599,19 @@ export class LinearEventProcessor {
         workdir,
         previousContext,
         log,
+        pending.issueId,
       );
       return;
     }
 
     // Try to match user response to an option label
     const currentQuestion = pending.questions[answerIndex];
+    if (!currentQuestion) {
+      log.warn("No current question found at index", { answerIndex });
+      await this.sessions.deletePendingQuestion(linearSessionId);
+      return;
+    }
+
     const matchedLabel = this.matchOptionLabel(
       userResponse,
       currentQuestion.options,
@@ -590,6 +635,7 @@ export class LinearEventProcessor {
         workdir,
         previousContext,
         log,
+        pending.issueId,
       );
       return;
     }
@@ -649,6 +695,7 @@ export class LinearEventProcessor {
       linearSessionId,
       workdir,
       log,
+      pending.issueId,
     );
 
     // Handle if another question was asked
@@ -718,6 +765,7 @@ export class LinearEventProcessor {
         workdir,
         previousContext,
         log,
+        pending.issueId,
       );
       return;
     }
@@ -767,6 +815,7 @@ export class LinearEventProcessor {
       linearSessionId,
       workdir,
       log,
+      pending.issueId,
     );
 
     // Handle if a question was asked
@@ -880,9 +929,19 @@ export class LinearEventProcessor {
     workdir: string,
     previousContext: string | undefined,
     log: Logger,
+    issueId = "unknown",
   ): Promise<void> {
+    const promptCtx: PromptContext = {
+      linearSessionId,
+      organizationId: this.config.organizationId,
+      storePath: this.config.storePath,
+      workdir,
+    };
+
     const prompt = this.promptBuilder.buildFollowUpWithoutEvent(
       userResponse,
+      issueId,
+      promptCtx,
       previousContext,
     );
 
@@ -897,6 +956,7 @@ export class LinearEventProcessor {
       workdir,
       prompt,
       log,
+      issueId,
     );
   }
 }

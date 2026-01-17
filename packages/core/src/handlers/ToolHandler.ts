@@ -56,7 +56,7 @@ function toRelativePath(absolutePath: string, workdir: string | null): string {
     // If no workdir or path doesn't start with it, try to extract just the repo-relative part
     // Worktree paths look like: /home/user/.local/share/opencode/worktree/<hash>/<issue-slug>/...
     const worktreeMatch = absolutePath.match(/\/worktree\/[^/]+\/[^/]+\/(.+)$/);
-    if (worktreeMatch) {
+    if (worktreeMatch?.[1]) {
       return worktreeMatch[1];
     }
     return absolutePath;
