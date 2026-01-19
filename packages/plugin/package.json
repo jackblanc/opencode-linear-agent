@@ -7,8 +7,7 @@
   "types": "src/index.ts",
   "scripts": {
     "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify --external '@opencode-ai/plugin'",
-    "dev": "bun build ./src/index.ts --outfile=../../.opencode/plugin/linear.js --target=bun --external '@opencode-ai/plugin'",
-    "typecheck": "tsc --noEmit"
+    "dev": "bun build ./src/index.ts --outfile=../../.opencode/plugin/linear.js --target=bun --external '@opencode-ai/plugin'"
   },
   "dependencies": {
     "@linear/sdk": "^68.1.0",
@@ -17,9 +16,7 @@
     "better-result": "^2.1.0",
     "yaml": "^2.7.0"
   },
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
+  "devDependencies": {},
   "peerDependencies": {
     "typescript": "^5"
   }
