@@ -15,7 +15,7 @@ const TOOL_ACTION_MAP: Record<string, { action: string; pastTense: string }> = {
   task: { action: "Delegating task", pastTense: "Delegated task" },
   todowrite: { action: "Updating plan", pastTense: "Updated plan" },
   todoread: { action: "Reading plan", pastTense: "Read plan" },
-  mcp_question: { action: "Asking question", pastTense: "Asked question" },
+  question: { action: "Asking question", pastTense: "Asked question" },
 };
 
 /**
@@ -116,7 +116,7 @@ export function extractToolParameter(
       return getString(input, "pattern") ?? "pattern";
     case "task":
       return getString(input, "description") ?? "task";
-    case "mcp_question": {
+    case "question": {
       // Extract question text from the questions array
       const questions = input["questions"];
       if (Array.isArray(questions) && questions.length > 0) {

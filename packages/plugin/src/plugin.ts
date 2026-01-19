@@ -180,19 +180,19 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     },
 
     /**
-     * Hook into tool execution to capture mcp_question args for elicitations.
+     * Hook into tool execution to capture question args for elicitations.
      */
     "tool.execute.before": async (ctx, output) => {
-      if (ctx.tool.toLowerCase() === "mcp_question") {
+      if (ctx.tool.toLowerCase() === "question") {
         storePendingQuestionArgs(ctx.callID, output.args);
       }
     },
 
     /**
-     * Hook into tool execution completion to post mcp_question elicitations.
+     * Hook into tool execution completion to post question elicitations.
      */
     "tool.execute.after": async (ctx, _output) => {
-      if (ctx.tool.toLowerCase() !== "mcp_question") return;
+      if (ctx.tool.toLowerCase() !== "question") return;
 
       const args = consumePendingQuestionArgs(ctx.callID);
       if (!args) return;

@@ -84,7 +84,7 @@ const TOOL_ACTION_MAP: Record<string, { action: string; past: string }> = {
   task: { action: "Delegating task", past: "Delegated task" },
   todowrite: { action: "Updating plan", past: "Updated plan" },
   todoread: { action: "Reading plan", past: "Read plan" },
-  mcp_question: { action: "Asking question", past: "Asked question" },
+  question: { action: "Asking question", past: "Asked question" },
 };
 
 function isString(value: unknown): value is string {
@@ -160,7 +160,7 @@ export function extractParameter(
       const description = input["description"];
       return isString(description) ? description : "task";
     }
-    case "mcp_question": {
+    case "question": {
       const questions = input["questions"];
       if (Array.isArray(questions) && questions[0]) {
         const first: unknown = questions[0];
@@ -240,6 +240,9 @@ export async function handleToolPart(
 
   const part = event.properties.part;
   if (!isToolPart(part)) return;
+
+  // Skip question tool - handled separately via tool.execute.after hook as elicitation
+  if (part.tool.toLowerCase() === "question") return;
 
   const session = getSession(part.sessionID);
   if (!session || !session.linear.sessionId) return;
