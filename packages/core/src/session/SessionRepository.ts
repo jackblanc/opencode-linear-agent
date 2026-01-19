@@ -9,7 +9,7 @@ export interface WorktreeInfo {
 }
 
 /**
- * A question option from OpenCode's mcp_question tool
+ * A question option from OpenCode's question tool
  */
 export interface QuestionOption {
   label: string;
@@ -17,7 +17,7 @@ export interface QuestionOption {
 }
 
 /**
- * A single question from OpenCode's mcp_question tool
+ * A single question from OpenCode's question tool
  */
 export interface QuestionInfo {
   question: string;
