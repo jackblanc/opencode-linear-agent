@@ -42,8 +42,8 @@ describe("getToolActionName", () => {
   });
 
   test("should return question tool names", () => {
-    expect(getToolActionName("mcp_question", false)).toBe("Asking question");
-    expect(getToolActionName("mcp_question", true)).toBe("Asked question");
+    expect(getToolActionName("question", false)).toBe("Asking question");
+    expect(getToolActionName("question", true)).toBe("Asked question");
   });
 
   test("should handle case insensitivity", () => {
@@ -132,10 +132,10 @@ describe("extractToolParameter", () => {
     expect(extractToolParameter("task", {}, null)).toBe("task");
   });
 
-  test("should extract question text for mcp_question", () => {
+  test("should extract question text for question tool", () => {
     expect(
       extractToolParameter(
-        "mcp_question",
+        "question",
         {
           questions: [
             { question: "Which option?", header: "Select", options: [] },
@@ -150,7 +150,7 @@ describe("extractToolParameter", () => {
     const longQuestion = "A".repeat(150);
     expect(
       extractToolParameter(
-        "mcp_question",
+        "question",
         {
           questions: [{ question: longQuestion, header: "Q", options: [] }],
         },
@@ -160,7 +160,7 @@ describe("extractToolParameter", () => {
   });
 
   test("should fallback to 'user input' for empty questions array", () => {
-    expect(extractToolParameter("mcp_question", { questions: [] }, null)).toBe(
+    expect(extractToolParameter("question", { questions: [] }, null)).toBe(
       "user input",
     );
   });
@@ -168,7 +168,7 @@ describe("extractToolParameter", () => {
   test("should fallback to 'user input' for invalid questions format", () => {
     expect(
       extractToolParameter(
-        "mcp_question",
+        "question",
         { questions: [{ invalid: true }] },
         null,
       ),

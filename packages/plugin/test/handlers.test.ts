@@ -19,7 +19,7 @@ describe("handlers pure functions", () => {
       expect(getToolActionName("task", false)).toBe("Delegating task");
       expect(getToolActionName("todowrite", false)).toBe("Updating plan");
       expect(getToolActionName("todoread", false)).toBe("Reading plan");
-      expect(getToolActionName("mcp_question", false)).toBe("Asking question");
+      expect(getToolActionName("question", false)).toBe("Asking question");
     });
 
     test("should return mapped past tense names for known tools (completed)", () => {
@@ -32,7 +32,7 @@ describe("handlers pure functions", () => {
       expect(getToolActionName("task", true)).toBe("Delegated task");
       expect(getToolActionName("todowrite", true)).toBe("Updated plan");
       expect(getToolActionName("todoread", true)).toBe("Read plan");
-      expect(getToolActionName("mcp_question", true)).toBe("Asked question");
+      expect(getToolActionName("question", true)).toBe("Asked question");
     });
 
     test("should be case-insensitive for tool names", () => {
@@ -111,9 +111,9 @@ describe("handlers pure functions", () => {
       expect(extractParameter("task", {})).toBe("task");
     });
 
-    test("should extract question text for mcp_question", () => {
+    test("should extract question text for question tool", () => {
       expect(
-        extractParameter("mcp_question", {
+        extractParameter("question", {
           questions: [{ question: "Which option?" }],
         }),
       ).toBe("Which option?");
@@ -121,18 +121,18 @@ describe("handlers pure functions", () => {
 
     test("should truncate long question text", () => {
       const longQuestion = "a".repeat(150);
-      const result = extractParameter("mcp_question", {
+      const result = extractParameter("question", {
         questions: [{ question: longQuestion }],
       });
       expect(result.length).toBe(100);
     });
 
     test("should return 'user input' if no valid question", () => {
-      expect(extractParameter("mcp_question", {})).toBe("user input");
-      expect(extractParameter("mcp_question", { questions: [] })).toBe(
+      expect(extractParameter("question", {})).toBe("user input");
+      expect(extractParameter("question", { questions: [] })).toBe(
         "user input",
       );
-      expect(extractParameter("mcp_question", { questions: [{}] })).toBe(
+      expect(extractParameter("question", { questions: [{}] })).toBe(
         "user input",
       );
     });
