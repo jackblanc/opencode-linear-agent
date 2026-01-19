@@ -10,8 +10,8 @@ services:
     volumes:
       # Mount config file
       - ./config.docker.json:/app/packages/server/config.json:ro
-      # Persistent data (tokens, sessions)
-      - server-data:/data
+      # Persistent data (tokens, sessions) - bind mount for plugin access
+      - ~/.local/share/linear-opencode-agent:/data
     environment:
       - NODE_ENV=production
       - LOG_FORMAT=pretty
@@ -33,9 +33,6 @@ services:
       - webhook-server
     networks:
       - linear-agent
-
-volumes:
-  server-data:
 
 networks:
   linear-agent:

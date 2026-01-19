@@ -23,14 +23,9 @@ export interface LinearEventProcessorConfig {
   opencodeUrl?: string;
   /** Linear organization ID for OAuth token lookup */
   organizationId: string;
-  /** Path to shared store file for token and pending state */
-  storePath: string;
 }
 
-const DEFAULT_CONFIG: Omit<
-  LinearEventProcessorConfig,
-  "organizationId" | "storePath"
-> = {
+const DEFAULT_CONFIG: Omit<LinearEventProcessorConfig, "organizationId"> = {
   startCommand: "bun install --ignore-scripts",
   opencodeUrl: "http://localhost:4096",
 };
@@ -154,11 +149,11 @@ export class LinearEventProcessor {
     }
 
     const session = sessionResult.value;
-    const opcodeSessionId = session.opcodeSessionId;
+    const opencodeSessionId = session.opencodeSessionId;
 
     // Add OpenCode session ID to logger context
-    log.tag("opcodeSession", opcodeSessionId.slice(0, 8));
-    log.tag("opcodeSessionId", opcodeSessionId);
+    log.tag("opcodeSession", opencodeSessionId.slice(0, 8));
+    log.tag("opencodeSessionId", opencodeSessionId);
 
     log.info("OpenCode session ready", {
       workdir,
@@ -169,15 +164,15 @@ export class LinearEventProcessor {
     // Set external link to OpenCode UI
     // Format: /{base64_encoded_workdir}/session/{sessionId}
     // Use configured OpenCode URL (should be localhost for security)
-    const opcodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
+    const opencodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
     const encodedWorkdir = base64Encode(workdir);
-    const externalLink = `${opcodeBaseUrl}/${encodedWorkdir}/session/${opcodeSessionId}`;
+    const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
     await this.linear.setExternalLink(linearSessionId, externalLink);
 
     if (event.action === "created") {
       await this.handleCreated(
         event,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         session.previousContext,
@@ -186,7 +181,7 @@ export class LinearEventProcessor {
     } else if (event.action === "prompted") {
       await this.handlePrompted(
         event,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         session.previousContext,
@@ -204,7 +199,7 @@ export class LinearEventProcessor {
    * responds via a prompted webhook.
    */
   private async executePrompt(
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     prompt: string,
@@ -215,7 +210,7 @@ export class LinearEventProcessor {
 
     // Fire-and-forget the prompt
     // The plugin handles event streaming to Linear
-    const result = await this.opencode.prompt(opcodeSessionId, workdir, [
+    const result = await this.opencode.prompt(opencodeSessionId, workdir, [
       { type: "text", text: prompt },
     ]);
 
@@ -236,7 +231,7 @@ export class LinearEventProcessor {
    */
   private async handleCreated(
     event: AgentSessionEventWebhookPayload,
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     previousContext: string | undefined,
@@ -246,7 +241,7 @@ export class LinearEventProcessor {
       log.info("Stop signal received, aborting session");
 
       const abortResult = await this.opencode.abortSession(
-        opcodeSessionId,
+        opencodeSessionId,
         workdir,
       );
 
@@ -269,7 +264,6 @@ export class LinearEventProcessor {
     const promptCtx: PromptContext = {
       linearSessionId,
       organizationId: this.config.organizationId,
-      storePath: this.config.storePath,
       workdir,
     };
 
@@ -287,7 +281,7 @@ export class LinearEventProcessor {
 
     // Send prompt (fire-and-forget - plugin handles events)
     await this.executePrompt(
-      opcodeSessionId,
+      opencodeSessionId,
       linearSessionId,
       workdir,
       prompt,
@@ -300,7 +294,7 @@ export class LinearEventProcessor {
    */
   private async handlePrompted(
     event: AgentSessionEventWebhookPayload,
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     previousContext: string | undefined,
@@ -311,7 +305,7 @@ export class LinearEventProcessor {
       log.info("Stop signal received, aborting session");
 
       const abortResult = await this.opencode.abortSession(
-        opcodeSessionId,
+        opencodeSessionId,
         workdir,
       );
 
@@ -343,7 +337,7 @@ export class LinearEventProcessor {
       await this.handlePermissionResponse(
         pendingPermission,
         userResponse,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         previousContext,
@@ -360,7 +354,7 @@ export class LinearEventProcessor {
       await this.handleQuestionResponse(
         pendingQuestion,
         userResponse,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         previousContext,
@@ -373,7 +367,6 @@ export class LinearEventProcessor {
     const promptCtx: PromptContext = {
       linearSessionId,
       organizationId: this.config.organizationId,
-      storePath: this.config.storePath,
       workdir,
     };
 
@@ -392,7 +385,7 @@ export class LinearEventProcessor {
 
     // Send prompt (fire-and-forget - plugin handles events)
     await this.executePrompt(
-      opcodeSessionId,
+      opencodeSessionId,
       linearSessionId,
       workdir,
       prompt,
@@ -412,7 +405,7 @@ export class LinearEventProcessor {
   private async handleQuestionResponse(
     pending: PendingQuestion,
     userResponse: string,
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     previousContext: string | undefined,
@@ -436,7 +429,7 @@ export class LinearEventProcessor {
       await this.sessions.deletePendingQuestion(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         previousContext,
@@ -472,7 +465,7 @@ export class LinearEventProcessor {
       await this.sessions.deletePendingQuestion(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         previousContext,
@@ -545,7 +538,7 @@ export class LinearEventProcessor {
   private async handlePermissionResponse(
     pending: PendingPermission,
     userResponse: string,
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     previousContext: string | undefined,
@@ -578,7 +571,7 @@ export class LinearEventProcessor {
       await this.sessions.deletePendingPermission(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
-        opcodeSessionId,
+        opencodeSessionId,
         linearSessionId,
         workdir,
         previousContext,
@@ -716,7 +709,7 @@ export class LinearEventProcessor {
    */
   private async sendFollowUpPrompt(
     userResponse: string,
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
     previousContext: string | undefined,
@@ -726,7 +719,6 @@ export class LinearEventProcessor {
     const promptCtx: PromptContext = {
       linearSessionId,
       organizationId: this.config.organizationId,
-      storePath: this.config.storePath,
       workdir,
     };
 
@@ -744,7 +736,7 @@ export class LinearEventProcessor {
 
     // Send prompt (fire-and-forget - plugin handles events)
     await this.executePrompt(
-      opcodeSessionId,
+      opencodeSessionId,
       linearSessionId,
       workdir,
       prompt,

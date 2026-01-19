@@ -86,15 +86,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (getSession(ctx.sessionID)) return;
 
       // Read token from shared store
-      const token = await readAccessToken(
-        result.context.storePath,
-        result.context.organizationId,
-      );
+      const token = await readAccessToken(result.context.organizationId);
 
       if (!token) {
         warn(
           `No token found in store for organization ${result.context.organizationId}`,
-          { storePath: result.context.storePath },
         );
         return;
       }
@@ -156,10 +152,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (!session) return;
 
       // Load token for this session
-      const token = await readAccessToken(
-        session.linear.storePath,
-        session.linear.organizationId,
-      );
+      const token = await readAccessToken(session.linear.organizationId);
       if (!token) return;
 
       const linear = createLinearService(token);
@@ -207,10 +200,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       const session = getSession(ctx.sessionID);
       if (!session) return;
 
-      const token = await readAccessToken(
-        session.linear.storePath,
-        session.linear.organizationId,
-      );
+      const token = await readAccessToken(session.linear.organizationId);
       if (!token) return;
 
       const linear = createLinearService(token);
@@ -232,10 +222,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       const session = getSession(ctx.sessionID);
       if (!session) return;
 
-      const token = await readAccessToken(
-        session.linear.storePath,
-        session.linear.organizationId,
-      );
+      const token = await readAccessToken(session.linear.organizationId);
       if (!token) return;
 
       const linear = createLinearService(token);

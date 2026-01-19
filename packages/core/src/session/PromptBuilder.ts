@@ -6,7 +6,6 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 export interface PromptContext {
   linearSessionId: string;
   organizationId: string;
-  storePath: string;
   workdir: string;
 }
 
@@ -18,7 +17,6 @@ function buildFrontmatter(issueId: string, ctx: PromptContext): string {
 linear_session: ${ctx.linearSessionId}
 linear_issue: ${issueId}
 linear_organization: ${ctx.organizationId}
-store_path: ${ctx.storePath}
 workdir: ${ctx.workdir}
 ---
 

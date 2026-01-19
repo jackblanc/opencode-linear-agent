@@ -23,7 +23,23 @@ bun run fix                    # lint:fix + format:fix
 
 # Development
 bun run dev                    # Start webhook server in dev mode
+bun run up                     # Build Docker + plugin, restart containers
 ```
+
+### Plugin Development
+
+The plugin is built and copied to `~/projects/environment/config/opencode/plugin/` which is managed by Nix home-manager. After updating the plugin:
+
+```bash
+# Build and copy plugin to environment project
+bun run --filter @linear-opencode-agent/plugin build
+cp packages/plugin/dist/index.js ~/projects/environment/config/opencode/plugin/linear.js
+
+# Rebuild Nix to deploy the plugin
+cd ~/projects/environment && ./build-and-activate.sh
+```
+
+The plugin reads tokens from `~/.local/share/linear-opencode-agent/store.json` (XDG standard path). This path is bind-mounted into the Docker container at `/data` so both the container and host plugin share the same store.
 
 ### Running Tests
 

@@ -137,7 +137,6 @@ function createDirectDispatcher(
       // OpenCode handles worktree creation natively
       // Note: opencodeUrl defaults to localhost:4096 for external links
       // config.opencode.url is only used for internal Docker communication
-      const storePath = join(getDataDir(), "store.json");
       const processor = new LinearEventProcessor(
         opencode,
         linear,
@@ -145,7 +144,6 @@ function createDirectDispatcher(
         resolved.path,
         {
           organizationId,
-          storePath,
         },
       );
 

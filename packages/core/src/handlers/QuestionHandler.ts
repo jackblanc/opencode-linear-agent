@@ -74,7 +74,7 @@ export function processQuestionAsked(
   // Build pending question for storage
   const pendingQuestion: PendingQuestion = {
     requestId: id,
-    opcodeSessionId: sessionID,
+    opencodeSessionId: sessionID,
     linearSessionId: ctx.linearSessionId,
     workdir: ctx.workdir ?? "",
     issueId: ctx.issueId,

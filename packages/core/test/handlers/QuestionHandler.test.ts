@@ -45,7 +45,7 @@ describe("processQuestionAsked", () => {
     // Should have pending question
     expect(result.pendingQuestion).toMatchObject({
       requestId: "question-1",
-      opcodeSessionId: "opencode-456",
+      opencodeSessionId: "opencode-456",
       linearSessionId: "linear-123",
       workdir: "/workdir",
       questions: [
@@ -295,7 +295,7 @@ describe("processQuestionAsked", () => {
 
     expect(result.pendingQuestion).toMatchObject({
       requestId: "question-123",
-      opcodeSessionId: "opencode-456",
+      opencodeSessionId: "opencode-456",
       linearSessionId: "linear-123",
       workdir: "/workdir",
       questions: [
