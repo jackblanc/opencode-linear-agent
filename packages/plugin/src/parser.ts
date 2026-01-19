@@ -6,7 +6,6 @@
  * linear_session: ses_abc123
  * linear_issue: CODE-42
  * linear_organization: org_xyz
- * store_path: /path/to/store.json
  * workdir: /path/to/workdir
  * ---
  */
@@ -21,7 +20,6 @@ export interface LinearContext {
   sessionId: string | null;
   issueId: string;
   organizationId: string;
-  storePath: string;
   workdir: string;
 }
 
@@ -66,13 +64,11 @@ export function parseFrontmatter(text: string): ParseResult {
   const sessionId = parsed["linear_session"];
   const issueId = parsed["linear_issue"];
   const organizationId = parsed["linear_organization"];
-  const storePath = parsed["store_path"];
   const workdir = parsed["workdir"];
 
   // Required fields
   if (typeof issueId !== "string") return { context: null, text };
   if (typeof organizationId !== "string") return { context: null, text };
-  if (typeof storePath !== "string") return { context: null, text };
   if (typeof workdir !== "string") return { context: null, text };
 
   return {
@@ -80,7 +76,6 @@ export function parseFrontmatter(text: string): ParseResult {
       sessionId: typeof sessionId === "string" ? sessionId : null,
       issueId,
       organizationId,
-      storePath,
       workdir,
     },
     text,

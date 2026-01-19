@@ -3,9 +3,28 @@
  *
  * Uses the same JSON file format as the server's FileStore.
  * Implements file locking to prevent race conditions during concurrent writes.
+ *
+ * The store path follows XDG Base Directory specification:
+ * ~/.local/share/linear-opencode-agent/store.json
  */
 
 import { open, mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+/**
+ * XDG-compliant path to the shared store file.
+ * Both Docker (via bind mount) and host use the same path.
+ * Can be overridden in tests via setStorePath().
+ */
+let storePath = join(
+  homedir(),
+  ".local/share/linear-opencode-agent/store.json",
+);
+
+export function setStorePath(path: string): void {
+  storePath = path;
+}
 
 /**
  * Internal storage structure for a single value
@@ -107,7 +126,7 @@ export interface QuestionInfo {
  */
 export interface PendingQuestion {
   requestId: string;
-  opcodeSessionId: string;
+  opencodeSessionId: string;
   linearSessionId: string;
   workdir: string;
   issueId: string;
@@ -121,7 +140,7 @@ export interface PendingQuestion {
  */
 export interface PendingPermission {
   requestId: string;
-  opcodeSessionId: string;
+  opencodeSessionId: string;
   linearSessionId: string;
   workdir: string;
   issueId: string;
@@ -185,10 +204,9 @@ function getValue<T>(data: StoreData, key: string): T | null {
  * Read the OAuth access token from the shared store file.
  */
 export async function readAccessToken(
-  filePath: string,
   organizationId: string,
 ): Promise<string | null> {
-  const data = await readStore(filePath);
+  const data = await readStore(storePath);
   return getValue<string>(data, `${ACCESS_TOKEN_PREFIX}${organizationId}`);
 }
 
@@ -197,10 +215,9 @@ export async function readAccessToken(
  * Uses file locking to prevent concurrent write conflicts.
  */
 export async function savePendingQuestion(
-  filePath: string,
   question: PendingQuestion,
 ): Promise<void> {
-  await modifyStore(filePath, (data) => {
+  await modifyStore(storePath, (data) => {
     const key = `${PENDING_QUESTION_PREFIX}${question.linearSessionId}`;
     return { ...data, [key]: { value: question } };
   });
@@ -211,10 +228,9 @@ export async function savePendingQuestion(
  * Uses file locking to prevent concurrent write conflicts.
  */
 export async function savePendingPermission(
-  filePath: string,
   permission: PendingPermission,
 ): Promise<void> {
-  await modifyStore(filePath, (data) => {
+  await modifyStore(storePath, (data) => {
     const key = `${PENDING_PERMISSION_PREFIX}${permission.linearSessionId}`;
     return { ...data, [key]: { value: permission } };
   });

@@ -63,7 +63,7 @@ export function processPermissionAsked(
   // Build pending permission for storage
   const pendingPermission: PendingPermission = {
     requestId: id,
-    opcodeSessionId: sessionID,
+    opencodeSessionId: sessionID,
     linearSessionId: ctx.linearSessionId,
     workdir: ctx.workdir ?? "",
     issueId: ctx.issueId,

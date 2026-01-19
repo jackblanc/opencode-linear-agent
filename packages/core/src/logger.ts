@@ -21,7 +21,7 @@ const UUID_KEYS = new Set([
   "sessionId",
   "organizationId",
   "linearSessionId",
-  "opcodeSessionId",
+  "opencodeSessionId",
 ]);
 
 let currentLevel: LogLevel = "INFO";

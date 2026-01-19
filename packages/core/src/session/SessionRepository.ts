@@ -33,7 +33,7 @@ export interface PendingQuestion {
   /** OpenCode question request ID */
   requestId: string;
   /** OpenCode session ID */
-  opcodeSessionId: string;
+  opencodeSessionId: string;
   /** Linear session ID */
   linearSessionId: string;
   /** Working directory for OpenCode calls */
@@ -55,7 +55,7 @@ export interface PendingPermission {
   /** OpenCode permission request ID */
   requestId: string;
   /** OpenCode session ID */
-  opcodeSessionId: string;
+  opencodeSessionId: string;
   /** Linear session ID */
   linearSessionId: string;
   /** Working directory for OpenCode calls */

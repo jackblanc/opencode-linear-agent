@@ -12,7 +12,7 @@ import { Log, type Logger } from "../logger";
  * Result of getting or creating a session
  */
 export interface SessionResult {
-  opcodeSessionId: string;
+  opencodeSessionId: string;
   existingState: SessionState | null;
   /** True if we had to create a new OpenCode session (old one was lost) */
   isNewSession: boolean;
@@ -97,8 +97,8 @@ export class SessionManager {
     const existingState = await this.repository.get(linearSessionId);
 
     if (existingState?.opencodeSessionId) {
-      log.tag("opcodeSession", existingState.opencodeSessionId.slice(0, 8));
-      log.tag("opcodeSessionId", existingState.opencodeSessionId);
+      log.tag("opencodeSession", existingState.opencodeSessionId.slice(0, 8));
+      log.tag("opencodeSessionId", existingState.opencodeSessionId);
       log.info("Found existing state, attempting to resume");
 
       const sessionResult = await this.opencode.getSession(
@@ -109,7 +109,7 @@ export class SessionManager {
       if (Result.isOk(sessionResult)) {
         log.info("Successfully resumed session");
         return Result.ok({
-          opcodeSessionId: sessionResult.value.id,
+          opencodeSessionId: sessionResult.value.id,
           existingState,
           isNewSession: false,
         });
@@ -154,12 +154,12 @@ export class SessionManager {
    * Fetch previous message context from an old OpenCode session
    */
   private async fetchPreviousContext(
-    opcodeSessionId: string,
+    opencodeSessionId: string,
     workdir: string,
     log: Logger,
   ): Promise<string | undefined> {
     const messagesResult = await this.opencode.getMessages(
-      opcodeSessionId,
+      opencodeSessionId,
       workdir,
     );
 
@@ -210,8 +210,8 @@ export class SessionManager {
 
     const sessionId = sessionResult.value.id;
 
-    log.tag("opcodeSession", sessionId.slice(0, 8));
-    log.tag("opcodeSessionId", sessionId);
+    log.tag("opencodeSession", sessionId.slice(0, 8));
+    log.tag("opencodeSessionId", sessionId);
     log.info("Created OpenCode session");
 
     const newState: SessionState = {
@@ -228,7 +228,7 @@ export class SessionManager {
     log.info("Saved session state to repository", { branchName, workdir });
 
     return Result.ok({
-      opcodeSessionId: sessionId,
+      opencodeSessionId: sessionId,
       existingState,
       isNewSession: true,
       previousContext,

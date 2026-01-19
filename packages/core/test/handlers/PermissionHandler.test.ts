@@ -110,7 +110,7 @@ describe("processPermissionAsked", () => {
 
     expect(result.pendingPermission).toEqual({
       requestId: "perm-unique",
-      opcodeSessionId: "opencode-456",
+      opencodeSessionId: "opencode-456",
       linearSessionId: "linear-123",
       workdir: "/workdir",
       issueId: "CODE-123",

@@ -5,6 +5,7 @@ import {
   readAccessToken,
   savePendingQuestion,
   savePendingPermission,
+  setStorePath,
   type PendingQuestion,
   type PendingPermission,
 } from "../src/storage";
@@ -15,6 +16,7 @@ const TEST_STORE_PATH = join(TEST_DIR, "store.json");
 describe("storage", () => {
   beforeEach(async () => {
     await mkdir(TEST_DIR, { recursive: true });
+    setStorePath(TEST_STORE_PATH);
   });
 
   afterEach(async () => {
@@ -30,7 +32,7 @@ describe("storage", () => {
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const token = await readAccessToken(TEST_STORE_PATH, "org123");
+      const token = await readAccessToken("org123");
 
       expect(token).toBe("test-token-abc");
     });
@@ -39,13 +41,13 @@ describe("storage", () => {
       const storeData = {};
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const token = await readAccessToken(TEST_STORE_PATH, "org123");
+      const token = await readAccessToken("org123");
 
       expect(token).toBeNull();
     });
 
     test("should return null when file does not exist", async () => {
-      const token = await readAccessToken(TEST_STORE_PATH, "org123");
+      const token = await readAccessToken("org123");
 
       expect(token).toBeNull();
     });
@@ -59,7 +61,7 @@ describe("storage", () => {
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const token = await readAccessToken(TEST_STORE_PATH, "org123");
+      const token = await readAccessToken("org123");
 
       expect(token).toBeNull();
     });
@@ -73,7 +75,7 @@ describe("storage", () => {
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const token = await readAccessToken(TEST_STORE_PATH, "org123");
+      const token = await readAccessToken("org123");
 
       expect(token).toBe("valid-token");
     });
@@ -85,9 +87,9 @@ describe("storage", () => {
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const token123 = await readAccessToken(TEST_STORE_PATH, "org123");
-      const token456 = await readAccessToken(TEST_STORE_PATH, "org456");
-      const tokenOther = await readAccessToken(TEST_STORE_PATH, "other");
+      const token123 = await readAccessToken("org123");
+      const token456 = await readAccessToken("org456");
+      const tokenOther = await readAccessToken("other");
 
       expect(token123).toBe("token-org123");
       expect(token456).toBe("token-org456");
@@ -99,7 +101,7 @@ describe("storage", () => {
     test("should save pending question to store", async () => {
       const question: PendingQuestion = {
         requestId: "req-123",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -117,7 +119,7 @@ describe("storage", () => {
         createdAt: Date.now(),
       };
 
-      await savePendingQuestion(TEST_STORE_PATH, question);
+      await savePendingQuestion(question);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
       expect(stored["question:linear-789"]).toBeDefined();
@@ -127,7 +129,7 @@ describe("storage", () => {
     test("should create store file if it does not exist", async () => {
       const question: PendingQuestion = {
         requestId: "req-123",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -136,7 +138,7 @@ describe("storage", () => {
         createdAt: Date.now(),
       };
 
-      await savePendingQuestion(TEST_STORE_PATH, question);
+      await savePendingQuestion(question);
 
       const exists = await Bun.file(TEST_STORE_PATH).exists();
       expect(exists).toBe(true);
@@ -150,7 +152,7 @@ describe("storage", () => {
 
       const question: PendingQuestion = {
         requestId: "req-123",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -159,7 +161,7 @@ describe("storage", () => {
         createdAt: Date.now(),
       };
 
-      await savePendingQuestion(TEST_STORE_PATH, question);
+      await savePendingQuestion(question);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
       expect(stored["token:access:org123"]).toBeDefined();
@@ -169,7 +171,7 @@ describe("storage", () => {
     test("should overwrite existing question for same session", async () => {
       const existingQuestion: PendingQuestion = {
         requestId: "req-old",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -177,11 +179,11 @@ describe("storage", () => {
         answers: [],
         createdAt: Date.now() - 1000,
       };
-      await savePendingQuestion(TEST_STORE_PATH, existingQuestion);
+      await savePendingQuestion(existingQuestion);
 
       const newQuestion: PendingQuestion = {
         requestId: "req-new",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -189,7 +191,7 @@ describe("storage", () => {
         answers: [null],
         createdAt: Date.now(),
       };
-      await savePendingQuestion(TEST_STORE_PATH, newQuestion);
+      await savePendingQuestion(newQuestion);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
       expect(stored["question:linear-789"].value.requestId).toBe("req-new");
@@ -200,7 +202,7 @@ describe("storage", () => {
     test("should save pending permission to store", async () => {
       const permission: PendingPermission = {
         requestId: "req-123",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -210,7 +212,7 @@ describe("storage", () => {
         createdAt: Date.now(),
       };
 
-      await savePendingPermission(TEST_STORE_PATH, permission);
+      await savePendingPermission(permission);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
       expect(stored["permission:linear-789"]).toBeDefined();
@@ -220,7 +222,7 @@ describe("storage", () => {
     test("should create store file if it does not exist", async () => {
       const permission: PendingPermission = {
         requestId: "req-123",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -230,7 +232,7 @@ describe("storage", () => {
         createdAt: Date.now(),
       };
 
-      await savePendingPermission(TEST_STORE_PATH, permission);
+      await savePendingPermission(permission);
 
       const exists = await Bun.file(TEST_STORE_PATH).exists();
       expect(exists).toBe(true);
@@ -247,7 +249,7 @@ describe("storage", () => {
 
       const permission: PendingPermission = {
         requestId: "req-123",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -257,7 +259,7 @@ describe("storage", () => {
         createdAt: Date.now(),
       };
 
-      await savePendingPermission(TEST_STORE_PATH, permission);
+      await savePendingPermission(permission);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
       expect(stored["token:access:org123"]).toBeDefined();
@@ -268,7 +270,7 @@ describe("storage", () => {
     test("should overwrite existing permission for same session", async () => {
       const existingPermission: PendingPermission = {
         requestId: "req-old",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -277,11 +279,11 @@ describe("storage", () => {
         metadata: {},
         createdAt: Date.now() - 1000,
       };
-      await savePendingPermission(TEST_STORE_PATH, existingPermission);
+      await savePendingPermission(existingPermission);
 
       const newPermission: PendingPermission = {
         requestId: "req-new",
-        opcodeSessionId: "opencode-456",
+        opencodeSessionId: "opencode-456",
         linearSessionId: "linear-789",
         workdir: "/path/to/workdir",
         issueId: "CODE-42",
@@ -290,7 +292,7 @@ describe("storage", () => {
         metadata: { scope: "project" },
         createdAt: Date.now(),
       };
-      await savePendingPermission(TEST_STORE_PATH, newPermission);
+      await savePendingPermission(newPermission);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
       expect(stored["permission:linear-789"].value.requestId).toBe("req-new");
@@ -302,7 +304,7 @@ describe("storage", () => {
     test("should handle concurrent saves without data loss", async () => {
       const questions = Array.from({ length: 10 }, (_, i) => ({
         requestId: `req-${i}`,
-        opcodeSessionId: `opencode-${i}`,
+        opencodeSessionId: `opencode-${i}`,
         linearSessionId: `linear-${i}`,
         workdir: "/path/to/workdir",
         issueId: `CODE-${i}`,
@@ -312,9 +314,7 @@ describe("storage", () => {
       }));
 
       // Save all questions concurrently
-      await Promise.all(
-        questions.map(async (q) => savePendingQuestion(TEST_STORE_PATH, q)),
-      );
+      await Promise.all(questions.map(async (q) => savePendingQuestion(q)));
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
 

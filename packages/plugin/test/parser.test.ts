@@ -7,7 +7,6 @@ describe("parseFrontmatter", () => {
 linear_session: ses_abc123
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 ---
 This is the actual message content.`;
@@ -18,7 +17,6 @@ This is the actual message content.`;
       sessionId: "ses_abc123",
       issueId: "CODE-42",
       organizationId: "org_xyz",
-      storePath: "/path/to/store.json",
       workdir: "/path/to/workdir",
     });
     expect(result.text).toBe(text);
@@ -28,7 +26,6 @@ This is the actual message content.`;
     const text = `---
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 ---
 Message content here.`;
@@ -39,7 +36,6 @@ Message content here.`;
       sessionId: null,
       issueId: "CODE-42",
       organizationId: "org_xyz",
-      storePath: "/path/to/store.json",
       workdir: "/path/to/workdir",
     });
   });
@@ -48,7 +44,6 @@ Message content here.`;
     const text = `---
 linear_session: ses_abc123
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 ---
 Message content.`;
@@ -63,21 +58,6 @@ Message content.`;
     const text = `---
 linear_session: ses_abc123
 linear_issue: CODE-42
-store_path: /path/to/store.json
-workdir: /path/to/workdir
----
-Message content.`;
-
-    const result = parseFrontmatter(text);
-
-    expect(result.context).toBeNull();
-  });
-
-  test("should return null context when required field 'store_path' is missing", () => {
-    const text = `---
-linear_session: ses_abc123
-linear_issue: CODE-42
-linear_organization: org_xyz
 workdir: /path/to/workdir
 ---
 Message content.`;
@@ -92,7 +72,6 @@ Message content.`;
 linear_session: ses_abc123
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 ---
 Message content.`;
 
@@ -129,7 +108,6 @@ Message content.`;
 linear_session: ses_abc123
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 ---
 Message content.`;
@@ -156,7 +134,6 @@ Message content.`;
 linear_session: ses_abc123
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 extra_field: some_value
 another_field: 123
@@ -169,7 +146,6 @@ Message content.`;
       sessionId: "ses_abc123",
       issueId: "CODE-42",
       organizationId: "org_xyz",
-      storePath: "/path/to/store.json",
       workdir: "/path/to/workdir",
     });
   });
@@ -179,7 +155,6 @@ Message content.`;
 linear_session: 123
 linear_issue: 456
 linear_organization: 789
-store_path: 101
 workdir: 202
 ---
 Message content.`;
@@ -195,7 +170,6 @@ Message content.`;
 linear_session: ses_abc123
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 ---
 Line 1
@@ -213,7 +187,6 @@ Line 3`;
 linear_session: "ses_abc123"
 linear_issue: "CODE-42"
 linear_organization: "org_xyz"
-store_path: "/path/to/store.json"
 workdir: "/path/to/workdir"
 ---
 Message content.`;
@@ -224,7 +197,6 @@ Message content.`;
       sessionId: "ses_abc123",
       issueId: "CODE-42",
       organizationId: "org_xyz",
-      storePath: "/path/to/store.json",
       workdir: "/path/to/workdir",
     });
   });
@@ -234,7 +206,6 @@ Message content.`;
 linear_session: ses_abc-123_def
 linear_issue: CODE-42
 linear_organization: org_xyz-test
-store_path: /path/to/store-file.json
 workdir: /path/to/work-dir
 ---
 Message content.`;
@@ -245,7 +216,6 @@ Message content.`;
       sessionId: "ses_abc-123_def",
       issueId: "CODE-42",
       organizationId: "org_xyz-test",
-      storePath: "/path/to/store-file.json",
       workdir: "/path/to/work-dir",
     });
   });
@@ -261,7 +231,6 @@ With partial frontmatter`,
 linear_session: ses_abc123
 linear_issue: CODE-42
 linear_organization: org_xyz
-store_path: /path/to/store.json
 workdir: /path/to/workdir
 ---
 Valid frontmatter`,

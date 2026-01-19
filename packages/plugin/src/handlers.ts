@@ -464,7 +464,7 @@ export async function handlePermissionAsk(
   // Save pending permission to shared store
   const pending: PendingPermission = {
     requestId,
-    opcodeSessionId: sessionId,
+    opencodeSessionId: sessionId,
     linearSessionId: session.linear.sessionId,
     workdir: session.linear.workdir,
     issueId: session.linear.issueId,
@@ -474,7 +474,7 @@ export async function handlePermissionAsk(
     createdAt: Date.now(),
   };
 
-  await savePendingPermission(session.linear.storePath, pending);
+  await savePendingPermission(pending);
 }
 
 interface QuestionOption {
@@ -554,7 +554,7 @@ export async function handleQuestionElicitation(
   // Save pending question to shared store
   const pending: PendingQuestion = {
     requestId,
-    opcodeSessionId: sessionId,
+    opencodeSessionId: sessionId,
     linearSessionId,
     workdir: session.linear.workdir,
     issueId: session.linear.issueId,
@@ -570,5 +570,5 @@ export async function handleQuestionElicitation(
     createdAt: Date.now(),
   };
 
-  await savePendingQuestion(session.linear.storePath, pending);
+  await savePendingQuestion(pending);
 }
