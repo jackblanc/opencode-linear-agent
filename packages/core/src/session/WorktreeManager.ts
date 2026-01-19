@@ -1,5 +1,6 @@
+import { $ } from "bun";
 import { Result } from "better-result";
-import type { OpencodeService } from "../opencode/OpencodeService";
+import type { GitService } from "../git/GitService";
 import type { LinearService } from "../linear/LinearService";
 import type { SessionRepository } from "./SessionRepository";
 import type { Logger } from "../logger";
@@ -19,11 +20,11 @@ export interface WorktreeResolution {
  * Extracted from LinearEventProcessor to isolate worktree-related concerns:
  * - Reusing worktrees from existing sessions
  * - Reusing worktrees from previous sessions on the same issue
- * - Creating new worktrees via OpenCode
+ * - Creating new worktrees from origin/main via GitService
  */
 export class WorktreeManager {
   constructor(
-    private readonly opencode: OpencodeService,
+    private readonly git: GitService,
     private readonly linear: LinearService,
     private readonly repository: SessionRepository,
     private readonly repoDirectory: string,
@@ -79,17 +80,17 @@ export class WorktreeManager {
       });
     }
 
-    // No existing worktree - create one via OpenCode
+    // No existing worktree - create one from origin/main via GitService
     await this.linear.postStageActivity(linearSessionId, "git_setup");
 
-    log.info("Creating worktree via OpenCode", {
+    log.info("Creating worktree from origin", {
       repoDirectory: this.repoDirectory,
     });
 
-    const worktreeResult = await this.opencode.createWorktree(
+    const worktreeResult = await this.git.createWorktreeFromOrigin(
       this.repoDirectory,
       issue,
-      this.startCommand,
+      log,
     );
 
     if (Result.isError(worktreeResult)) {
@@ -100,15 +101,56 @@ export class WorktreeManager {
       return Result.err(worktreeResult.error);
     }
 
+    const workdir = worktreeResult.value.directory;
+    const branchName = worktreeResult.value.branch;
+
+    // Run start command if provided (e.g., "bun install")
+    if (this.startCommand) {
+      log.info("Running start command", { command: this.startCommand });
+      const startResult = await this.runStartCommand(
+        workdir,
+        this.startCommand,
+      );
+      if (!startResult.success) {
+        log.warn("Start command failed", {
+          command: this.startCommand,
+          error: startResult.error,
+        });
+        // Don't fail the worktree creation - log and continue
+      }
+    }
+
     log.info("Worktree created", {
-      workdir: worktreeResult.value.directory,
-      branchName: worktreeResult.value.branch,
+      workdir,
+      branchName,
     });
 
     return Result.ok({
-      workdir: worktreeResult.value.directory,
-      branchName: worktreeResult.value.branch,
+      workdir,
+      branchName,
       source: "created" as const,
     });
+  }
+
+  /**
+   * Run a start command in the worktree directory
+   */
+  private async runStartCommand(
+    directory: string,
+    command: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const result =
+      process.platform === "win32"
+        ? await $`cmd /c ${command}`.nothrow().cwd(directory).quiet()
+        : await $`bash -lc ${command}`.nothrow().cwd(directory).quiet();
+
+    if (result.exitCode !== 0) {
+      return {
+        success: false,
+        error: result.stderr.toString() || result.stdout.toString(),
+      };
+    }
+
+    return { success: true };
   }
 }

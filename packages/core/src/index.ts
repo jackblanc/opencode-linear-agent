@@ -133,7 +133,11 @@ export * from "./errors";
 // OpenCode service wrapper
 export { OpencodeService } from "./opencode";
 export type {
-  WorktreeResult,
+  WorktreeResult as OpencodeWorktreeResult,
   OpencodeSessionResult,
   MessageWithParts,
 } from "./opencode";
+
+// Git service for worktree operations
+export { GitService } from "./git";
+export type { WorktreeResult as GitWorktreeResult } from "./git";

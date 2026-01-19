@@ -10,6 +10,7 @@ import { SessionManager } from "./session/SessionManager";
 import { WorktreeManager } from "./session/WorktreeManager";
 import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
 import type { OpencodeService } from "./opencode/OpencodeService";
+import { GitService } from "./git/GitService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
 
@@ -41,16 +42,16 @@ function hasStopSignal(activity: { signal?: string | null }): boolean {
  * Main entry point for processing Linear webhook events.
  *
  * This class is platform-agnostic and receives all dependencies via constructor injection.
- * Uses OpenCode's native worktree management instead of custom git operations.
+ * Creates worktrees from origin/main (or origin/master) to ensure fresh code.
  *
  * Delegates to specialized managers:
- * - WorktreeManager: Worktree creation/reuse logic
+ * - WorktreeManager: Worktree creation/reuse logic (uses GitService)
  * - SessionManager: OpenCode session lifecycle
  * - PromptBuilder: Context injection and prompt construction
  */
 export class LinearEventProcessor {
   private readonly sessionManager: SessionManager;
-  private readonly worktreeManager: WorktreeManager;
+  private worktreeManager: WorktreeManager | null = null;
   private readonly promptBuilder: PromptBuilder;
   private readonly config: LinearEventProcessorConfig;
 
@@ -66,14 +67,34 @@ export class LinearEventProcessor {
       ...config,
     } as LinearEventProcessorConfig;
     this.sessionManager = new SessionManager(opencode, sessions);
+    // WorktreeManager is created lazily since GitService.forRepository is async
+    this.promptBuilder = new PromptBuilder();
+  }
+
+  /**
+   * Get or create the WorktreeManager (lazy initialization since GitService.forRepository is async)
+   */
+  private async getWorktreeManager(): Promise<WorktreeManager> {
+    if (this.worktreeManager) {
+      return this.worktreeManager;
+    }
+
+    const gitResult = await GitService.forRepository(this.repoDirectory);
+    if (Result.isError(gitResult)) {
+      throw new Error(
+        `Failed to initialize GitService: ${gitResult.error.message}`,
+      );
+    }
+
     this.worktreeManager = new WorktreeManager(
-      opencode,
-      linear,
-      sessions,
-      repoDirectory,
+      gitResult.value,
+      this.linear,
+      this.sessions,
+      this.repoDirectory,
       this.config.startCommand,
     );
-    this.promptBuilder = new PromptBuilder();
+
+    return this.worktreeManager;
   }
 
   /**
@@ -96,8 +117,11 @@ export class LinearEventProcessor {
 
     log.info("Processing event", { action: event.action });
 
+    // Get the worktree manager (lazy init)
+    const worktreeManager = await this.getWorktreeManager();
+
     // Resolve or create worktree
-    const worktreeResult = await this.worktreeManager.resolveWorktree(
+    const worktreeResult = await worktreeManager.resolveWorktree(
       linearSessionId,
       issue,
       log,
