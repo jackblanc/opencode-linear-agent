@@ -69,6 +69,8 @@ export type {
 export { SessionManager } from "./session/SessionManager";
 export { WorktreeManager } from "./session/WorktreeManager";
 export type { WorktreeResolution } from "./session/WorktreeManager";
+export { WorktreeCleanupService } from "./session/WorktreeCleanupService";
+export type { CleanupResult } from "./session/WorktreeCleanupService";
 export { PromptBuilder } from "./session/PromptBuilder";
 export type { PromptContext } from "./session/PromptBuilder";
 export type { SessionState, HandlerState } from "./session/SessionState";
@@ -117,8 +119,14 @@ export type {
   EventDispatcher,
   LinearStatusPoster,
   LinearStatusPosterFactory,
+  WorktreeCleanupHandler,
 } from "./webhook";
-export { handleWebhook } from "./webhook";
+export {
+  handleWebhook,
+  handleIssueWebhook,
+  isIssueEvent,
+  isCompletedStateChange,
+} from "./webhook";
 
 // Utilities
 export { base64Encode, base64Decode } from "./utils/encode";

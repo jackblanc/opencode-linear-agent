@@ -98,4 +98,8 @@ export class FileSessionRepository implements SessionRepository {
   async deletePendingPermission(linearSessionId: string): Promise<void> {
     await this.kv.delete(`${PERMISSION_PREFIX}${linearSessionId}`);
   }
+
+  async deleteWorktreeByIssue(issueId: string): Promise<void> {
+    await this.kv.delete(`${WORKTREE_PREFIX}${issueId}`);
+  }
 }

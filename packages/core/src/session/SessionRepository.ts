@@ -128,4 +128,10 @@ export interface SessionRepository {
    * Delete pending permission
    */
   deletePendingPermission(linearSessionId: string): Promise<void>;
+
+  /**
+   * Delete worktree info for an issue
+   * Used when cleaning up after PR merge or issue completion
+   */
+  deleteWorktreeByIssue(issueId: string): Promise<void>;
 }

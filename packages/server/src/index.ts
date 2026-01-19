@@ -20,14 +20,17 @@ import {
   handleAuthorize,
   handleCallback,
   handleWebhook,
+  handleIssueWebhook,
   refreshAccessToken,
   LinearServiceImpl,
   OpencodeService,
+  WorktreeCleanupService,
   Log,
   type EventDispatcher,
   type KeyValueStore,
   type OAuthConfig,
   type TokenStore,
+  type WorktreeCleanupHandler,
 } from "@linear-opencode-agent/core";
 import { loadConfig, getWorkerUrl, getDataDir, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
@@ -156,6 +159,39 @@ function createDirectDispatcher(
 }
 
 /**
+ * Create worktree cleanup handler
+ */
+function createCleanupHandler(
+  sessionRepository: FileSessionRepository,
+): WorktreeCleanupHandler {
+  const cleanupService = new WorktreeCleanupService(sessionRepository);
+
+  return {
+    async cleanup(issueIdentifier: string): Promise<void> {
+      const log = Log.create({ service: "cleanup" }).tag(
+        "issue",
+        issueIdentifier,
+      );
+
+      const result = await cleanupService.cleanup(issueIdentifier, log);
+
+      if (Result.isOk(result)) {
+        log.info("Worktree cleanup completed", {
+          workdir: result.value.workdir,
+          gitWorktreeRemoved: result.value.gitWorktreeRemoved,
+          directoryRemoved: result.value.directoryRemoved,
+          storageCleared: result.value.storageCleared,
+        });
+      } else {
+        log.error("Worktree cleanup failed", {
+          error: result.error.message,
+        });
+      }
+    },
+  };
+}
+
+/**
  * Create the HTTP server
  */
 function createServer(
@@ -163,6 +199,7 @@ function createServer(
   kv: KeyValueStore,
   tokenStore: TokenStore,
   dispatcher: EventDispatcher,
+  cleanupHandler: WorktreeCleanupHandler,
 ): ReturnType<typeof Bun.serve> {
   const oauthConfig: OAuthConfig = {
     clientId: config.linear.clientId,
@@ -229,6 +266,30 @@ function createServer(
         );
       }
 
+      // Linear Issue webhook - triggers worktree cleanup on issue completion
+      if (
+        pathname === "/api/webhook/linear/issue" ||
+        pathname === "/webhook/linear/issue"
+      ) {
+        // IP allowlist check - only Linear's servers can call this endpoint
+        if (!isAllowedIp(clientIp, config.linear.webhookIps)) {
+          log.warn("Issue webhook request from unauthorized IP", {
+            clientIp,
+            allowedIps: config.linear.webhookIps,
+          });
+          return respond(new Response("Forbidden", { status: 403 }));
+        }
+
+        return respond(
+          await handleIssueWebhook(
+            request,
+            config.linear.webhookSecret,
+            cleanupHandler,
+            config.linear.organizationId,
+          ),
+        );
+      }
+
       return respond(new Response("Not found", { status: 404 }));
     },
   });
@@ -268,14 +329,24 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     sessionRepository,
   );
 
+  // Create cleanup handler
+  const cleanupHandler = createCleanupHandler(sessionRepository);
+
   // Start server
-  const server = createServer(config, kv, tokenStore, dispatcher);
+  const server = createServer(
+    config,
+    kv,
+    tokenStore,
+    dispatcher,
+    cleanupHandler,
+  );
 
   const workerUrl = getWorkerUrl(config);
   log.info("Server started", {
     port: config.port,
     workerUrl,
     webhookUrl: `${workerUrl}/api/webhook/linear`,
+    issueWebhookUrl: `${workerUrl}/api/webhook/linear/issue`,
     oauthUrl: `${workerUrl}/api/oauth/authorize`,
   });
 
@@ -286,8 +357,9 @@ Linear OpenCode Agent (Local) running!
   Local:    http://localhost:${config.port}
   Public:   ${workerUrl}
 
-  Webhook URL: ${workerUrl}/api/webhook/linear
-  OAuth URL:   ${workerUrl}/api/oauth/authorize
+  Webhook URL:       ${workerUrl}/api/webhook/linear
+  Issue Webhook URL: ${workerUrl}/api/webhook/linear/issue
+  OAuth URL:         ${workerUrl}/api/oauth/authorize
 
 Make sure OpenCode is running: opencode serve
 `);
