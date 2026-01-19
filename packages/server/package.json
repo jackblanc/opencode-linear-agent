@@ -12,7 +12,8 @@
     "@linear-opencode-agent/core": "workspace:*",
     "@linear/sdk": "^68.1.0",
     "@opencode-ai/sdk": "^1.1.2",
-    "better-result": "^1.0.0"
+    "better-result": "^1.0.0",
+    "zod": "^4.3.5"
   },
   "devDependencies": {}
 }

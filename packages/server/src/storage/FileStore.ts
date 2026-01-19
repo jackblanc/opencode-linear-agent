@@ -15,19 +15,11 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { KeyValueStore } from "@linear-opencode-agent/core";
-
-/**
- * Internal storage structure for a single value
- */
-interface StoredValue {
-  value: unknown;
-  expires?: number; // Unix timestamp in milliseconds
-}
-
-/**
- * Internal storage structure for the entire store
- */
-type StoreData = Record<string, StoredValue>;
+import {
+  parseStoreData,
+  type StoreData,
+  type StoredValue,
+} from "@linear-opencode-agent/core";
 
 /**
  * File-based KeyValueStore implementation
@@ -49,8 +41,8 @@ export class FileStore implements KeyValueStore {
     const file = Bun.file(this.filePath);
     if (await file.exists()) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON parse result needs type assertion
-        this.data = (await file.json()) as StoreData;
+        const json: unknown = await file.json();
+        this.data = parseStoreData(json);
       } catch {
         // File exists but is invalid - start fresh
         this.data = {};

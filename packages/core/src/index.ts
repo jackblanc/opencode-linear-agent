@@ -130,6 +130,16 @@ export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
 // Errors
 export * from "./errors";
 
+// Zod schemas for runtime validation
+export {
+  StoredValueSchema,
+  StoreDataSchema,
+  TokenResponseSchema,
+  parseStoreData,
+  parseTokenResponse,
+} from "./schemas";
+export type { StoredValue, StoreData, TokenResponse } from "./schemas";
+
 // OpenCode service wrapper
 export { OpencodeService } from "./opencode";
 export type {

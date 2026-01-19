@@ -11,6 +11,7 @@
 import { open, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseStoreData, type StoreData } from "@linear-opencode-agent/core";
 
 /**
  * XDG-compliant path to the shared store file.
@@ -25,19 +26,6 @@ let storePath = join(
 export function setStorePath(path: string): void {
   storePath = path;
 }
-
-/**
- * Internal storage structure for a single value
- */
-interface StoredValue {
-  value: unknown;
-  expires?: number;
-}
-
-/**
- * Internal storage structure for the entire store
- */
-type StoreData = Record<string, StoredValue>;
 
 /**
  * Key prefixes matching the server's storage format
@@ -158,9 +146,8 @@ async function readStore(filePath: string): Promise<StoreData> {
   if (!(await file.exists())) {
     return {};
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON parse requires type assertion
-  const data = (await file.json()) as StoreData;
-  return data;
+  const json: unknown = await file.json();
+  return parseStoreData(json);
 }
 
 /**

@@ -5,28 +5,42 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve, dirname, join } from "node:path";
+import { z } from "zod";
 import { Log } from "@linear-opencode-agent/core";
+
+/**
+ * Zod schema for server configuration
+ */
+const ConfigSchema = z.object({
+  port: z.number({ message: "port must be a number" }),
+  publicHostname: z.string({ message: "publicHostname must be a string" }),
+  opencode: z.object({
+    url: z.string({ message: "opencode.url must be a string" }),
+  }),
+  linear: z.object({
+    clientId: z.string({ message: "linear.clientId must be a string" }),
+    clientSecret: z.string({ message: "linear.clientSecret must be a string" }),
+    webhookSecret: z.string({
+      message: "linear.webhookSecret must be a string",
+    }),
+    organizationId: z.string({
+      message: "linear.organizationId must be a string",
+    }),
+    webhookIps: z
+      .array(
+        z.string({ message: "linear.webhookIps must contain only strings" }),
+      )
+      .min(1, {
+        message: "linear.webhookIps must be a non-empty array of IP addresses",
+      }),
+  }),
+  projectsPath: z.string({ message: "projectsPath must be a string" }),
+});
 
 /**
  * Configuration structure
  */
-export interface Config {
-  port: number;
-  /** Public hostname for this service (e.g., via Cloudflare Tunnel) */
-  publicHostname: string;
-  opencode: {
-    url: string;
-  };
-  linear: {
-    clientId: string;
-    clientSecret: string;
-    webhookSecret: string;
-    organizationId: string;
-    /** IP addresses allowed to send webhooks (Linear's IPs) */
-    webhookIps: string[];
-  };
-  projectsPath: string;
-}
+export type Config = z.infer<typeof ConfigSchema>;
 
 /**
  * Expand ~ to home directory in a path
@@ -39,78 +53,17 @@ function expandPath(path: string): string {
 }
 
 /**
- * Helper to check if a value is a non-null object
+ * Parse and validate config with user-friendly error messages
  */
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-/**
- * Helper to get a property as a nested object
- */
-function getObject(
-  obj: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> | null {
-  const value = obj[key];
-  return isObject(value) ? value : null;
-}
-
-/**
- * Validate required fields in config
- */
-function validateConfig(config: unknown): config is Config {
-  if (!isObject(config)) {
-    return false;
+function parseConfig(data: unknown): Config {
+  const result = ConfigSchema.safeParse(data);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Invalid configuration:\n${issues}`);
   }
-
-  // Check required top-level fields
-  if (typeof config.port !== "number") {
-    return false;
-  }
-  if (typeof config.publicHostname !== "string") {
-    return false;
-  }
-
-  // Check opencode
-  const opencode = getObject(config, "opencode");
-  if (!opencode || typeof opencode.url !== "string") {
-    return false;
-  }
-
-  // Check linear
-  const linear = getObject(config, "linear");
-  if (
-    !linear ||
-    typeof linear.clientId !== "string" ||
-    typeof linear.clientSecret !== "string" ||
-    typeof linear.webhookSecret !== "string" ||
-    typeof linear.organizationId !== "string"
-  ) {
-    return false;
-  }
-
-  const log = Log.create({ service: "config" });
-
-  // Check webhookIps (required array of strings)
-  if (!Array.isArray(linear.webhookIps) || linear.webhookIps.length === 0) {
-    log.error("linear.webhookIps must be a non-empty array of IP addresses");
-    return false;
-  }
-  for (const ip of linear.webhookIps) {
-    if (typeof ip !== "string") {
-      log.error("linear.webhookIps must contain only strings");
-      return false;
-    }
-  }
-
-  // Check projectsPath
-  if (typeof config.projectsPath !== "string") {
-    log.error("projectsPath must be a string");
-    return false;
-  }
-
-  return true;
+  return result.data;
 }
 
 /**
@@ -156,20 +109,13 @@ export async function loadConfig(): Promise<Config> {
   log.info("Loading config", { path: configPath });
 
   const rawConfig: unknown = await configFile.json();
-
-  if (!validateConfig(rawConfig)) {
-    throw new Error(
-      "Invalid configuration. Please check all required fields are present.",
-    );
-  }
+  const validatedConfig = parseConfig(rawConfig);
 
   // Expand paths
-  const config: Config = {
-    ...rawConfig,
-    projectsPath: expandPath(rawConfig.projectsPath),
+  return {
+    ...validatedConfig,
+    projectsPath: expandPath(validatedConfig.projectsPath),
   };
-
-  return config;
 }
 
 /**
