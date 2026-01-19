@@ -24,6 +24,10 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
-  }
+    "noPropertyAccessFromIndexSignature": false,
+
+    // Type definitions
+    "types": ["bun-types"]
+  },
+  "include": ["packages/*/src/**/*", "packages/*/test/**/*"]
 }
