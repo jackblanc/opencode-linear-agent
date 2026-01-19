@@ -6,27 +6,20 @@ import { LinearClient } from "@linear/sdk";
 import type { KeyValueStore, TokenStore, RefreshTokenData } from "../storage";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../logger";
+import {
+  parseTokenResponse as parseTokenResponseJson,
+  type TokenResponse,
+} from "../schemas";
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
 
 /**
- * OAuth token response from Linear
- */
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-}
-
-/**
- * Parse JSON response with proper typing
- * This helper handles the type difference between Cloudflare (any) and standard (unknown)
+ * Parse JSON response from Linear OAuth endpoint with validation
  */
 async function parseTokenResponse(response: Response): Promise<TokenResponse> {
   const json: unknown = await response.json();
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON parsing requires type assertion
-  return json as TokenResponse;
+  return parseTokenResponseJson(json);
 }
 
 // Access token TTL: 23 hours (Linear tokens expire after 24 hours)

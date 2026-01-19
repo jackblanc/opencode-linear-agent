@@ -21,6 +21,7 @@
         "@linear/sdk": "^68.1.0",
         "@opencode-ai/sdk": "^1.1.2",
         "better-result": "^2.0.0",
+        "zod": "^4.3.5",
       },
     },
     "packages/oauth": {
@@ -36,6 +37,7 @@
       "name": "@linear-opencode-agent/plugin",
       "version": "1.0.0",
       "dependencies": {
+        "@linear-opencode-agent/core": "workspace:*",
         "@linear/sdk": "^68.1.0",
         "@opencode-ai/plugin": "^1.1.21",
         "@opencode-ai/sdk": "^1.1.21",
@@ -54,6 +56,7 @@
         "@linear/sdk": "^68.1.0",
         "@opencode-ai/sdk": "^1.1.2",
         "better-result": "^1.0.0",
+        "zod": "^4.3.5",
       },
     },
   },
@@ -262,15 +265,15 @@
 
     "yaml": ["yaml@2.8.2", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.3.5", "", {}, "sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g=="],
 
     "@linear-opencode-agent/oauth/better-result": ["better-result@2.0.0", "", { "dependencies": { "@clack/prompts": "^0.11.0" }, "bin": { "better-result": "bin/cli.mjs" } }, "sha512-72GfHw5FQp2GylNeoQPAmXDQj2e0HBeMuyGwVd1eM5HahvC2pysdBjCOuRASfQ2ZLeykiFaVOs3455a78+Dh3Q=="],
+
+    "@linear-opencode-agent/oauth/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@linear-opencode-agent/server/better-result": ["better-result@1.0.0", "", {}, "sha512-Knd3D8J+eEOWJBbK2dsqAvuEMugd8QxA77bhV/ScAkHcQ5+V7eGulnrWoMXCBSoktJBg70fsZnKOX4kw02ZkIA=="],
 
     "@opencode-ai/plugin/zod": ["zod@4.1.8", "", {}, "sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ=="],
-
-    "knip/zod": ["zod@4.3.5", "", {}, "sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g=="],
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
   }
