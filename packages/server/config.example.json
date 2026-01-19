@@ -18,8 +18,5 @@
       "35.222.25.142"
     ]
   },
-  "projectsPath": "/path/to/your/projects",
-  "paths": {
-    "data": "/data"
-  }
+  "projectsPath": "/path/to/your/projects"
 }

@@ -2,8 +2,9 @@
  * Configuration loader for local server
  */
 
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { Log } from "@linear-opencode-agent/core";
 
 /**
@@ -25,10 +26,6 @@ export interface Config {
     webhookIps: string[];
   };
   projectsPath: string;
-  paths: {
-    /** Directory for persistent data (e.g., /data) */
-    data: string;
-  };
 }
 
 /**
@@ -113,12 +110,6 @@ function validateConfig(config: unknown): config is Config {
     return false;
   }
 
-  // Check paths
-  const paths = getObject(config, "paths");
-  if (!paths || typeof paths.data !== "string") {
-    return false;
-  }
-
   return true;
 }
 
@@ -176,9 +167,6 @@ export async function loadConfig(): Promise<Config> {
   const config: Config = {
     ...rawConfig,
     projectsPath: expandPath(rawConfig.projectsPath),
-    paths: {
-      data: expandPath(rawConfig.paths.data),
-    },
   };
 
   return config;
@@ -190,4 +178,20 @@ export async function loadConfig(): Promise<Config> {
  */
 export function getWorkerUrl(config: Config): string {
   return `https://${config.publicHostname}`;
+}
+
+/**
+ * Get the data directory for persistent storage
+ *
+ * Auto-detects environment:
+ * - Docker: /data (created by Dockerfile, volume mounted)
+ * - Local: ~/.local/share/linear-opencode-agent (XDG-compliant)
+ */
+export function getDataDir(): string {
+  // Docker environment has /data created by Dockerfile
+  if (existsSync("/data")) {
+    return "/data";
+  }
+  // Local: XDG-compliant path
+  return join(homedir(), ".local/share/linear-opencode-agent");
 }
