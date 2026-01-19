@@ -29,7 +29,7 @@ import {
   type OAuthConfig,
   type TokenStore,
 } from "@linear-opencode-agent/core";
-import { loadConfig, getWorkerUrl, type Config } from "./config";
+import { loadConfig, getWorkerUrl, getDataDir, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { resolveRepoPath } from "./RepoResolver";
 import { join } from "node:path";
@@ -137,7 +137,7 @@ function createDirectDispatcher(
       // OpenCode handles worktree creation natively
       // Note: opencodeUrl defaults to localhost:4096 for external links
       // config.opencode.url is only used for internal Docker communication
-      const storePath = join(config.paths.data, "store.json");
+      const storePath = join(getDataDir(), "store.json");
       const processor = new LinearEventProcessor(
         opencode,
         linear,
@@ -254,7 +254,8 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   });
 
   // Initialize storage
-  const dataPath = join(config.paths.data, "store.json");
+  const dataDir = getDataDir();
+  const dataPath = join(dataDir, "store.json");
 
   const kv = new FileStore(dataPath);
   const tokenStore = new FileTokenStore(kv);
