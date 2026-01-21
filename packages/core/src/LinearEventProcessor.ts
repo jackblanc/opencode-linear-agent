@@ -26,7 +26,7 @@ export interface LinearEventProcessorConfig {
 }
 
 const DEFAULT_CONFIG: Omit<LinearEventProcessorConfig, "organizationId"> = {
-  startCommand: "bun install --ignore-scripts",
+  startCommand: "bun install",
   opencodeUrl: "http://localhost:4096",
 };
 
