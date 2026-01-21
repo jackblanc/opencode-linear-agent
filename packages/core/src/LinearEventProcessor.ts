@@ -17,8 +17,6 @@ import { Log, type Logger } from "./logger";
  * Configuration for the LinearEventProcessor
  */
 export interface LinearEventProcessorConfig {
-  /** Command to run after worktree creation (e.g., "bun install") */
-  startCommand?: string;
   /** OpenCode server URL for external links (should be localhost for security) */
   opencodeUrl?: string;
   /** Linear organization ID for OAuth token lookup */
@@ -26,7 +24,6 @@ export interface LinearEventProcessorConfig {
 }
 
 const DEFAULT_CONFIG: Omit<LinearEventProcessorConfig, "organizationId"> = {
-  startCommand: "bun install",
   opencodeUrl: "http://localhost:4096",
 };
 
@@ -71,7 +68,6 @@ export class LinearEventProcessor {
       linear,
       sessions,
       repoDirectory,
-      this.config.startCommand,
     );
     this.promptBuilder = new PromptBuilder();
   }

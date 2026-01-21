@@ -657,6 +657,58 @@ describe("processToolPart", () => {
     });
   });
 
+  test("should include thought for yarn install command", () => {
+    const part: ToolPart = {
+      type: "tool",
+      id: "tool-1",
+      callID: "call-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "yarn install" },
+        time: { start: now },
+      },
+    };
+
+    const state = createInitialHandlerState();
+    const result = processToolPart(part, state, ctx);
+
+    expect(result.actions[0]).toMatchObject({
+      content: {
+        type: "thought",
+        body: "Installing dependencies...",
+      },
+    });
+  });
+
+  test("should include thought for pnpm install command", () => {
+    const part: ToolPart = {
+      type: "tool",
+      id: "tool-1",
+      callID: "call-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "pnpm install" },
+        time: { start: now },
+      },
+    };
+
+    const state = createInitialHandlerState();
+    const result = processToolPart(part, state, ctx);
+
+    expect(result.actions[0]).toMatchObject({
+      content: {
+        type: "thought",
+        body: "Installing dependencies...",
+      },
+    });
+  });
+
   test("should include thought for grep tool", () => {
     const part: ToolPart = {
       type: "tool",
