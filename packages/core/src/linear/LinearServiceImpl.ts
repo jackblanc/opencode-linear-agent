@@ -9,6 +9,7 @@ import type {
 } from "./LinearService";
 import type {
   ActivityContent,
+  IssueState,
   PlanItem,
   ProcessingStage,
   SignalMetadata,
@@ -17,6 +18,28 @@ import { STAGE_MESSAGES } from "./types";
 import { Log, type Logger } from "../logger";
 import type { LinearServiceError } from "../errors";
 import { mapLinearError } from "../errors";
+
+/**
+ * Map Linear's WorkflowState.type (typed as string in SDK) to our narrower union type.
+ *
+ * The Linear SDK types state.type as `string`, but the actual values are always one of:
+ * triage, backlog, unstarted, started, completed, canceled.
+ *
+ * Note: "Icebox" is not a separate type - it's a custom state name with type "backlog".
+ */
+function toIssueStateType(value: string): IssueState["type"] {
+  switch (value) {
+    case "triage":
+    case "backlog":
+    case "unstarted":
+    case "started":
+    case "completed":
+    case "canceled":
+      return value;
+    default:
+      return "unstarted";
+  }
+}
 
 /**
  * Maps elicitation signals to Linear's AgentActivitySignal
@@ -379,5 +402,27 @@ export class LinearServiceImpl implements LinearService {
     }
 
     return Result.ok(undefined);
+  }
+
+  async getIssueState(
+    issueId: string,
+  ): Promise<Result<IssueState, LinearServiceError>> {
+    return Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        const state = await issue.state;
+
+        if (!state) {
+          throw new Error("Issue has no workflow state");
+        }
+
+        return {
+          id: state.id,
+          name: state.name,
+          type: toIssueStateType(state.type),
+        };
+      },
+      catch: mapLinearError,
+    });
   }
 }
