@@ -2,6 +2,7 @@ import type { Result } from "better-result";
 import type { LinearServiceError } from "../errors";
 import type {
   ActivityContent,
+  IssueState,
   PlanItem,
   ProcessingStage,
   SignalMetadata,
@@ -151,4 +152,16 @@ export interface LinearService {
   moveIssueToInProgress(
     issueId: string,
   ): Promise<Result<void, LinearServiceError>>;
+
+  /**
+   * Get the workflow state for an issue
+   *
+   * Used to determine if the agent should operate in "plan" or "build" mode.
+   * Issues in triage or backlog states trigger plan mode.
+   *
+   * @param issueId - The issue ID to fetch state for
+   */
+  getIssueState(
+    issueId: string,
+  ): Promise<Result<IssueState, LinearServiceError>>;
 }

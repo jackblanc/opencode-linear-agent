@@ -9,6 +9,7 @@ import type {
 import { SessionManager } from "./session/SessionManager";
 import { WorktreeManager } from "./session/WorktreeManager";
 import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
+import { type AgentMode, determineAgentMode } from "./session/AgentMode";
 import type { OpencodeService } from "./opencode/OpencodeService";
 import { base64Encode } from "./utils/encode";
 import { Log, type Logger } from "./logger";
@@ -106,17 +107,35 @@ export class LinearEventProcessor {
 
     const { workdir, branchName } = worktreeResult.value;
 
-    // Move issue to "In Progress" status when agent starts work
-    // Per Linear best practices, always move to started status when work begins
+    // Determine agent mode based on issue state
     const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
+    let mode: AgentMode = "build";
+
     if (issueId) {
-      const statusResult = await this.linear.moveIssueToInProgress(issueId);
-      if (Result.isError(statusResult)) {
-        // Log but don't fail - status update is not critical
-        log.warn("Failed to move issue to In Progress", {
-          error: statusResult.error.message,
-          errorType: statusResult.error._tag,
+      const stateResult = await this.linear.getIssueState(issueId);
+      if (Result.isOk(stateResult)) {
+        mode = determineAgentMode(stateResult.value.type);
+        log.info("Determined agent mode", {
+          mode,
+          stateType: stateResult.value.type,
+          stateName: stateResult.value.name,
         });
+      } else {
+        log.warn("Failed to get issue state, defaulting to build mode", {
+          error: stateResult.error.message,
+          errorType: stateResult.error._tag,
+        });
+      }
+
+      // Only move to In Progress in build mode
+      if (mode === "build") {
+        const statusResult = await this.linear.moveIssueToInProgress(issueId);
+        if (Result.isError(statusResult)) {
+          log.warn("Failed to move issue to In Progress", {
+            error: statusResult.error.message,
+            errorType: statusResult.error._tag,
+          });
+        }
       }
     }
 
@@ -171,6 +190,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         session.previousContext,
         log,
       );
@@ -180,6 +200,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         session.previousContext,
         log,
       );
@@ -230,6 +251,7 @@ export class LinearEventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
+    mode: AgentMode,
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
@@ -263,16 +285,18 @@ export class LinearEventProcessor {
       workdir,
     };
 
-    // Build prompt with frontmatter + system instructions + issue context + previous context
+    // Build prompt with frontmatter + mode-specific instructions + issue context + previous context
     const prompt = this.promptBuilder.buildCreatedPrompt(
       event,
       promptCtx,
+      mode,
       previousContext,
     );
 
     log.info("Starting new session with prompt", {
       promptLength: prompt.length,
       hasPreviousContext: !!previousContext,
+      mode,
     });
 
     // Send prompt (fire-and-forget - plugin handles events)
@@ -293,6 +317,7 @@ export class LinearEventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
+    mode: AgentMode,
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
@@ -336,6 +361,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         previousContext,
         log,
       );
@@ -353,6 +379,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         previousContext,
         log,
       );
@@ -371,12 +398,14 @@ export class LinearEventProcessor {
       event,
       userResponse,
       promptCtx,
+      mode,
       previousContext,
     );
 
     log.info("Sending follow-up prompt", {
       promptLength: prompt.length,
       hasPreviousContext: !!previousContext,
+      mode,
     });
 
     // Send prompt (fire-and-forget - plugin handles events)
@@ -404,6 +433,7 @@ export class LinearEventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
+    mode: AgentMode,
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
@@ -428,6 +458,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         previousContext,
         log,
         pending.issueId,
@@ -464,6 +495,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         previousContext,
         log,
         pending.issueId,
@@ -537,6 +569,7 @@ export class LinearEventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
+    mode: AgentMode,
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
@@ -570,6 +603,7 @@ export class LinearEventProcessor {
         opencodeSessionId,
         linearSessionId,
         workdir,
+        mode,
         previousContext,
         log,
         pending.issueId,
@@ -708,6 +742,7 @@ export class LinearEventProcessor {
     opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
+    mode: AgentMode,
     previousContext: string | undefined,
     log: Logger,
     issueId = "unknown",
@@ -722,12 +757,14 @@ export class LinearEventProcessor {
       userResponse,
       issueId,
       promptCtx,
+      mode,
       previousContext,
     );
 
     log.info("Sending follow-up prompt", {
       promptLength: prompt.length,
       hasPreviousContext: !!previousContext,
+      mode,
     });
 
     // Send prompt (fire-and-forget - plugin handles events)

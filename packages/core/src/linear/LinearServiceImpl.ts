@@ -9,6 +9,7 @@ import type {
 } from "./LinearService";
 import type {
   ActivityContent,
+  IssueState,
   PlanItem,
   ProcessingStage,
   SignalMetadata,
@@ -16,6 +17,25 @@ import type {
 import { STAGE_MESSAGES } from "./types";
 import { Log, type Logger } from "../logger";
 import type { LinearServiceError } from "../errors";
+
+function toIssueStateType(value: string): IssueState["type"] {
+  switch (value) {
+    case "triage":
+      return "triage";
+    case "backlog":
+      return "backlog";
+    case "unstarted":
+      return "unstarted";
+    case "started":
+      return "started";
+    case "completed":
+      return "completed";
+    case "canceled":
+      return "canceled";
+    default:
+      return "unstarted";
+  }
+}
 import { mapLinearError } from "../errors";
 
 /**
@@ -379,5 +399,37 @@ export class LinearServiceImpl implements LinearService {
     }
 
     return Result.ok(undefined);
+  }
+
+  async getIssueState(
+    issueId: string,
+  ): Promise<Result<IssueState, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        const state = await issue.state;
+
+        if (!state) {
+          throw new Error("Issue has no workflow state");
+        }
+
+        return {
+          id: state.id,
+          name: state.name,
+          type: toIssueStateType(state.type),
+        };
+      },
+      catch: mapLinearError,
+    });
+
+    if (Result.isError(result)) {
+      this.log.error("Failed to get issue state", {
+        issueId,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+    }
+
+    return result;
   }
 }

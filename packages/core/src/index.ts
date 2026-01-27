@@ -71,6 +71,8 @@ export { WorktreeManager } from "./session/WorktreeManager";
 export type { WorktreeResolution } from "./session/WorktreeManager";
 export { PromptBuilder } from "./session/PromptBuilder";
 export type { PromptContext } from "./session/PromptBuilder";
+export { determineAgentMode } from "./session/AgentMode";
+export type { AgentMode } from "./session/AgentMode";
 export type { SessionState, HandlerState } from "./session/SessionState";
 export { createInitialHandlerState } from "./session/SessionState";
 export type {
@@ -93,6 +95,7 @@ export type {
 export { LinearServiceImpl } from "./linear/LinearServiceImpl";
 export type {
   ActivityContent,
+  IssueState,
   PlanItem,
   ProcessingStage,
 } from "./linear/types";
