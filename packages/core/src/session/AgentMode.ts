@@ -12,6 +12,8 @@ export type AgentMode = "plan" | "build";
  * Determine the agent mode based on issue workflow state
  *
  * Issues in "triage" or "backlog" state types trigger plan mode.
+ * This includes custom-named states like "Icebox" which have type "backlog".
+ *
  * All other states (unstarted, started, completed, canceled) trigger build mode.
  *
  * @param stateType - The workflow state type from Linear

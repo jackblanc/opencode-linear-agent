@@ -220,16 +220,20 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     prompt: string,
+    agent: AgentMode,
     log: Logger,
   ): Promise<void> {
     // Post sending prompt stage activity
     await this.linear.postStageActivity(linearSessionId, "sending_prompt");
 
-    // Fire-and-forget the prompt
+    // Fire-and-forget the prompt with the specified agent mode
     // The plugin handles event streaming to Linear
-    const result = await this.opencode.prompt(opencodeSessionId, workdir, [
-      { type: "text", text: prompt },
-    ]);
+    const result = await this.opencode.prompt(
+      opencodeSessionId,
+      workdir,
+      [{ type: "text", text: prompt }],
+      agent,
+    );
 
     if (Result.isError(result)) {
       log.error("Prompt failed", {
@@ -240,7 +244,7 @@ export class LinearEventProcessor {
       return;
     }
 
-    log.info("Prompt sent, plugin will handle events");
+    log.info("Prompt sent, plugin will handle events", { agent });
   }
 
   /**
@@ -305,6 +309,7 @@ export class LinearEventProcessor {
       linearSessionId,
       workdir,
       prompt,
+      mode,
       log,
     );
   }
@@ -414,6 +419,7 @@ export class LinearEventProcessor {
       linearSessionId,
       workdir,
       prompt,
+      mode,
       log,
     );
   }
@@ -773,6 +779,7 @@ export class LinearEventProcessor {
       linearSessionId,
       workdir,
       prompt,
+      mode,
       log,
     );
   }
