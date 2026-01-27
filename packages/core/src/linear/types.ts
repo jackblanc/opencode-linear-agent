@@ -118,3 +118,29 @@ export const STAGE_MESSAGES: Record<ProcessingStage, string> = {
   session_ready: "Session ready...",
   sending_prompt: "Sending task to AI agent...",
 };
+
+/**
+ * Issue workflow state from Linear
+ *
+ * The `type` field indicates the category of the state:
+ * - triage: Issues awaiting triage (when triage mode is enabled)
+ * - backlog: Issues in backlog (including custom states like "Icebox", "Later", etc.)
+ * - unstarted: Issues ready to start (e.g., "Todo")
+ * - started: Issues in progress
+ * - completed: Issues that are done
+ * - canceled: Issues that were canceled
+ *
+ * Note: The Linear SDK types WorkflowState.type as `string`, so we define our own
+ * narrower type based on the documented values.
+ */
+export interface IssueState {
+  id: string;
+  name: string;
+  type:
+    | "triage"
+    | "backlog"
+    | "unstarted"
+    | "started"
+    | "completed"
+    | "canceled";
+}

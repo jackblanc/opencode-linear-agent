@@ -176,17 +176,23 @@ export class OpencodeService {
 
   /**
    * Send a prompt to a session
-   * Uses the model configured in the OpenCode server
+   *
+   * @param sessionID - The session to prompt
+   * @param directory - Working directory for the session
+   * @param parts - Message parts to send
+   * @param agent - Optional agent mode ("build" or "plan"). Defaults to "build" if not specified.
    */
   async prompt(
     sessionID: string,
     directory: string,
     parts: Array<{ type: "text"; text: string }>,
+    agent?: string,
   ): Promise<Result<void, OpencodeServiceError>> {
     const result = await this.client.session.prompt({
       sessionID,
       directory,
       parts,
+      agent,
     });
 
     if (result.error) {
