@@ -1,6 +1,7 @@
 import type { ToolPart } from "@opencode-ai/sdk/v2";
 import type { HandlerState } from "../session/SessionState";
 import type { Action, HandlerResult } from "../actions/types";
+import { isInstallCommand } from "../utils/package-manager";
 
 /**
  * Tool name mapping for friendly action names
@@ -184,7 +185,7 @@ function getToolThought(
     if (command.includes("git push")) {
       return "Pushing changes to remote...";
     }
-    if (command.includes("npm install") || command.includes("bun install")) {
+    if (isInstallCommand(command)) {
       return "Installing dependencies...";
     }
   }
