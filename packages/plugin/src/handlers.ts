@@ -27,6 +27,7 @@ import {
   markErrorPosted,
   hasErrorPosted,
 } from "./state";
+import { isInstallCommand } from "@linear-opencode-agent/core";
 
 export type Logger = (message: string) => void;
 
@@ -207,7 +208,7 @@ export function getToolThought(
     if (command.includes("git push")) {
       return "Pushing changes to remote...";
     }
-    if (command.includes("npm install") || command.includes("bun install")) {
+    if (isInstallCommand(command)) {
       return "Installing dependencies...";
     }
   }

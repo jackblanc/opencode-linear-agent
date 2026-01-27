@@ -3,6 +3,7 @@ import type { OpencodeService } from "../opencode/OpencodeService";
 import type { LinearService } from "../linear/LinearService";
 import type { SessionRepository } from "./SessionRepository";
 import type { Logger } from "../logger";
+import { detectInstallCommand } from "../utils/package-manager";
 
 /**
  * Result from resolving a worktree
@@ -27,7 +28,6 @@ export class WorktreeManager {
     private readonly linear: LinearService,
     private readonly repository: SessionRepository,
     private readonly repoDirectory: string,
-    private readonly startCommand?: string,
   ) {}
 
   /**
@@ -86,10 +86,18 @@ export class WorktreeManager {
       repoDirectory: this.repoDirectory,
     });
 
+    // Detect the package manager from lockfile, skip install if none found
+    const installCommand = detectInstallCommand(this.repoDirectory);
+    if (installCommand) {
+      log.info("Detected package manager", { installCommand });
+    } else {
+      log.info("No lockfile found, skipping dependency installation");
+    }
+
     const worktreeResult = await this.opencode.createWorktree(
       this.repoDirectory,
       issue,
-      this.startCommand,
+      installCommand,
     );
 
     if (Result.isError(worktreeResult)) {

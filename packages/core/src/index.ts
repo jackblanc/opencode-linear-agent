@@ -122,6 +122,11 @@ export { handleWebhook } from "./webhook";
 
 // Utilities
 export { base64Encode, base64Decode } from "./utils/encode";
+export {
+  detectInstallCommand,
+  isInstallCommand,
+} from "./utils/package-manager";
+export type { PackageManager } from "./utils/package-manager";
 
 // Logging
 export { Log, createLogger, initLogger, defaultLogger } from "./logger";
