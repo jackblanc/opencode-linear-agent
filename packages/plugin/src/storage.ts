@@ -198,6 +198,21 @@ export async function readAccessToken(
 }
 
 /**
+ * Read the first available OAuth access token from the store.
+ * Scans all token:access:* keys and returns the first non-expired token.
+ */
+export async function readAnyAccessToken(): Promise<string | null> {
+  const data = await readStore(storePath);
+  for (const key of Object.keys(data)) {
+    if (key.startsWith(ACCESS_TOKEN_PREFIX)) {
+      const token = getValue<string>(data, key);
+      if (token) return token;
+    }
+  }
+  return null;
+}
+
+/**
  * Save a pending question to the shared store file.
  * Uses file locking to prevent concurrent write conflicts.
  */
