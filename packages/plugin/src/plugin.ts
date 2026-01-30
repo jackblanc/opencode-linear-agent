@@ -35,6 +35,7 @@ import {
   handleQuestionElicitation,
   type Logger,
 } from "./handlers";
+import { linearTools } from "./tools";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
   const log: Logger = (message: string) => {
@@ -72,6 +73,8 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
   info("Linear plugin initialized (token loaded per-session from store file)");
 
   return {
+    tool: linearTools,
+
     /**
      * Hook into chat messages to extract Linear context and load token.
      */
