@@ -132,6 +132,83 @@ export const linearTools = {
     },
   }),
 
+  linear_create_issue: tool({
+    description: "Create a new Linear issue. Always created in Triage state.",
+    args: {
+      title: z.string().describe("Issue title"),
+      teamKey: z.string().describe("Team key (e.g. 'CODE')"),
+      description: z
+        .string()
+        .optional()
+        .describe("Issue description (markdown)"),
+      priority: z
+        .number()
+        .describe("Priority: 1=Urgent, 2=High, 3=Normal, 4=Low"),
+      label: z
+        .string()
+        .describe("A repo:* label name (e.g. 'repo:linear-opencode-agent')"),
+      assignee: z
+        .string()
+        .optional()
+        .describe("Assignee user ID, name, or email"),
+    },
+    async execute(args): Promise<string> {
+      const client = await getClient();
+
+      const teams = await client.teams({
+        filter: { key: { eq: args.teamKey } },
+      });
+      const team = teams.nodes[0];
+      if (!team) {
+        return JSON.stringify({
+          error: `Team with key "${args.teamKey}" not found`,
+        });
+      }
+
+      const states = await team.states();
+      const triage = states.nodes.find(
+        (s) => s.name.toLowerCase() === "triage",
+      );
+
+      const allLabels = await team.labels();
+      const label = allLabels.nodes.find(
+        (l) =>
+          l.id === args.label ||
+          l.name.toLowerCase() === args.label.toLowerCase(),
+      );
+
+      let assigneeId: string | undefined;
+      if (args.assignee) {
+        const org = await client.organization;
+        const users = await org.users();
+        const match = users.nodes.find(
+          (u) =>
+            u.id === args.assignee ||
+            u.name.toLowerCase() === args.assignee?.toLowerCase() ||
+            u.email.toLowerCase() === args.assignee?.toLowerCase(),
+        );
+        if (match) assigneeId = match.id;
+      }
+
+      const payload = await client.createIssue({
+        title: args.title,
+        teamId: team.id,
+        priority: args.priority,
+        description: args.description,
+        stateId: triage?.id,
+        labelIds: label ? [label.id] : undefined,
+        assigneeId,
+      });
+      const issue = await payload.issue;
+      return JSON.stringify({
+        success: true,
+        id: issue?.id,
+        identifier: issue?.identifier,
+        url: issue?.url,
+      });
+    },
+  }),
+
   linear_create_comment: tool({
     description: "Create a comment on a Linear issue",
     args: {
