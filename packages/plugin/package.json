@@ -6,8 +6,8 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify --external '@opencode-ai/plugin'",
-    "dev": "bun build ./src/index.ts --outfile=../../.opencode/plugin/linear.js --target=bun --external '@opencode-ai/plugin'"
+    "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify",
+    "dev": "bun build ./src/index.ts --outfile=$HOME/.config/opencode/plugin/linear.js --target=bun"
   },
   "dependencies": {
     "@linear-opencode-agent/core": "workspace:*",
