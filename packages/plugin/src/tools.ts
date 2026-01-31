@@ -360,6 +360,10 @@ export const linearTools = {
         .optional()
         .describe("Filter by assignee name or email"),
       team: z.string().optional().describe("Filter by team key (e.g. 'CODE')"),
+      label: z
+        .string()
+        .optional()
+        .describe("Filter by label name (exact match)"),
       limit: z.number().optional().describe("Max results (default 20)"),
     },
     async execute(args): Promise<string> {
@@ -387,6 +391,9 @@ export const linearTools = {
           if (args.team) {
             filter.team = { key: { eq: args.team } };
           }
+          if (args.label) {
+            filter.labels = { name: { eq: args.label } };
+          }
           if (args.query) {
             filter.searchableContent = { contains: args.query };
           }
@@ -400,6 +407,7 @@ export const linearTools = {
             issues.nodes.map(async (issue) => {
               const state = await issue.state;
               const assignee = await issue.assignee;
+              const labels = await issue.labels();
               return {
                 id: issue.id,
                 identifier: issue.identifier,
@@ -407,6 +415,7 @@ export const linearTools = {
                 state: state?.name,
                 assignee: assignee?.name,
                 priority: issue.priorityLabel,
+                labels: labels.nodes.map((l) => l.name),
                 url: issue.url,
               };
             }),
