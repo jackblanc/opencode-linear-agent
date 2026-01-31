@@ -429,4 +429,94 @@ export const linearTools = {
       return Result.isError(result) ? errorJson(result.error) : result.value;
     },
   }),
+
+  linear_list_projects: tool({
+    description:
+      "List Linear projects in the workspace. Returns summary info only — use linear_get_project for full details.",
+    args: {
+      team: z.string().optional().describe("Filter by team key (e.g. 'CODE')"),
+      state: z
+        .string()
+        .optional()
+        .describe(
+          "Filter by project state: planned, started, paused, completed, canceled",
+        ),
+      limit: z.number().optional().describe("Max results (default 20)"),
+    },
+    async execute(args): Promise<string> {
+      const clientResult = await getClient();
+      if (Result.isError(clientResult)) return errorJson(clientResult.error);
+      const client = clientResult.value;
+
+      const result = await Result.tryPromise({
+        try: async () => {
+          const limit = args.limit ?? 20;
+          const filter: Record<string, unknown> = {};
+
+          if (args.team) {
+            filter.accessibleTeams = { key: { eq: args.team } };
+          }
+          if (args.state) {
+            filter.state = { eq: args.state };
+          }
+
+          const projects = await client.projects({
+            first: limit,
+            filter: Object.keys(filter).length > 0 ? filter : undefined,
+          });
+
+          const results = projects.nodes.map((project) => ({
+            id: project.id,
+            name: project.name,
+            state: project.state,
+            progress: project.progress,
+            url: project.url,
+          }));
+
+          return JSON.stringify(results);
+        },
+        catch: (e) =>
+          e instanceof Error ? e.message : "Failed to list projects",
+      });
+      return Result.isError(result) ? errorJson(result.error) : result.value;
+    },
+  }),
+
+  linear_get_project: tool({
+    description: "Get full details of a Linear project by ID",
+    args: {
+      id: z.string().describe("The project ID"),
+    },
+    async execute(args): Promise<string> {
+      const clientResult = await getClient();
+      if (Result.isError(clientResult)) return errorJson(clientResult.error);
+      const client = clientResult.value;
+
+      const result = await Result.tryPromise({
+        try: async () => {
+          const project = await client.project(args.id);
+          const lead = await project.lead;
+          const teams = await project.teams();
+          const members = await project.members();
+
+          return JSON.stringify({
+            id: project.id,
+            name: project.name,
+            state: project.state,
+            description: project.description,
+            lead: lead?.name,
+            teams: teams.nodes.map((t) => ({ key: t.key, name: t.name })),
+            members: members.nodes.map((m) => m.name),
+            progress: project.progress,
+            startDate: project.startDate,
+            targetDate: project.targetDate,
+            url: project.url,
+          });
+        },
+        catch: (e) =>
+          e instanceof Error ? e.message : "Failed to get project",
+      });
+      return Result.isError(result) ? errorJson(result.error) : result.value;
+    },
+  }),
 };
