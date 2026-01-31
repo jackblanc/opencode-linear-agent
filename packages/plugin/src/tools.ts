@@ -420,4 +420,66 @@ export const linearTools = {
       return Result.isError(result) ? errorJson(result.error) : result.value;
     },
   }),
+
+  linear_list_projects: tool({
+    description:
+      "List Linear projects in the workspace with optional filters for team and status",
+    args: {
+      team: z.string().optional().describe("Filter by team key (e.g. 'CODE')"),
+      state: z
+        .string()
+        .optional()
+        .describe(
+          "Filter by project state: planned, started, paused, completed, canceled",
+        ),
+      limit: z.number().optional().describe("Max results (default 20)"),
+    },
+    async execute(args): Promise<string> {
+      const clientResult = await getClient();
+      if (Result.isError(clientResult)) return errorJson(clientResult.error);
+      const client = clientResult.value;
+
+      const result = await Result.tryPromise({
+        try: async () => {
+          const limit = args.limit ?? 20;
+          const filter: Record<string, unknown> = {};
+
+          if (args.team) {
+            filter.accessibleTeams = { key: { eq: args.team } };
+          }
+          if (args.state) {
+            filter.state = { eq: args.state };
+          }
+
+          const projects = await client.projects({
+            first: limit,
+            filter: Object.keys(filter).length > 0 ? filter : undefined,
+          });
+
+          const results = await Promise.all(
+            projects.nodes.map(async (project) => {
+              const lead = await project.lead;
+              const teams = await project.teams();
+              return {
+                id: project.id,
+                name: project.name,
+                state: project.state,
+                description: project.description,
+                lead: lead?.name,
+                teams: teams.nodes.map((t) => t.key),
+                progress: project.progress,
+                targetDate: project.targetDate,
+                url: project.url,
+              };
+            }),
+          );
+
+          return JSON.stringify(results);
+        },
+        catch: (e) =>
+          e instanceof Error ? e.message : "Failed to list projects",
+      });
+      return Result.isError(result) ? errorJson(result.error) : result.value;
+    },
+  }),
 };
