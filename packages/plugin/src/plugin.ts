@@ -35,7 +35,7 @@ import {
   handleQuestionElicitation,
   type Logger,
 } from "./handlers";
-import { linearTools } from "./tools";
+import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
   const log: Logger = (message: string) => {
