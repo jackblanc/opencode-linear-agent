@@ -1,9 +1,6 @@
 # Linear OpenCode Agent
 
-An AI coding agent for Linear that uses OpenCode to handle delegated issues. Supports two deployment modes:
-
-1. **Local Development** - Webhook server in Docker, OpenCode running natively via launchd
-2. **Cloudflare Workers** (production) - Uses Cloudflare Sandbox containers for isolated execution
+An AI coding agent for Linear that uses OpenCode to handle delegated issues.
 
 ## Features
 
@@ -21,9 +18,8 @@ For a complete walkthrough, see the [Setup Guide](#setup-guide) below.
 ### Prerequisites
 
 - macOS (for launchd) or Linux (use systemd instead)
-- Docker & Docker Compose
 - [Bun](https://bun.sh) runtime
-- A Cloudflare account (free tier works)
+- A Cloudflare account (for Cloudflare Tunnel, free tier works)
 - A Linear workspace with admin access
 
 ---
@@ -41,7 +37,7 @@ Create an OAuth application in Linear to allow the agent to authenticate:
    - **Application name**: `OpenCode Agent` (or your preferred name)
    - **Developer name**: Your name
    - **Developer URL**: Your website or GitHub
-   - **Redirect URIs**: `https://your-tunnel-hostname.example.com/oauth/callback` (update after tunnel setup)
+   - **Redirect URIs**: `https://your-tunnel-hostname.example.com/api/oauth/callback` (update after tunnel setup)
 3. Under **Permissions**, enable:
    - `read` - Read access to resources
    - `write` - Write access to resources
@@ -106,7 +102,7 @@ Cloudflare Tunnel exposes your local webhook server to the internet securely.
 
    ingress:
      - hostname: your-subdomain.your-domain.com
-       service: http://webhook-server:3000
+       service: http://localhost:3000
      - service: http_status:404
    ```
 
@@ -116,7 +112,15 @@ Cloudflare Tunnel exposes your local webhook server to the internet securely.
    cloudflared tunnel route dns linear-webhook your-subdomain.your-domain.com
    ```
 
-6. **Update Linear OAuth & Webhook URLs** with your new hostname.
+6. **Install as a background service:**
+
+   ```bash
+   cloudflared service install
+   ```
+
+   This creates a launchd agent (macOS) or systemd unit (Linux) that starts the tunnel automatically on boot using your `~/.cloudflared/config.yml`.
+
+7. **Update Linear OAuth & Webhook URLs** with your new hostname.
 
 ### 3. OpenCode Server Setup
 
@@ -204,34 +208,13 @@ launchd.agents.opencode = {
    bun install
    ```
 
-2. **Create `config.docker.json` in the project root:**
+2. **Configure environment variables:**
 
-   ```json
-   {
-     "port": 3000,
-     "publicHostname": "your-tunnel-hostname.example.com",
-     "opencode": {
-       "url": "http://host.docker.internal:4096"
-     },
-     "linear": {
-       "clientId": "your-linear-client-id",
-       "clientSecret": "your-linear-client-secret",
-       "webhookSecret": "lin_wh_...",
-       "organizationId": "your-linear-org-id",
-       "webhookIps": [
-         "35.231.147.226",
-         "35.243.134.228",
-         "34.140.253.14",
-         "34.38.87.206",
-         "34.134.222.122",
-         "35.222.25.142"
-       ]
-     },
-     "projectsPath": "~/projects"
-   }
+   ```bash
+   cp .env.example .env
    ```
 
-   See `packages/server/config.example.json` for a template.
+   Fill in your values in `.env` (see `.env.example` for all available variables).
 
 3. **Create the data directory:**
 
@@ -245,32 +228,17 @@ launchd.agents.opencode = {
    curl http://localhost:4096  # Should return HTML
    ```
 
-5. **Build and start the webhook server:**
+5. **Start the webhook server:**
 
    ```bash
-   docker compose build
-   docker compose up -d
+   bun run start
    ```
-
-6. **Verify everything is working:**
-
-   ```bash
-   # Check webhook server logs
-   docker compose logs -f webhook-server
-
-   # Check tunnel is connected
-   docker compose logs cloudflared
-   ```
-
-7. **Test the webhook endpoint:**
-
-   Visit `https://your-tunnel-hostname.example.com/health` - should return a 200 response.
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ Webhook Server (Docker container)                            │
+│ Webhook Server (Bun process)                                 │
 │                                                              │
 │  - Receives Linear webhooks via Cloudflare Tunnel            │
 │  - Verifies signatures + org ID                              │
@@ -287,7 +255,7 @@ launchd.agents.opencode = {
          │                              │
          ▼                              ▼
     Linear API                   OpenCode Server
-                                 (native launchd service)
+                                 (launchd/systemd service)
                                  http://localhost:4096
 ```
 
@@ -295,8 +263,8 @@ launchd.agents.opencode = {
 
 | Service          | Type   | Purpose                         | Port |
 | ---------------- | ------ | ------------------------------- | ---- |
-| `webhook-server` | Docker | Webhook server, session manager | 3000 |
-| `cloudflared`    | Docker | Cloudflare Tunnel               | -    |
+| `webhook-server` | Bun    | Webhook server, session manager | 3000 |
+| `cloudflared`    | Native | Cloudflare Tunnel               | -    |
 | `opencode`       | Native | AI coding agent (launchd)       | 4096 |
 
 ### Security
@@ -319,15 +287,114 @@ launchd.agents.opencode = {
 
 **Note:** The repository must exist at `projectsPath/name` (the org prefix is ignored if provided).
 
+## Running as a Background Service
+
+The webhook server needs to stay running to receive Linear webhooks. Here are options for keeping it alive:
+
+### Option A: launchd (macOS, recommended)
+
+Create `~/Library/LaunchAgents/com.linear-opencode-agent.server.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.linear-opencode-agent.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/bun</string>
+        <string>run</string>
+        <string>src/index.ts</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/linear-opencode-agent/packages/server</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/linear-opencode-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/linear-opencode-agent.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/YOUR_USERNAME</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PUBLIC_HOSTNAME</key>
+        <string>your-subdomain.your-domain.com</string>
+        <key>LINEAR_CLIENT_ID</key>
+        <string>your-client-id</string>
+        <key>LINEAR_CLIENT_SECRET</key>
+        <string>your-client-secret</string>
+        <key>LINEAR_WEBHOOK_SECRET</key>
+        <string>your-webhook-secret</string>
+        <key>LINEAR_ORGANIZATION_ID</key>
+        <string>your-org-id</string>
+        <key>PROJECTS_PATH</key>
+        <string>/Users/YOUR_USERNAME/projects</string>
+    </dict>
+</dict>
+</plist>
+```
+
+Replace paths and env var values, then load:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.linear-opencode-agent.server.plist
+launchctl start com.linear-opencode-agent.server
+
+# Verify
+launchctl list | grep linear-opencode
+tail -f /tmp/linear-opencode-agent.log
+```
+
+### Option B: systemd (Linux)
+
+Create `~/.config/systemd/user/linear-opencode-agent.service`:
+
+```ini
+[Unit]
+Description=Linear OpenCode Agent webhook server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/linear-opencode-agent/packages/server
+ExecStart=/path/to/bun run src/index.ts
+Restart=always
+RestartSec=5
+EnvironmentFile=/path/to/linear-opencode-agent/.env
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now linear-opencode-agent
+journalctl --user -u linear-opencode-agent -f
+```
+
+### Option C: Terminal (development)
+
+For development, run directly in a terminal:
+
+```bash
+bun run dev
+```
+
 ## Common Commands
 
 ```bash
-# Rebuild webhook server after code changes
-docker compose build
-docker compose up -d
+# Start webhook server
+bun run start
 
-# View webhook server logs
-docker compose logs -f webhook-server
+# Start in dev mode (auto-reload on changes)
+bun run dev
 
 # Check OpenCode server status
 launchctl list | grep opencode
@@ -419,12 +486,11 @@ linear-opencode-agent/
 │   │       ├── oauth/                   # OAuth flow handlers
 │   │       └── storage/                 # Storage interface
 │   │
-│   ├── server/                  # Webhook server (Docker)
-│   │   ├── src/
-│   │   │   ├── index.ts              # HTTP server + routing
-│   │   │   ├── config.ts             # Configuration loader
-│   │   │   └── RepoResolver.ts       # Resolve repo from issue labels
-│   │   └── Dockerfile
+│   ├── server/                  # Webhook server (Bun)
+│   │   └── src/
+│   │       ├── index.ts              # HTTP server + routing
+│   │       ├── config.ts             # Configuration loader (env vars)
+│   │       └── RepoResolver.ts       # Resolve repo from issue labels
 │   │
 │   ├── plugin/                  # OpenCode plugin (optional)
 │   │   └── src/                      # Hooks into OpenCode events
@@ -432,9 +498,8 @@ linear-opencode-agent/
 │   └── oauth/                   # OAuth utilities
 │       └── src/                      # Token management
 │
-├── docker-compose.yml           # Local development stack
-├── config.docker.json           # Docker config (gitignored)
-└── .env                         # Environment variables (gitignored)
+├── .env                         # Environment variables (gitignored)
+└── .env.example                 # Template for env vars
 ```
 
 ## Development
