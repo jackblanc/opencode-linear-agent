@@ -255,6 +255,10 @@ export async function handleToolPart(
   if (state.status === "running") {
     if (!markToolRunning(part.sessionID, part.id)) return;
 
+    log(
+      `Tool starting: ${part.tool} (${extractParameter(part.tool, input, workdir)})`,
+    );
+
     const thought = getToolThought(part.tool, input);
     if (thought) {
       const result = await linear.postActivity(
@@ -285,6 +289,8 @@ export async function handleToolPart(
   if (state.status === "completed") {
     markToolCompleted(part.sessionID, part.id);
 
+    log(`Tool completed: ${part.tool} (output length: ${state.output.length})`);
+
     const result = await linear.postActivity(
       session.linear.sessionId,
       {
@@ -303,6 +309,8 @@ export async function handleToolPart(
 
   if (state.status === "error") {
     markToolCompleted(part.sessionID, part.id);
+
+    log(`Tool error: ${part.tool} - ${truncate(state.error)}`);
 
     const result = await linear.postActivity(
       session.linear.sessionId,
@@ -341,6 +349,8 @@ export async function handleTextPart(
 
   markTextPartSent(part.sessionID, part.id);
   markFinalResponsePosted(part.sessionID);
+
+  log(`Text complete (length: ${text.length})`);
 
   const result = await linear.postActivity(
     session.linear.sessionId,
