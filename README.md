@@ -112,7 +112,15 @@ Cloudflare Tunnel exposes your local webhook server to the internet securely.
    cloudflared tunnel route dns linear-webhook your-subdomain.your-domain.com
    ```
 
-6. **Update Linear OAuth & Webhook URLs** with your new hostname.
+6. **Install as a background service:**
+
+   ```bash
+   cloudflared service install
+   ```
+
+   This creates a launchd agent (macOS) or systemd unit (Linux) that starts the tunnel automatically on boot using your `~/.cloudflared/config.yml`.
+
+7. **Update Linear OAuth & Webhook URLs** with your new hostname.
 
 ### 3. OpenCode Server Setup
 
@@ -224,12 +232,6 @@ launchd.agents.opencode = {
 
    ```bash
    bun run start
-   ```
-
-6. **Start the Cloudflare Tunnel** (in a separate terminal):
-
-   ```bash
-   cloudflared tunnel run linear-webhook
    ```
 
 ## Architecture
