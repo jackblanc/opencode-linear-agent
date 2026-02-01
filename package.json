@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "prepare": "lefthook install || true",
+    "start": "bun run --filter @linear-opencode-agent/server start",
     "dev": "bun run --filter @linear-opencode-agent/server dev",
-    "up": "docker compose up -d --build && bun run --filter @linear-opencode-agent/plugin build && cp packages/plugin/dist/index.js ~/projects/environment/config/opencode/plugin/linear.js",
     "typecheck": "tsc --noEmit",
     "lint:check": "oxlint --report-unused-disable-directives --deny-warnings --type-aware --type-check",
     "lint:fix": "oxlint --fix",

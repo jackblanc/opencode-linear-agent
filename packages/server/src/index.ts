@@ -1,14 +1,14 @@
 /**
  * Local server entry point for Linear OpenCode Agent
  *
- * This server runs in Docker and handles:
+ * Handles:
  * - Linear OAuth flow
  * - Linear webhooks (exposed publicly via Cloudflare Tunnel)
  * - Event processing (directly, no queue)
  *
  * Prerequisites:
  * - OpenCode running separately via `opencode serve`
- * - config.json with all required settings
+ * - Environment variables configured (see .env.example)
  * - Local repository at the configured path
  */
 
@@ -242,7 +242,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   log.info("Starting Linear OpenCode Agent (Local)");
 
   // Load configuration
-  const config = await loadConfig();
+  const config = loadConfig();
 
   log.info("Configuration loaded", {
     port: config.port,
