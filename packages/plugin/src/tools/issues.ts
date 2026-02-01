@@ -551,6 +551,8 @@ export const issueTools = {
 
           if (args.state) {
             filter.state = { name: { containsIgnoreCase: args.state } };
+          } else {
+            filter.state = { type: { nin: ["completed", "canceled"] } };
           }
           if (args.assignee) {
             if (args.assignee === "me") {
