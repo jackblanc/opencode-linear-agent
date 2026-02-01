@@ -589,7 +589,7 @@ export const issueTools = {
             };
           }
           if (args.label) {
-            filter.labels = { name: { eq: args.label } };
+            filter.labels = { some: { name: { eq: args.label } } };
           }
           if (args.query) {
             filter.searchableContent = { contains: args.query };
