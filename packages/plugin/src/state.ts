@@ -24,20 +24,6 @@ const runningTools = new Map<string, Set<string>>();
 const sentTextParts = new Map<string, Set<string>>();
 const postedFinalResponse = new Set<string>();
 const postedError = new Set<string>();
-const pendingQuestionArgs = new Map<string, unknown>();
-
-export function storePendingQuestionArgs(callId: string, args: unknown): void {
-  pendingQuestionArgs.set(callId, args);
-}
-
-export function consumePendingQuestionArgs(callId: string): unknown {
-  const args = pendingQuestionArgs.get(callId);
-  if (args !== undefined) {
-    pendingQuestionArgs.delete(callId);
-    return args;
-  }
-  return null;
-}
 
 /**
  * Get session state by reading from file store.

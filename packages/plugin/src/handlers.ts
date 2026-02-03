@@ -243,8 +243,8 @@ export async function handleToolPart(
   const part = event.properties.part;
   if (!isToolPart(part)) return;
 
-  // Skip question tool - handled separately via tool.execute.after hook as elicitation
-  // Tool name may be "question" or "mcp_question" (with MCP prefix)
+  // Skip question tool entirely - elicitation is posted in tool.execute.before hook,
+  // and the user's answer comes back via Linear webhook, not tool completion
   const toolLower = part.tool.toLowerCase();
   if (toolLower === "question" || toolLower.endsWith("_question")) return;
 

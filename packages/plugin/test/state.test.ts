@@ -9,8 +9,6 @@ import {
   markFinalResponsePosted,
   markErrorPosted,
   hasErrorPosted,
-  storePendingQuestionArgs,
-  consumePendingQuestionArgs,
 } from "../src/state";
 
 describe("state", () => {
@@ -207,67 +205,6 @@ describe("state", () => {
       expect(() => {
         markErrorPosted("non-existent");
       }).not.toThrow();
-    });
-  });
-
-  describe("pending question args", () => {
-    test("storePendingQuestionArgs should store args", () => {
-      const args = { questions: [{ question: "Test?", options: [] }] };
-
-      storePendingQuestionArgs("call-123", args);
-      const result = consumePendingQuestionArgs("call-123");
-
-      expect(result).toEqual(args);
-    });
-
-    test("consumePendingQuestionArgs should remove args after consuming", () => {
-      const args = { questions: [{ question: "Test?", options: [] }] };
-
-      storePendingQuestionArgs("call-123", args);
-      consumePendingQuestionArgs("call-123"); // First consume
-      const result = consumePendingQuestionArgs("call-123"); // Second consume
-
-      expect(result).toBeNull();
-    });
-
-    test("consumePendingQuestionArgs should return null for non-existent call", () => {
-      const result = consumePendingQuestionArgs("non-existent");
-
-      expect(result).toBeNull();
-    });
-
-    test("should handle multiple call IDs independently", () => {
-      const args1 = { questions: [{ question: "Q1?", options: [] }] };
-      const args2 = { questions: [{ question: "Q2?", options: [] }] };
-
-      storePendingQuestionArgs("call-1", args1);
-      storePendingQuestionArgs("call-2", args2);
-
-      expect(consumePendingQuestionArgs("call-1")).toEqual(args1);
-      expect(consumePendingQuestionArgs("call-2")).toEqual(args2);
-      expect(consumePendingQuestionArgs("call-1")).toBeNull(); // Already consumed
-    });
-
-    test("should handle complex args", () => {
-      const args = {
-        questions: [
-          {
-            question: "Which framework?",
-            header: "Framework Selection",
-            options: [
-              { label: "React", description: "React framework" },
-              { label: "Vue", description: "Vue framework" },
-              { label: "Angular", description: "Angular framework" },
-            ],
-            multiple: true,
-          },
-        ],
-      };
-
-      storePendingQuestionArgs("call-complex", args);
-      const result = consumePendingQuestionArgs("call-complex");
-
-      expect(result).toEqual(args);
     });
   });
 });
