@@ -22,7 +22,11 @@ export interface SessionState {
 // Ephemeral state - okay to lose on restart since it just prevents duplicate posts
 const runningTools = new Map<string, Set<string>>();
 const sentTextParts = new Map<string, Set<string>>();
-const lastTextContent = new Map<string, string>();
+// Track last text content per message (for posting as response when message completes)
+const lastTextForMessage = new Map<string, string>();
+// Track which messages we've already posted final response for
+const completedMessages = new Set<string>();
+// Track which sessions we've posted final response for (to avoid duplicates)
 const postedFinalResponse = new Set<string>();
 const postedError = new Set<string>();
 const pendingQuestionArgs = new Map<string, unknown>();
@@ -110,20 +114,34 @@ export function markTextPartSent(sessionId: string, partId: string): void {
   parts.add(partId);
 }
 
-export function setLastTextContent(sessionId: string, text: string): void {
-  lastTextContent.set(sessionId, text);
+// Message-level tracking for final response
+
+export function setLastTextForMessage(messageId: string, text: string): void {
+  lastTextForMessage.set(messageId, text);
 }
 
-export function getLastTextContent(sessionId: string): string | null {
-  return lastTextContent.get(sessionId) ?? null;
+export function getLastTextForMessage(messageId: string): string | null {
+  return lastTextForMessage.get(messageId) ?? null;
 }
 
-export function clearLastTextContent(sessionId: string): void {
-  lastTextContent.delete(sessionId);
+export function isMessageCompleted(messageId: string): boolean {
+  return completedMessages.has(messageId);
 }
+
+export function markMessageCompleted(messageId: string): void {
+  completedMessages.add(messageId);
+  // Clean up the last text for this message since we've processed it
+  lastTextForMessage.delete(messageId);
+}
+
+// Session-level tracking for final response (prevents duplicates across messages)
 
 export function markFinalResponsePosted(sessionId: string): void {
   postedFinalResponse.add(sessionId);
+}
+
+export function hasFinalResponsePosted(sessionId: string): boolean {
+  return postedFinalResponse.has(sessionId);
 }
 
 export function markErrorPosted(sessionId: string): void {

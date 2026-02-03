@@ -26,8 +26,10 @@ export interface HandlerState {
   runningTools: Set<string>;
   /** Text part IDs we've already processed */
   sentTextParts: Set<string>;
-  /** Last text content to be posted as final response when session goes idle */
-  lastTextContent: string | null;
+  /** Message IDs we've already posted final response for */
+  completedMessages: Set<string>;
+  /** Last text content per message ID for posting as response when message completes */
+  lastTextByMessage: Map<string, string>;
   /** Whether we've posted a final response (for session completion) */
   postedFinalResponse: boolean;
 }
@@ -39,7 +41,8 @@ export function createInitialHandlerState(): HandlerState {
   return {
     runningTools: new Set(),
     sentTextParts: new Set(),
-    lastTextContent: null,
+    completedMessages: new Set(),
+    lastTextByMessage: new Map(),
     postedFinalResponse: false,
   };
 }

@@ -1,4 +1,4 @@
-import type { TextPart } from "@opencode-ai/sdk/v2";
+import type { TextPart, AssistantMessage } from "@opencode-ai/sdk/v2";
 import type { HandlerState } from "../session/SessionState";
 import type { Action, HandlerResult } from "../actions/types";
 
@@ -13,11 +13,10 @@ export interface TextHandlerContext {
  * Process a text part event - pure function
  *
  * Text parts are posted as "thought" activities when complete, and the
- * last text content is stored for posting as "response" when session
- * goes idle. This allows intermediate text to appear in Linear while
- * only triggering notifications for the final response.
+ * text content is stored per-message for posting as "response" when the
+ * message completes (time.completed is set).
  *
- * We detect completion by checking if time.end is set.
+ * We detect text completion by checking if time.end is set on the part.
  *
  * Takes current state and returns new state + actions.
  * No side effects, no I/O.
@@ -27,7 +26,7 @@ export function processTextPart(
   state: HandlerState,
   ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
-  const { id, text, time } = part;
+  const { id, messageID, text, time } = part;
 
   // Skip empty text
   if (!text.trim()) {
@@ -45,16 +44,18 @@ export function processTextPart(
     return { state, actions: [] };
   }
 
-  // Store the text content for posting as "response" when session goes idle
-  // Each new text part overwrites the previous - we only post the last one as "response"
+  // Store the text content for this message - will be posted as "response" when message completes
+  const newLastTextByMessage = new Map(state.lastTextByMessage);
+  newLastTextByMessage.set(messageID, text);
+
   const newState: HandlerState = {
     ...state,
     sentTextParts: new Set([...state.sentTextParts, id]),
-    lastTextContent: text,
+    lastTextByMessage: newLastTextByMessage,
   };
 
   // Post intermediate text as "thought" so it appears in Linear
-  // The final text will be posted as "response" on session idle
+  // The final text will be posted as "response" when message completes
   const actions: Action[] = [
     {
       type: "postActivity",
@@ -68,33 +69,49 @@ export function processTextPart(
 }
 
 /**
- * Process session idle event - post final response
+ * Process message.updated event - post final response when message completes
  *
- * When the session goes idle, we post the last text content as a
- * "response" activity. This ensures only one notification is sent
- * for the final response rather than for each intermediate text part.
+ * When an AssistantMessage has time.completed set, we post the last text
+ * content for that message as a "response" activity. This ensures only
+ * one notification is sent for the final response.
  */
-export function processSessionIdle(
+export function processMessageCompleted(
+  message: AssistantMessage,
   state: HandlerState,
   ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
-  const text = state.lastTextContent;
-
-  // Nothing to post
-  if (!text) {
+  // Only process if message has completed
+  if (!message.time.completed) {
     return { state, actions: [] };
   }
 
-  // Already posted final response
+  // Skip if already processed this message
+  if (state.completedMessages.has(message.id)) {
+    return { state, actions: [] };
+  }
+
+  // Skip if we already posted a final response
   if (state.postedFinalResponse) {
     return { state, actions: [] };
   }
 
+  const text = state.lastTextByMessage.get(message.id);
+
+  // Mark message as completed and clean up
+  const newLastTextByMessage = new Map(state.lastTextByMessage);
+  newLastTextByMessage.delete(message.id);
+
   const newState: HandlerState = {
     ...state,
-    lastTextContent: null,
-    postedFinalResponse: true,
+    completedMessages: new Set([...state.completedMessages, message.id]),
+    lastTextByMessage: newLastTextByMessage,
+    postedFinalResponse: text ? true : state.postedFinalResponse,
   };
+
+  // Nothing to post if no text for this message
+  if (!text) {
+    return { state: newState, actions: [] };
+  }
 
   const actions: Action[] = [
     {

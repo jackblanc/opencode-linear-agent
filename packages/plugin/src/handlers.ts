@@ -23,10 +23,12 @@ import {
   markToolCompleted,
   isTextPartSent,
   markTextPartSent,
-  setLastTextContent,
-  getLastTextContent,
-  clearLastTextContent,
+  isMessageCompleted,
+  markMessageCompleted,
+  getLastTextForMessage,
+  setLastTextForMessage,
   markFinalResponsePosted,
+  hasFinalResponsePosted,
   markErrorPosted,
   hasErrorPosted,
 } from "./state";
@@ -357,12 +359,12 @@ export async function handleTextPart(
 
   log(`Text complete (length: ${text.length})`);
 
-  // Store the text for posting as final response when session goes idle
-  // Each new text part overwrites the previous - we only post the last one as "response"
-  setLastTextContent(part.sessionID, text);
+  // Store the text for this message - will be posted as "response" when message completes
+  // Each new text part overwrites the previous for this message
+  setLastTextForMessage(part.messageID, text);
 
   // Post intermediate text as "thought" so it appears in Linear but doesn't notify
-  // The final text will be posted as "response" on session.idle
+  // The final text will be posted as "response" when the message completes
   const result = await linear.postActivity(
     session.linear.sessionId,
     { type: "thought", body: text },
@@ -370,6 +372,56 @@ export async function handleTextPart(
   );
   if (result.status === "error") {
     log(`postActivity (thought) failed: ${result.error.message}`);
+  }
+}
+
+/**
+ * Handle message.updated events to detect when a message completes.
+ * When time.completed is set on an AssistantMessage, post the last text as "response".
+ */
+export async function handleMessageUpdated(
+  event: Event,
+  linear: LinearService,
+  log: Logger,
+): Promise<void> {
+  if (event.type !== "message.updated") return;
+
+  const message = event.properties.info;
+
+  // Only handle assistant messages
+  if (message.role !== "assistant") return;
+
+  // Check if message just completed (time.completed is set)
+  if (!message.time.completed) return;
+
+  // Skip if we already processed this message completion
+  if (isMessageCompleted(message.id)) return;
+
+  const session = await getSessionAsync(message.sessionID);
+  if (!session || !session.linear.sessionId) return;
+
+  // Skip if we already posted a final response for this session
+  if (hasFinalResponsePosted(message.sessionID)) return;
+
+  const text = getLastTextForMessage(message.id);
+  if (!text) {
+    log(`Message ${message.id} completed but no text to post as response`);
+    markMessageCompleted(message.id);
+    return;
+  }
+
+  markMessageCompleted(message.id);
+  markFinalResponsePosted(message.sessionID);
+
+  log(`Message completed, posting final response (length: ${text.length})`);
+
+  const result = await linear.postActivity(
+    session.linear.sessionId,
+    { type: "response", body: text },
+    false,
+  );
+  if (result.status === "error") {
+    log(`postActivity (final response) failed: ${result.error.message}`);
   }
 }
 
@@ -411,37 +463,9 @@ export function mapTodoStatus(
   }
 }
 
-export async function handleSessionIdle(
-  event: Event,
-  linear: LinearService,
-  log: Logger,
-): Promise<void> {
-  if (event.type !== "session.idle") return;
-
-  const { sessionID } = event.properties;
-
-  const session = await getSessionAsync(sessionID);
-  if (!session || !session.linear.sessionId) return;
-
-  const text = getLastTextContent(sessionID);
-  if (!text) {
-    log("Session idle, no text to post as final response");
-    return;
-  }
-
-  clearLastTextContent(sessionID);
-  markFinalResponsePosted(sessionID);
-
-  log(`Session idle, posting final response (length: ${text.length})`);
-
-  const result = await linear.postActivity(
-    session.linear.sessionId,
-    { type: "response", body: text },
-    false,
-  );
-  if (result.status === "error") {
-    log(`postActivity (final response) failed: ${result.error.message}`);
-  }
+export function handleSessionIdle(_event: Event): void {
+  // No-op: final response is now posted when message.updated shows time.completed
+  // This handler exists for backwards compatibility with the event routing
 }
 
 export async function handleSessionError(
