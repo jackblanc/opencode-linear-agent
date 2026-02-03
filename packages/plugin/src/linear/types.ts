@@ -6,7 +6,7 @@
  * Signal metadata for elicitation activities (select signal with options)
  */
 export interface SignalMetadata {
-  options: Array<{ value: string; description?: string }>;
+  options: Array<{ value: string }>;
 }
 
 /**

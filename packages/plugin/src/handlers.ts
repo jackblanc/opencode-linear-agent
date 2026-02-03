@@ -18,7 +18,7 @@ import {
   type PendingPermission,
 } from "./storage";
 import {
-  getSession,
+  getSessionAsync,
   markToolRunning,
   markToolCompleted,
   isTextPartSent,
@@ -248,7 +248,7 @@ export async function handleToolPart(
   const toolLower = part.tool.toLowerCase();
   if (toolLower === "question" || toolLower.endsWith("_question")) return;
 
-  const session = getSession(part.sessionID);
+  const session = await getSessionAsync(part.sessionID);
   if (!session || !session.linear.sessionId) return;
 
   const state = part.state;
@@ -341,7 +341,7 @@ export async function handleTextPart(
   const part = event.properties.part;
   if (!isTextPart(part)) return;
 
-  const session = getSession(part.sessionID);
+  const session = await getSessionAsync(part.sessionID);
   if (!session || !session.linear.sessionId) return;
 
   if (!part.time?.end) return;
@@ -374,7 +374,7 @@ export async function handleTodoUpdated(
 
   const { sessionID, todos } = event.properties;
 
-  const session = getSession(sessionID);
+  const session = await getSessionAsync(sessionID);
   if (!session || !session.linear.sessionId) return;
 
   const plan: PlanItem[] = todos.map((todo: Todo) => ({
@@ -418,7 +418,7 @@ export async function handleSessionError(
 
   if (!sessionID) return;
 
-  const session = getSession(sessionID);
+  const session = await getSessionAsync(sessionID);
   if (!session || !session.linear.sessionId) return;
 
   if (hasErrorPosted(sessionID)) return;
@@ -453,7 +453,7 @@ export async function handlePermissionAsk(
   linear: LinearService,
   log: Logger,
 ): Promise<void> {
-  const session = getSession(sessionId);
+  const session = await getSessionAsync(sessionId);
   if (!session || !session.linear.sessionId) return;
 
   const patternList =
@@ -519,7 +519,7 @@ export async function handleQuestionElicitation(
   linear: LinearService,
   log: Logger,
 ): Promise<void> {
-  const session = getSession(sessionId);
+  const session = await getSessionAsync(sessionId);
   if (!session || !session.linear.sessionId) return;
 
   if (!args || typeof args !== "object") return;
@@ -542,7 +542,6 @@ export async function handleQuestionElicitation(
       if (Array.isArray(question.options) && question.options.length > 0) {
         const options = question.options.map((opt) => ({
           value: opt.label,
-          description: opt.description,
         }));
 
         const result = await linear.postElicitation(
