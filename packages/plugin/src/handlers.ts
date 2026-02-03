@@ -22,8 +22,6 @@ import {
   getSessionAsync,
   markToolRunning,
   markToolCompleted,
-  isTextPartSent,
-  markTextPartSent,
   isMessageCompleted,
   markMessageCompleted,
   markFinalResponsePosted,
@@ -229,10 +227,6 @@ function isToolPart(part: { type: string }): part is ToolPart {
   return part.type === "tool";
 }
 
-function isTextPart(part: { type: string }): part is TextPart {
-  return part.type === "text";
-}
-
 function getStateInput(state: ToolState): { [key: string]: unknown } {
   return state.input;
 }
@@ -335,39 +329,9 @@ export async function handleToolPart(
   }
 }
 
-export async function handleTextPart(
-  event: Event,
-  linear: LinearService,
-  log: Logger,
-): Promise<void> {
-  if (event.type !== "message.part.updated") return;
-
-  const part = event.properties.part;
-  if (!isTextPart(part)) return;
-
-  const session = await getSessionAsync(part.sessionID);
-  if (!session || !session.linear.sessionId) return;
-
-  if (!part.time?.end) return;
-  if (isTextPartSent(part.sessionID, part.id)) return;
-
-  const text = part.text.trim();
-  if (!text) return;
-
-  markTextPartSent(part.sessionID, part.id);
-
-  log(`Text complete (length: ${text.length})`);
-
-  // Post intermediate text as "thought" so it appears in Linear but doesn't notify
-  // The final text will be posted as "response" when the message completes (via handleMessageUpdated)
-  const result = await linear.postActivity(
-    session.linear.sessionId,
-    { type: "thought", body: text },
-    false,
-  );
-  if (result.status === "error") {
-    log(`postActivity (thought) failed: ${result.error.message}`);
-  }
+export function handleTextPart(_event: Event): void {
+  // No-op: text is only posted as "response" when the message completes
+  // See handleMessageUpdated for the final response posting logic
 }
 
 /**

@@ -79,7 +79,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
       if (event.type === "message.part.updated") {
         await handleToolPart(event, linear, log);
-        await handleTextPart(event, linear, log);
+        handleTextPart(event);
         return;
       }
 

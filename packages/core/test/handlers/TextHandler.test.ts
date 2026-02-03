@@ -47,7 +47,7 @@ describe("processTextPart", () => {
     expect(result.actions).toHaveLength(0);
   });
 
-  test("should post thought and store text for message", () => {
+  test("should store text for message without posting", () => {
     const part: TextPart = {
       type: "text",
       id: "text-1",
@@ -66,14 +66,8 @@ describe("processTextPart", () => {
     expect(result.state.lastTextByMessage.get("msg-1")).toBe("Hello, world!");
     // Should NOT set postedFinalResponse yet (that happens on message complete)
     expect(result.state.postedFinalResponse).toBe(false);
-    // Should post thought activity for intermediate text
-    expect(result.actions).toHaveLength(1);
-    expect(result.actions[0]).toEqual({
-      type: "postActivity",
-      sessionId: "linear-123",
-      content: { type: "thought", body: "Hello, world!" },
-      ephemeral: false,
-    });
+    // Should NOT post any activity - text is only posted as response when message completes
+    expect(result.actions).toHaveLength(0);
   });
 
   test("should not duplicate already processed text parts", () => {
@@ -147,9 +141,9 @@ describe("processTextPart", () => {
     expect(result2.state.lastTextByMessage.get("msg-1")).toBe(
       "Second response",
     );
-    // Each should post a thought action
-    expect(result1.actions).toHaveLength(1);
-    expect(result2.actions).toHaveLength(1);
+    // Neither should post actions - text is only posted as response when message completes
+    expect(result1.actions).toHaveLength(0);
+    expect(result2.actions).toHaveLength(0);
   });
 });
 

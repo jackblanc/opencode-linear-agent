@@ -12,9 +12,9 @@ export interface TextHandlerContext {
 /**
  * Process a text part event - pure function
  *
- * Text parts are posted as "thought" activities when complete, and the
- * text content is stored per-message for posting as "response" when the
- * message completes (time.completed is set).
+ * Text parts are stored per-message for posting as "response" when the
+ * message completes (time.completed is set). No intermediate "thought"
+ * activities are posted - only the final response triggers a notification.
  *
  * We detect text completion by checking if time.end is set on the part.
  *
@@ -24,7 +24,7 @@ export interface TextHandlerContext {
 export function processTextPart(
   part: TextPart,
   state: HandlerState,
-  ctx: TextHandlerContext,
+  _ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
   const { id, messageID, text, time } = part;
 
@@ -54,18 +54,9 @@ export function processTextPart(
     lastTextByMessage: newLastTextByMessage,
   };
 
-  // Post intermediate text as "thought" so it appears in Linear
-  // The final text will be posted as "response" when message completes
-  const actions: Action[] = [
-    {
-      type: "postActivity",
-      sessionId: ctx.linearSessionId,
-      content: { type: "thought", body: text },
-      ephemeral: false,
-    },
-  ];
-
-  return { state: newState, actions };
+  // No action emitted here - text is only posted as "response" when message completes
+  // See processMessageCompleted for the final response posting logic
+  return { state: newState, actions: [] };
 }
 
 /**
