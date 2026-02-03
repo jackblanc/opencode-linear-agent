@@ -9,11 +9,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Permission } from "@opencode-ai/sdk";
 import { createLinearService } from "./linear/client";
 import { readAccessToken } from "./storage";
-import {
-  getSessionAsync,
-  storePendingQuestionArgs,
-  consumePendingQuestionArgs,
-} from "./state";
+import { getSessionAsync } from "./state";
 import {
   handleToolPart,
   handleTextPart,
@@ -99,24 +95,12 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     },
 
     /**
-     * Hook into tool execution to capture question args for elicitations.
+     * Hook into tool execution to post question elicitations BEFORE the tool runs.
+     * This ensures the elicitation appears in Linear while OpenCode waits for user response.
      */
     "tool.execute.before": async (ctx, output) => {
       const toolLower = ctx.tool.toLowerCase();
-      if (toolLower === "question" || toolLower.endsWith("_question")) {
-        storePendingQuestionArgs(ctx.callID, output.args);
-      }
-    },
-
-    /**
-     * Hook into tool execution completion to post question elicitations.
-     */
-    "tool.execute.after": async (ctx, _output) => {
-      const toolLower = ctx.tool.toLowerCase();
       if (toolLower !== "question" && !toolLower.endsWith("_question")) return;
-
-      const args = consumePendingQuestionArgs(ctx.callID);
-      if (!args) return;
 
       // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);
@@ -127,10 +111,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
       const linear = createLinearService(token);
 
+      // Post elicitation immediately so it appears in Linear before user answers
       await handleQuestionElicitation(
         ctx.sessionID,
         ctx.callID,
-        args,
+        output.args,
         linear,
         log,
       );
