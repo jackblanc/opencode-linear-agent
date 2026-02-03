@@ -12,9 +12,10 @@ export interface TextHandlerContext {
 /**
  * Process a text part event - pure function
  *
- * Text parts are stored but not immediately posted. The last text
- * content is posted as a "response" activity when the session goes
- * idle, reducing notification noise for intermediate text.
+ * Text parts are posted as "thought" activities when complete, and the
+ * last text content is stored for posting as "response" when session
+ * goes idle. This allows intermediate text to appear in Linear while
+ * only triggering notifications for the final response.
  *
  * We detect completion by checking if time.end is set.
  *
@@ -24,7 +25,7 @@ export interface TextHandlerContext {
 export function processTextPart(
   part: TextPart,
   state: HandlerState,
-  _ctx: TextHandlerContext,
+  ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
   const { id, text, time } = part;
 
@@ -44,16 +45,26 @@ export function processTextPart(
     return { state, actions: [] };
   }
 
-  // Store the text content for posting when session goes idle
-  // Each new text part overwrites the previous - we only post the last one
+  // Store the text content for posting as "response" when session goes idle
+  // Each new text part overwrites the previous - we only post the last one as "response"
   const newState: HandlerState = {
     ...state,
     sentTextParts: new Set([...state.sentTextParts, id]),
     lastTextContent: text,
   };
 
-  // No actions - text will be posted on session idle
-  return { state: newState, actions: [] };
+  // Post intermediate text as "thought" so it appears in Linear
+  // The final text will be posted as "response" on session idle
+  const actions: Action[] = [
+    {
+      type: "postActivity",
+      sessionId: ctx.linearSessionId,
+      content: { type: "thought", body: text },
+      ephemeral: false,
+    },
+  ];
+
+  return { state: newState, actions };
 }
 
 /**

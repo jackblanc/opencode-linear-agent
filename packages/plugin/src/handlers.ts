@@ -336,7 +336,7 @@ export async function handleToolPart(
 
 export async function handleTextPart(
   event: Event,
-  _linear: LinearService,
+  linear: LinearService,
   log: Logger,
 ): Promise<void> {
   if (event.type !== "message.part.updated") return;
@@ -355,11 +355,22 @@ export async function handleTextPart(
 
   markTextPartSent(part.sessionID, part.id);
 
-  log(`Text complete, storing for final response (length: ${text.length})`);
+  log(`Text complete (length: ${text.length})`);
 
   // Store the text for posting as final response when session goes idle
-  // Each new text part overwrites the previous - we only post the last one
+  // Each new text part overwrites the previous - we only post the last one as "response"
   setLastTextContent(part.sessionID, text);
+
+  // Post intermediate text as "thought" so it appears in Linear but doesn't notify
+  // The final text will be posted as "response" on session.idle
+  const result = await linear.postActivity(
+    session.linear.sessionId,
+    { type: "thought", body: text },
+    false,
+  );
+  if (result.status === "error") {
+    log(`postActivity (thought) failed: ${result.error.message}`);
+  }
 }
 
 export async function handleTodoUpdated(
