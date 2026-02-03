@@ -4,7 +4,6 @@ import type {
   QuestionInfo,
 } from "../session/SessionRepository";
 import type { Action, HandlerResultWithQuestion } from "../actions/types";
-import type { HandlerState } from "../session/SessionState";
 
 /**
  * Context needed for question handler processing
@@ -22,22 +21,18 @@ export interface QuestionHandlerContext {
  * Posts one elicitation per question with a select signal, then returns
  * the pending question data for the orchestrator to store.
  *
- * QuestionHandler doesn't modify HandlerState but returns a PendingQuestion
- * that needs to be stored by the orchestrator.
- *
  * Takes event properties and returns actions + pending question.
  * No side effects, no I/O.
  */
 export function processQuestionAsked(
   properties: QuestionRequest,
-  state: HandlerState,
   ctx: QuestionHandlerContext,
-): HandlerResultWithQuestion<HandlerState> {
+): HandlerResultWithQuestion {
   const { id, sessionID, questions } = properties;
 
   // Only process for our session
   if (sessionID !== ctx.opencodeSessionId) {
-    return { state, actions: [] };
+    return { actions: [] };
   }
 
   // Convert OpenCode question format to our internal format
@@ -83,5 +78,5 @@ export function processQuestionAsked(
     createdAt: Date.now(),
   };
 
-  return { state, actions, pendingQuestion };
+  return { actions, pendingQuestion };
 }

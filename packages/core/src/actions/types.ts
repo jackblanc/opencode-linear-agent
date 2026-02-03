@@ -134,9 +134,8 @@ export interface HandlerResult<TState> {
  *
  * Used by QuestionHandler when a question needs to be stored
  */
-export interface HandlerResultWithQuestion<
-  TState,
-> extends HandlerResult<TState> {
+export interface HandlerResultWithQuestion {
+  actions: Action[];
   pendingQuestion?: PendingQuestion;
 }
 
