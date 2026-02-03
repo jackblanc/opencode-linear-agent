@@ -86,6 +86,7 @@ const TOOL_ACTION_MAP: Record<string, { action: string; past: string }> = {
   todowrite: { action: "Updating plan", past: "Updated plan" },
   todoread: { action: "Reading plan", past: "Read plan" },
   question: { action: "Asking question", past: "Asked question" },
+  mcp_question: { action: "Asking question", past: "Asked question" },
 };
 
 function isString(value: unknown): value is string {
@@ -243,7 +244,9 @@ export async function handleToolPart(
   if (!isToolPart(part)) return;
 
   // Skip question tool - handled separately via tool.execute.after hook as elicitation
-  if (part.tool.toLowerCase() === "question") return;
+  // Tool name may be "question" or "mcp_question" (with MCP prefix)
+  const toolLower = part.tool.toLowerCase();
+  if (toolLower === "question" || toolLower.endsWith("_question")) return;
 
   const session = getSession(part.sessionID);
   if (!session || !session.linear.sessionId) return;
