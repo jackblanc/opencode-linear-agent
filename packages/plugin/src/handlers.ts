@@ -243,14 +243,10 @@ export async function handleToolPart(
   const part = event.properties.part;
   if (!isToolPart(part)) return;
 
-  // Question tool elicitations are posted in tool.execute.before hook
-  // but we still want to post the "running" and "completed" activities here
+  // Skip question tool entirely - elicitation is posted in tool.execute.before hook,
+  // and the user's answer comes back via Linear webhook, not tool completion
   const toolLower = part.tool.toLowerCase();
-  const isQuestion =
-    toolLower === "question" || toolLower.endsWith("_question");
-
-  // Skip running state for question tools since elicitation already posted
-  if (isQuestion && part.state.status === "running") return;
+  if (toolLower === "question" || toolLower.endsWith("_question")) return;
 
   const session = await getSessionAsync(part.sessionID);
   if (!session || !session.linear.sessionId) return;
