@@ -23,6 +23,9 @@ import {
   markToolCompleted,
   isTextPartSent,
   markTextPartSent,
+  setLastTextContent,
+  getLastTextContent,
+  clearLastTextContent,
   markFinalResponsePosted,
   markErrorPosted,
   hasErrorPosted,
@@ -333,7 +336,7 @@ export async function handleToolPart(
 
 export async function handleTextPart(
   event: Event,
-  linear: LinearService,
+  _linear: LinearService,
   log: Logger,
 ): Promise<void> {
   if (event.type !== "message.part.updated") return;
@@ -351,18 +354,12 @@ export async function handleTextPart(
   if (!text) return;
 
   markTextPartSent(part.sessionID, part.id);
-  markFinalResponsePosted(part.sessionID);
 
-  log(`Text complete (length: ${text.length})`);
+  log(`Text complete, storing for final response (length: ${text.length})`);
 
-  const result = await linear.postActivity(
-    session.linear.sessionId,
-    { type: "thought", body: text },
-    false,
-  );
-  if (result.status === "error") {
-    log(`postActivity (response) failed: ${result.error.message}`);
-  }
+  // Store the text for posting as final response when session goes idle
+  // Each new text part overwrites the previous - we only post the last one
+  setLastTextContent(part.sessionID, text);
 }
 
 export async function handleTodoUpdated(
@@ -403,8 +400,37 @@ export function mapTodoStatus(
   }
 }
 
-export function handleSessionIdle(_event: Event): void {
-  // No-op: final text response already posted by handleTextPart
+export async function handleSessionIdle(
+  event: Event,
+  linear: LinearService,
+  log: Logger,
+): Promise<void> {
+  if (event.type !== "session.idle") return;
+
+  const { sessionID } = event.properties;
+
+  const session = await getSessionAsync(sessionID);
+  if (!session || !session.linear.sessionId) return;
+
+  const text = getLastTextContent(sessionID);
+  if (!text) {
+    log("Session idle, no text to post as final response");
+    return;
+  }
+
+  clearLastTextContent(sessionID);
+  markFinalResponsePosted(sessionID);
+
+  log(`Session idle, posting final response (length: ${text.length})`);
+
+  const result = await linear.postActivity(
+    session.linear.sessionId,
+    { type: "response", body: text },
+    false,
+  );
+  if (result.status === "error") {
+    log(`postActivity (final response) failed: ${result.error.message}`);
+  }
 }
 
 export async function handleSessionError(

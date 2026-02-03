@@ -88,7 +88,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       }
 
       if (event.type === "session.idle") {
-        handleSessionIdle(event);
+        await handleSessionIdle(event, linear, log);
         return;
       }
 

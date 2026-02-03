@@ -274,11 +274,8 @@ export class LinearEventProcessor {
         });
       }
 
-      await this.linear.postActivity(
-        linearSessionId,
-        { type: "response", body: "Work stopped as requested." },
-        false,
-      );
+      // Don't post a synthetic "work stopped" response - let the plugin
+      // handle posting the final response when the session goes idle
       return;
     }
 
@@ -342,11 +339,8 @@ export class LinearEventProcessor {
         });
       }
 
-      await this.linear.postActivity(
-        linearSessionId,
-        { type: "response", body: "Work stopped as requested." },
-        false,
-      );
+      // Don't post a synthetic "work stopped" response - let the plugin
+      // handle posting the final response when the session goes idle
       return;
     }
 

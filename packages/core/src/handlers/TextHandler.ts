@@ -12,10 +12,9 @@ export interface TextHandlerContext {
 /**
  * Process a text part event - pure function
  *
- * Text parts are posted as "thought" activities when complete.
- * We use "thought" instead of "response" to reduce notification
- * noise - "response" is reserved for final results per Linear's
- * agent activity documentation.
+ * Text parts are stored but not immediately posted. The last text
+ * content is posted as a "response" activity when the session goes
+ * idle, reducing notification noise for intermediate text.
  *
  * We detect completion by checking if time.end is set.
  *
@@ -25,7 +24,7 @@ export interface TextHandlerContext {
 export function processTextPart(
   part: TextPart,
   state: HandlerState,
-  ctx: TextHandlerContext,
+  _ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
   const { id, text, time } = part;
 
@@ -40,25 +39,57 @@ export function processTextPart(
     return { state, actions: [] };
   }
 
-  // Skip if already sent (check AFTER confirming it's complete)
-  // This prevents posting the same completed text twice
+  // Skip if already processed (check AFTER confirming it's complete)
   if (state.sentTextParts.has(id)) {
     return { state, actions: [] };
   }
 
-  // Create new state with this part marked as sent and final response posted
+  // Store the text content for posting when session goes idle
+  // Each new text part overwrites the previous - we only post the last one
   const newState: HandlerState = {
     ...state,
     sentTextParts: new Set([...state.sentTextParts, id]),
+    lastTextContent: text,
+  };
+
+  // No actions - text will be posted on session idle
+  return { state: newState, actions: [] };
+}
+
+/**
+ * Process session idle event - post final response
+ *
+ * When the session goes idle, we post the last text content as a
+ * "response" activity. This ensures only one notification is sent
+ * for the final response rather than for each intermediate text part.
+ */
+export function processSessionIdle(
+  state: HandlerState,
+  ctx: TextHandlerContext,
+): HandlerResult<HandlerState> {
+  const text = state.lastTextContent;
+
+  // Nothing to post
+  if (!text) {
+    return { state, actions: [] };
+  }
+
+  // Already posted final response
+  if (state.postedFinalResponse) {
+    return { state, actions: [] };
+  }
+
+  const newState: HandlerState = {
+    ...state,
+    lastTextContent: null,
     postedFinalResponse: true,
   };
 
-  // Post response activity
   const actions: Action[] = [
     {
       type: "postActivity",
       sessionId: ctx.linearSessionId,
-      content: { type: "thought", body: text },
+      content: { type: "response", body: text },
       ephemeral: false,
     },
   ];

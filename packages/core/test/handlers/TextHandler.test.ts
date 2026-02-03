@@ -1,6 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import type { TextPart } from "@opencode-ai/sdk/v2";
-import { processTextPart } from "../../src/handlers/TextHandler";
+import {
+  processTextPart,
+  processSessionIdle,
+} from "../../src/handlers/TextHandler";
 import { createInitialHandlerState } from "../../src/session/SessionState";
 
 describe("processTextPart", () => {
@@ -23,7 +26,6 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // No change, no actions
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
@@ -41,12 +43,11 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // No change, no actions
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
 
-  test("should post response activity for complete text", () => {
+  test("should store text content instead of posting immediately", () => {
     const part: TextPart = {
       type: "text",
       id: "text-1",
@@ -59,22 +60,17 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // State should have text part marked as sent
+    // State should have text part marked as processed
     expect(result.state.sentTextParts.has("text-1")).toBe(true);
-    // Should mark final response as posted
-    expect(result.state.postedFinalResponse).toBe(true);
-
-    // Should have response activity
-    expect(result.actions).toHaveLength(1);
-    expect(result.actions[0]).toEqual({
-      type: "postActivity",
-      sessionId: "linear-123",
-      content: { type: "thought", body: "Hello, world!" },
-      ephemeral: false,
-    });
+    // Should store the text content
+    expect(result.state.lastTextContent).toBe("Hello, world!");
+    // Should NOT set postedFinalResponse yet
+    expect(result.state.postedFinalResponse).toBe(false);
+    // Should NOT post any actions - text is posted on session idle
+    expect(result.actions).toHaveLength(0);
   });
 
-  test("should not duplicate already sent text parts", () => {
+  test("should not duplicate already processed text parts", () => {
     const part: TextPart = {
       type: "text",
       id: "text-1",
@@ -84,13 +80,12 @@ describe("processTextPart", () => {
       time: { start: now, end: now + 100 },
     };
 
-    // Start with text already sent
+    // Start with text already processed
     const state = createInitialHandlerState();
     state.sentTextParts.add("text-1");
 
     const result = processTextPart(part, state, ctx);
 
-    // No change, no actions
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
@@ -107,13 +102,13 @@ describe("processTextPart", () => {
 
     const state = createInitialHandlerState();
     const originalSentTextParts = new Set(state.sentTextParts);
-    const originalPostedFinalResponse = state.postedFinalResponse;
+    const originalLastTextContent = state.lastTextContent;
 
     processTextPart(part, state, ctx);
 
     // Original state should be unchanged
     expect(state.sentTextParts).toEqual(originalSentTextParts);
-    expect(state.postedFinalResponse).toBe(originalPostedFinalResponse);
+    expect(state.lastTextContent).toBe(originalLastTextContent);
   });
 
   test("should handle text with only whitespace characters", () => {
@@ -133,7 +128,7 @@ describe("processTextPart", () => {
     expect(result.actions).toHaveLength(0);
   });
 
-  test("should handle text with leading/trailing whitespace", () => {
+  test("should store text with leading/trailing whitespace", () => {
     const part: TextPart = {
       type: "text",
       id: "text-1",
@@ -146,61 +141,11 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should include the whitespace in the posted response
-    expect(result.actions[0]).toEqual({
-      type: "postActivity",
-      sessionId: "linear-123",
-      content: { type: "thought", body: "  Hello, world!  " },
-      ephemeral: false,
-    });
+    // Should store the text with whitespace
+    expect(result.state.lastTextContent).toBe("  Hello, world!  ");
   });
 
-  test("should handle multi-line text", () => {
-    const multiLineText = "Line 1\nLine 2\n\nLine 4";
-    const part: TextPart = {
-      type: "text",
-      id: "text-1",
-      sessionID: "session-1",
-      messageID: "msg-1",
-      text: multiLineText,
-      time: { start: now, end: now + 100 },
-    };
-
-    const state = createInitialHandlerState();
-    const result = processTextPart(part, state, ctx);
-
-    expect(result.actions[0]).toEqual({
-      type: "postActivity",
-      sessionId: "linear-123",
-      content: { type: "thought", body: multiLineText },
-      ephemeral: false,
-    });
-  });
-
-  test("should handle very long text", () => {
-    const longText = "A".repeat(10000);
-    const part: TextPart = {
-      type: "text",
-      id: "text-1",
-      sessionID: "session-1",
-      messageID: "msg-1",
-      text: longText,
-      time: { start: now, end: now + 100 },
-    };
-
-    const state = createInitialHandlerState();
-    const result = processTextPart(part, state, ctx);
-
-    // Should pass through the full text (truncation is Linear's responsibility)
-    expect(result.actions[0]).toEqual({
-      type: "postActivity",
-      sessionId: "linear-123",
-      content: { type: "thought", body: longText },
-      ephemeral: false,
-    });
-  });
-
-  test("should process multiple text parts sequentially", () => {
+  test("should overwrite previous text content with new text", () => {
     const part1: TextPart = {
       type: "text",
       id: "text-1",
@@ -223,28 +168,10 @@ describe("processTextPart", () => {
     const result1 = processTextPart(part1, state, ctx);
     const result2 = processTextPart(part2, result1.state, ctx);
 
-    expect(result1.state.sentTextParts.has("text-1")).toBe(true);
+    expect(result1.state.lastTextContent).toBe("First response");
+    expect(result2.state.lastTextContent).toBe("Second response");
     expect(result2.state.sentTextParts.has("text-1")).toBe(true);
     expect(result2.state.sentTextParts.has("text-2")).toBe(true);
-    expect(result2.actions).toHaveLength(1);
-  });
-
-  test("should handle time object with only start time", () => {
-    const part: TextPart = {
-      type: "text",
-      id: "text-1",
-      sessionID: "session-1",
-      messageID: "msg-1",
-      text: "In progress...",
-      time: { start: now },
-    };
-
-    const state = createInitialHandlerState();
-    const result = processTextPart(part, state, ctx);
-
-    // Should not process incomplete text
-    expect(result.state).toBe(state);
-    expect(result.actions).toHaveLength(0);
   });
 
   test("should return same state reference when no changes occur", () => {
@@ -260,30 +187,65 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should return exact same state object (not a copy)
     expect(result.state).toBe(state);
   });
+});
 
-  test("should handle text with special characters", () => {
-    const specialText =
-      "Code: `const x = 1;` and emoji: 🎉 and unicode: 日本語";
-    const part: TextPart = {
-      type: "text",
-      id: "text-1",
-      sessionID: "session-1",
-      messageID: "msg-1",
-      text: specialText,
-      time: { start: now, end: now + 100 },
-    };
+describe("processSessionIdle", () => {
+  const ctx = {
+    linearSessionId: "linear-123",
+  };
 
+  test("should post final response when session goes idle", () => {
     const state = createInitialHandlerState();
-    const result = processTextPart(part, state, ctx);
+    state.lastTextContent = "Final response text";
 
+    const result = processSessionIdle(state, ctx);
+
+    // Should clear lastTextContent
+    expect(result.state.lastTextContent).toBeNull();
+    // Should mark final response as posted
+    expect(result.state.postedFinalResponse).toBe(true);
+    // Should post response activity
+    expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "thought", body: specialText },
+      content: { type: "response", body: "Final response text" },
       ephemeral: false,
     });
+  });
+
+  test("should not post anything if no text content", () => {
+    const state = createInitialHandlerState();
+
+    const result = processSessionIdle(state, ctx);
+
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should not post if final response already posted", () => {
+    const state = createInitialHandlerState();
+    state.lastTextContent = "Some text";
+    state.postedFinalResponse = true;
+
+    const result = processSessionIdle(state, ctx);
+
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should not mutate original state", () => {
+    const state = createInitialHandlerState();
+    state.lastTextContent = "Final response text";
+
+    const originalLastTextContent = state.lastTextContent;
+    const originalPostedFinalResponse = state.postedFinalResponse;
+
+    processSessionIdle(state, ctx);
+
+    expect(state.lastTextContent).toBe(originalLastTextContent);
+    expect(state.postedFinalResponse).toBe(originalPostedFinalResponse);
   });
 });

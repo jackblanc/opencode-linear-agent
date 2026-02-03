@@ -17,7 +17,11 @@ export {
   type ToolHandlerContext,
 } from "./ToolHandler";
 
-export { processTextPart, type TextHandlerContext } from "./TextHandler";
+export {
+  processTextPart,
+  processSessionIdle,
+  type TextHandlerContext,
+} from "./TextHandler";
 
 export {
   processTodoUpdated,

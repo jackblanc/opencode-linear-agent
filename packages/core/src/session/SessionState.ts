@@ -24,8 +24,10 @@ export interface SessionState {
 export interface HandlerState {
   /** Tool IDs we've posted "running" state for */
   runningTools: Set<string>;
-  /** Text part IDs we've already posted */
+  /** Text part IDs we've already processed */
   sentTextParts: Set<string>;
+  /** Last text content to be posted as final response when session goes idle */
+  lastTextContent: string | null;
   /** Whether we've posted a final response (for session completion) */
   postedFinalResponse: boolean;
 }
@@ -37,6 +39,7 @@ export function createInitialHandlerState(): HandlerState {
   return {
     runningTools: new Set(),
     sentTextParts: new Set(),
+    lastTextContent: null,
     postedFinalResponse: false,
   };
 }

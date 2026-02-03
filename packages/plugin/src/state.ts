@@ -22,6 +22,7 @@ export interface SessionState {
 // Ephemeral state - okay to lose on restart since it just prevents duplicate posts
 const runningTools = new Map<string, Set<string>>();
 const sentTextParts = new Map<string, Set<string>>();
+const lastTextContent = new Map<string, string>();
 const postedFinalResponse = new Set<string>();
 const postedError = new Set<string>();
 const pendingQuestionArgs = new Map<string, unknown>();
@@ -107,6 +108,18 @@ export function markTextPartSent(sessionId: string, partId: string): void {
     sentTextParts.set(sessionId, parts);
   }
   parts.add(partId);
+}
+
+export function setLastTextContent(sessionId: string, text: string): void {
+  lastTextContent.set(sessionId, text);
+}
+
+export function getLastTextContent(sessionId: string): string | null {
+  return lastTextContent.get(sessionId) ?? null;
+}
+
+export function clearLastTextContent(sessionId: string): void {
+  lastTextContent.delete(sessionId);
 }
 
 export function markFinalResponsePosted(sessionId: string): void {
