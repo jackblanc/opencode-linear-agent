@@ -43,16 +43,27 @@ export const issueTools = {
       const result = await Result.tryPromise({
         try: async () => {
           const issue = await client.issue(args.id);
-          const [state, assignee, team, labels, parent, project, cycle] =
-            await Promise.all([
-              issue.state,
-              issue.assignee,
-              issue.team,
-              issue.labels(),
-              issue.parent,
-              issue.project,
-              issue.cycle,
-            ]);
+          const [
+            state,
+            assignee,
+            delegate,
+            team,
+            labels,
+            parent,
+            project,
+            cycle,
+            attachments,
+          ] = await Promise.all([
+            issue.state,
+            issue.assignee,
+            issue.delegate,
+            issue.team,
+            issue.labels(),
+            issue.parent,
+            issue.project,
+            issue.cycle,
+            issue.attachments(),
+          ]);
 
           const data: Record<string, unknown> = {
             id: issue.id,
@@ -62,6 +73,9 @@ export const issueTools = {
             state: state ? { name: state.name, type: state.type } : null,
             assignee: assignee
               ? { id: assignee.id, name: assignee.name }
+              : null,
+            delegate: delegate
+              ? { id: delegate.id, name: delegate.name }
               : null,
             team: team ? { id: team.id, name: team.name, key: team.key } : null,
             priority: issue.priority,
@@ -80,6 +94,11 @@ export const issueTools = {
             cycle: cycle
               ? { id: cycle.id, number: cycle.number, name: cycle.name }
               : null,
+            attachments: attachments.nodes.map((a) => ({
+              id: a.id,
+              title: a.title,
+              url: a.url,
+            })),
             url: issue.url,
             createdAt: issue.createdAt,
             updatedAt: issue.updatedAt,
@@ -635,17 +654,27 @@ export const issueTools = {
 
           const results = await Promise.all(
             issues.nodes.map(async (issue) => {
-              const state = await issue.state;
-              const assignee = await issue.assignee;
-              const labels = await issue.labels();
+              const [state, assignee, delegate, labels, attachments] =
+                await Promise.all([
+                  issue.state,
+                  issue.assignee,
+                  issue.delegate,
+                  issue.labels(),
+                  issue.attachments(),
+                ]);
               return {
                 id: issue.id,
                 identifier: issue.identifier,
                 title: issue.title,
                 state: state?.name,
                 assignee: assignee?.name,
+                delegate: delegate?.name ?? null,
                 priority: issue.priorityLabel,
                 labels: labels.nodes.map((l) => l.name),
+                attachments: attachments.nodes.map((a) => ({
+                  title: a.title,
+                  url: a.url,
+                })),
                 url: issue.url,
               };
             }),
