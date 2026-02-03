@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
 import { processQuestionAsked } from "../../src/handlers/QuestionHandler";
-import { createInitialHandlerState } from "../../src/session/SessionState";
 
 describe("processQuestionAsked", () => {
   const ctx = {
@@ -27,8 +26,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     // Should have elicitation action
     expect(result.actions).toHaveLength(1);
@@ -82,8 +80,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     // Should have 2 elicitation actions
     expect(result.actions).toHaveLength(2);
@@ -105,8 +102,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     // No actions, no pending question
     expect(result.actions).toHaveLength(0);
@@ -133,31 +129,10 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctxNoWorkdir);
+    const result = processQuestionAsked(properties, ctxNoWorkdir);
 
     // Should have empty string for workdir
     expect(result.pendingQuestion?.workdir).toBe("");
-  });
-
-  test("should not mutate handler state", () => {
-    const properties = {
-      id: "question-1",
-      sessionID: "opencode-456",
-      questions: [
-        {
-          question: "Question?",
-          header: "Q",
-          options: [{ label: "A", description: "Option A" }],
-        },
-      ],
-    };
-
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
-
-    // State should be unchanged (returned same object)
-    expect(result.state).toBe(state);
   });
 
   test("should handle multiple selection questions", () => {
@@ -178,8 +153,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.pendingQuestion?.questions[0]?.multiple).toBe(true);
     expect(result.actions[0]).toMatchObject({
@@ -206,8 +180,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toMatchObject({
@@ -233,8 +206,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions[0]).toMatchObject({
       body: "Choose deployment target:\n\n- **Production**: Deploy to prod environment\n- **Staging**: Deploy to staging environment",
@@ -260,8 +232,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions[0]).toMatchObject({ signal: "select" });
     expect(result.actions[1]).toMatchObject({ signal: "select" });
@@ -290,8 +261,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.pendingQuestion).toMatchObject({
       requestId: "question-123",
@@ -326,8 +296,7 @@ describe("processQuestionAsked", () => {
       questions: [],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions).toHaveLength(0);
     expect(result.pendingQuestion).toMatchObject({
@@ -352,8 +321,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions[0]).toMatchObject({
       body: "Use `const` or `let`? What about <T> generics?\n\n- **const**: Immutable binding\n- **let**: Mutable binding",
@@ -375,8 +343,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     const after = Date.now();
 
@@ -398,8 +365,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     // undefined should be preserved
     expect(result.pendingQuestion?.questions[0]?.multiple).toBeUndefined();
@@ -419,8 +385,7 @@ describe("processQuestionAsked", () => {
       ],
     };
 
-    const state = createInitialHandlerState();
-    const result = processQuestionAsked(properties, state, ctx);
+    const result = processQuestionAsked(properties, ctx);
 
     // Should include full description
     expect(result.actions[0]).toMatchObject({
