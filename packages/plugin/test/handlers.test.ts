@@ -20,6 +20,7 @@ describe("handlers pure functions", () => {
       expect(getToolActionName("todowrite", false)).toBe("Updating plan");
       expect(getToolActionName("todoread", false)).toBe("Reading plan");
       expect(getToolActionName("question", false)).toBe("Asking question");
+      expect(getToolActionName("mcp_question", false)).toBe("Asking question");
     });
 
     test("should return mapped past tense names for known tools (completed)", () => {
@@ -33,6 +34,7 @@ describe("handlers pure functions", () => {
       expect(getToolActionName("todowrite", true)).toBe("Updated plan");
       expect(getToolActionName("todoread", true)).toBe("Read plan");
       expect(getToolActionName("question", true)).toBe("Asked question");
+      expect(getToolActionName("mcp_question", true)).toBe("Asked question");
     });
 
     test("should be case-insensitive for tool names", () => {
