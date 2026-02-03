@@ -7,6 +7,7 @@ import {
   isTextPartSent,
   markTextPartSent,
   markFinalResponsePosted,
+  hasFinalResponsePosted,
   markErrorPosted,
   hasErrorPosted,
   storePendingQuestionArgs,
@@ -14,14 +15,6 @@ import {
 } from "../src/state";
 
 describe("state", () => {
-  const testLinearContext = {
-    sessionId: "linear-session-123",
-    issueId: "CODE-42",
-    organizationId: "org-xyz",
-    storePath: "/path/to/store.json",
-    workdir: "/path/to/workdir",
-  };
-
   // Use unique session IDs to avoid state leakage between tests
   let testSessionId: string;
 
@@ -29,44 +22,28 @@ describe("state", () => {
     testSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   });
 
-  describe("initSession and getSession", () => {
-    test("should initialize session state", () => {
-      initSession(testSessionId, testLinearContext);
-
-      const session = getSession(testSessionId);
-
-      expect(session).not.toBeNull();
-      expect(session?.linear).toEqual(testLinearContext);
-      expect(session?.runningTools.size).toBe(0);
-      expect(session?.sentTextParts.size).toBe(0);
-      expect(session?.postedFinalResponse).toBe(false);
-      expect(session?.postedError).toBe(false);
-    });
-
-    test("should return null for non-existent session", () => {
-      const session = getSession("non-existent-session");
-
+  describe("initSession and getSession (legacy)", () => {
+    // These are legacy functions that now return null/no-op
+    // Session state is now read from the file store via getSessionAsync
+    test("getSession should return null (legacy - reads from file store now)", () => {
+      const session = getSession("any-session");
       expect(session).toBeNull();
     });
 
-    test("should overwrite session when initialized again", () => {
-      initSession(testSessionId, testLinearContext);
-      markToolRunning(testSessionId, "tool-1");
-
-      const newContext = { ...testLinearContext, issueId: "CODE-99" };
-      initSession(testSessionId, newContext);
-
-      const session = getSession(testSessionId);
-      expect(session?.linear.issueId).toBe("CODE-99");
-      expect(session?.runningTools.size).toBe(0); // Reset
+    test("initSession should be a no-op (legacy)", () => {
+      // Should not throw
+      expect(() => {
+        initSession("session-id", {
+          sessionId: "linear-123",
+          issueId: "CODE-42",
+          organizationId: "org-xyz",
+          workdir: "/path/to/workdir",
+        });
+      }).not.toThrow();
     });
   });
 
   describe("tool tracking", () => {
-    beforeEach(() => {
-      initSession(testSessionId, testLinearContext);
-    });
-
     test("markToolRunning should return true for new tool", () => {
       const result = markToolRunning(testSessionId, "tool-123");
 
@@ -80,10 +57,10 @@ describe("state", () => {
       expect(result).toBe(false);
     });
 
-    test("markToolRunning should return false for non-existent session", () => {
-      const result = markToolRunning("non-existent", "tool-123");
+    test("markToolRunning should return true for new session (creates set on demand)", () => {
+      const result = markToolRunning("brand-new-session", "tool-123");
 
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
     test("markToolCompleted should remove tool from running set", () => {
@@ -121,10 +98,6 @@ describe("state", () => {
   });
 
   describe("text part tracking", () => {
-    beforeEach(() => {
-      initSession(testSessionId, testLinearContext);
-    });
-
     test("isTextPartSent should return false for unsent part", () => {
       const result = isTextPartSent(testSessionId, "part-123");
 
@@ -155,35 +128,25 @@ describe("state", () => {
   });
 
   describe("final response tracking", () => {
-    beforeEach(() => {
-      initSession(testSessionId, testLinearContext);
+    test("hasFinalResponsePosted should return false initially", () => {
+      const result = hasFinalResponsePosted(testSessionId);
+      expect(result).toBe(false);
     });
 
-    test("should start with postedFinalResponse as false", () => {
-      const session = getSession(testSessionId);
-
-      expect(session?.postedFinalResponse).toBe(false);
-    });
-
-    test("markFinalResponsePosted should set postedFinalResponse to true", () => {
+    test("markFinalResponsePosted should set flag to true", () => {
       markFinalResponsePosted(testSessionId);
-
-      const session = getSession(testSessionId);
-      expect(session?.postedFinalResponse).toBe(true);
+      const result = hasFinalResponsePosted(testSessionId);
+      expect(result).toBe(true);
     });
 
-    test("markFinalResponsePosted should not throw for non-existent session", () => {
+    test("markFinalResponsePosted should not throw for any session", () => {
       expect(() => {
-        markFinalResponsePosted("non-existent");
+        markFinalResponsePosted("any-session");
       }).not.toThrow();
     });
   });
 
   describe("error tracking", () => {
-    beforeEach(() => {
-      initSession(testSessionId, testLinearContext);
-    });
-
     test("hasErrorPosted should return false initially", () => {
       const result = hasErrorPosted(testSessionId);
 

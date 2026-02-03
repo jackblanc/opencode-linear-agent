@@ -22,8 +22,6 @@ export interface SessionState {
 // Ephemeral state - okay to lose on restart since it just prevents duplicate posts
 const runningTools = new Map<string, Set<string>>();
 const sentTextParts = new Map<string, Set<string>>();
-// Track last text content per message (for posting as response when message completes)
-const lastTextForMessage = new Map<string, string>();
 // Track which messages we've already posted final response for
 const completedMessages = new Set<string>();
 // Track which sessions we've posted final response for (to avoid duplicates)
@@ -116,22 +114,12 @@ export function markTextPartSent(sessionId: string, partId: string): void {
 
 // Message-level tracking for final response
 
-export function setLastTextForMessage(messageId: string, text: string): void {
-  lastTextForMessage.set(messageId, text);
-}
-
-export function getLastTextForMessage(messageId: string): string | null {
-  return lastTextForMessage.get(messageId) ?? null;
-}
-
 export function isMessageCompleted(messageId: string): boolean {
   return completedMessages.has(messageId);
 }
 
 export function markMessageCompleted(messageId: string): void {
   completedMessages.add(messageId);
-  // Clean up the last text for this message since we've processed it
-  lastTextForMessage.delete(messageId);
 }
 
 // Session-level tracking for final response (prevents duplicates across messages)

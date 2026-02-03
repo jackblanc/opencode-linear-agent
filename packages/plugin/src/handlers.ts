@@ -9,6 +9,7 @@ import type {
   ToolState,
   Todo,
 } from "@opencode-ai/sdk";
+import type { OpencodeClient } from "@opencode-ai/sdk";
 import type { LinearService } from "./linear/client";
 import type { PlanItem } from "./linear/types";
 import {
@@ -25,8 +26,6 @@ import {
   markTextPartSent,
   isMessageCompleted,
   markMessageCompleted,
-  getLastTextForMessage,
-  setLastTextForMessage,
   markFinalResponsePosted,
   hasFinalResponsePosted,
   markErrorPosted,
@@ -359,12 +358,8 @@ export async function handleTextPart(
 
   log(`Text complete (length: ${text.length})`);
 
-  // Store the text for this message - will be posted as "response" when message completes
-  // Each new text part overwrites the previous for this message
-  setLastTextForMessage(part.messageID, text);
-
   // Post intermediate text as "thought" so it appears in Linear but doesn't notify
-  // The final text will be posted as "response" when the message completes
+  // The final text will be posted as "response" when the message completes (via handleMessageUpdated)
   const result = await linear.postActivity(
     session.linear.sessionId,
     { type: "thought", body: text },
@@ -377,11 +372,14 @@ export async function handleTextPart(
 
 /**
  * Handle message.updated events to detect when a message completes.
- * When time.completed is set on an AssistantMessage, post the last text as "response".
+ * When time.completed is set on an AssistantMessage, query OpenCode for the message parts
+ * and post the last text as "response".
  */
 export async function handleMessageUpdated(
   event: Event,
   linear: LinearService,
+  opencode: OpencodeClient,
+  workdir: string,
   log: Logger,
 ): Promise<void> {
   if (event.type !== "message.updated") return;
@@ -403,12 +401,39 @@ export async function handleMessageUpdated(
   // Skip if we already posted a final response for this session
   if (hasFinalResponsePosted(message.sessionID)) return;
 
-  const text = getLastTextForMessage(message.id);
-  if (!text) {
+  // Query OpenCode for message parts to find the last text
+  const messagesResult = await opencode.session.messages({
+    path: { id: message.sessionID },
+    query: { directory: workdir },
+  });
+
+  if (!messagesResult.data) {
+    log(`Failed to get messages for session ${message.sessionID}`);
+    markMessageCompleted(message.id);
+    return;
+  }
+
+  // Find this message's parts
+  const messageData = messagesResult.data.find((m) => m.info.id === message.id);
+  if (!messageData) {
+    log(`Message ${message.id} not found in session messages`);
+    markMessageCompleted(message.id);
+    return;
+  }
+
+  // Find the last text part
+  const textParts = messageData.parts.filter(
+    (p): p is TextPart => p.type === "text",
+  );
+  const lastTextPart = textParts[textParts.length - 1];
+
+  if (!lastTextPart || !lastTextPart.text.trim()) {
     log(`Message ${message.id} completed but no text to post as response`);
     markMessageCompleted(message.id);
     return;
   }
+
+  const text = lastTextPart.text.trim();
 
   markMessageCompleted(message.id);
   markFinalResponsePosted(message.sessionID);

@@ -84,7 +84,13 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       }
 
       if (event.type === "message.updated") {
-        await handleMessageUpdated(event, linear, log);
+        await handleMessageUpdated(
+          event,
+          linear,
+          input.client,
+          input.directory,
+          log,
+        );
         return;
       }
 
