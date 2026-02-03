@@ -235,6 +235,36 @@ function createServer(
 }
 
 /**
+ * Proactively refresh the access token on a timer so the plugin
+ * always has a valid token in the shared store.
+ * Token TTL is 23 hours; we refresh every 20 hours for a 3-hour buffer.
+ */
+function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
+  const log = Log.create({ service: "token-refresh" });
+  const organizationId = config.linear.organizationId;
+  const oauthConfig: OAuthConfig = {
+    clientId: config.linear.clientId,
+    clientSecret: config.linear.clientSecret,
+  };
+
+  const REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1000;
+
+  const refresh = async (): Promise<void> => {
+    try {
+      await refreshAccessToken(oauthConfig, tokenStore, organizationId);
+      log.info("Proactive token refresh succeeded");
+    } catch (error) {
+      log.error("Proactive token refresh failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  void refresh();
+  setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+}
+
+/**
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
@@ -260,6 +290,9 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const sessionRepository = new FileSessionRepository(kv);
 
   log.info("Storage initialized", { dataPath });
+
+  // Start proactive token refresh so the plugin always has a valid token
+  startTokenRefreshTimer(config, tokenStore);
 
   // Create event dispatcher
   const dispatcher = createDirectDispatcher(
