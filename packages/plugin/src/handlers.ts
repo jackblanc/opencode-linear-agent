@@ -243,10 +243,14 @@ export async function handleToolPart(
   const part = event.properties.part;
   if (!isToolPart(part)) return;
 
-  // Skip question tool - handled separately via tool.execute.after hook as elicitation
-  // Tool name may be "question" or "mcp_question" (with MCP prefix)
+  // Question tool elicitations are posted in tool.execute.before hook
+  // but we still want to post the "running" and "completed" activities here
   const toolLower = part.tool.toLowerCase();
-  if (toolLower === "question" || toolLower.endsWith("_question")) return;
+  const isQuestion =
+    toolLower === "question" || toolLower.endsWith("_question");
+
+  // Skip running state for question tools since elicitation already posted
+  if (isQuestion && part.state.status === "running") return;
 
   const session = await getSessionAsync(part.sessionID);
   if (!session || !session.linear.sessionId) return;
