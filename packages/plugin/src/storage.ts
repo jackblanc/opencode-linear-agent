@@ -33,6 +33,7 @@ export function setStorePath(path: string): void {
 const ACCESS_TOKEN_PREFIX = "token:access:";
 const PENDING_QUESTION_PREFIX = "question:";
 const PENDING_PERMISSION_PREFIX = "permission:";
+const SESSION_PREFIX = "session:";
 
 /**
  * Lock configuration
@@ -213,6 +214,27 @@ export async function readAnyAccessToken(): Promise<string | null> {
 }
 
 /**
+ * Read the first available OAuth access token and its organization ID from the store.
+ * Returns both so caller can initialize session context properly.
+ */
+export async function readAnyAccessTokenWithOrg(): Promise<{
+  token: string;
+  organizationId: string;
+} | null> {
+  const data = await readStore(storePath);
+  for (const key of Object.keys(data)) {
+    if (key.startsWith(ACCESS_TOKEN_PREFIX)) {
+      const token = getValue<string>(data, key);
+      if (token) {
+        const organizationId = key.slice(ACCESS_TOKEN_PREFIX.length);
+        return { token, organizationId };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Save a pending question to the shared store file.
  * Uses file locking to prevent concurrent write conflicts.
  */
@@ -236,4 +258,35 @@ export async function savePendingPermission(
     const key = `${PENDING_PERMISSION_PREFIX}${permission.linearSessionId}`;
     return { ...data, [key]: { value: permission } };
   });
+}
+
+/**
+ * Session state stored by the server
+ */
+export interface StoredSession {
+  opencodeSessionId: string;
+  linearSessionId: string;
+  issueId: string;
+  branchName: string;
+  workdir: string;
+  lastActivityTime: number;
+}
+
+/**
+ * Read session state from the shared store file by OpenCode session ID.
+ * Scans all session:* keys to find a match.
+ */
+export async function readSessionByOpencodeId(
+  opencodeSessionId: string,
+): Promise<StoredSession | null> {
+  const data = await readStore(storePath);
+  for (const key of Object.keys(data)) {
+    if (key.startsWith(SESSION_PREFIX)) {
+      const session = getValue<StoredSession>(data, key);
+      if (session?.opencodeSessionId === opencodeSessionId) {
+        return session;
+      }
+    }
+  }
+  return null;
 }

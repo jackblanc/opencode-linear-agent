@@ -1,8 +1,12 @@
 /**
  * Session state management for tracking Linear context and event processing state.
+ *
+ * Session context is read directly from the file store - no in-memory caching.
+ * Ephemeral state (running tools, sent text parts) uses in-memory maps keyed by session ID.
  */
 
 import type { LinearContext } from "./parser";
+import { readSessionByOpencodeId, readAnyAccessTokenWithOrg } from "./storage";
 
 /**
  * Per-session state for event processing
@@ -15,7 +19,11 @@ export interface SessionState {
   postedError: boolean;
 }
 
-const sessions = new Map<string, SessionState>();
+// Ephemeral state - okay to lose on restart since it just prevents duplicate posts
+const runningTools = new Map<string, Set<string>>();
+const sentTextParts = new Map<string, Set<string>>();
+const postedFinalResponse = new Set<string>();
+const postedError = new Set<string>();
 const pendingQuestionArgs = new Map<string, unknown>();
 
 export function storePendingQuestionArgs(callId: string, args: unknown): void {
@@ -31,54 +39,84 @@ export function consumePendingQuestionArgs(callId: string): unknown {
   return null;
 }
 
-export function initSession(sessionId: string, linear: LinearContext): void {
-  sessions.set(sessionId, {
+/**
+ * Get session state by reading from file store.
+ * Returns null if session not found.
+ */
+export async function getSessionAsync(
+  opencodeSessionId: string,
+): Promise<SessionState | null> {
+  const stored = await readSessionByOpencodeId(opencodeSessionId);
+  if (!stored) return null;
+
+  // Get organization ID from token store
+  const tokenInfo = await readAnyAccessTokenWithOrg();
+  if (!tokenInfo) return null;
+
+  const linear: LinearContext = {
+    sessionId: stored.linearSessionId,
+    issueId: stored.issueId,
+    organizationId: tokenInfo.organizationId,
+    workdir: stored.workdir,
+  };
+
+  return {
     linear,
-    runningTools: new Set(),
-    sentTextParts: new Set(),
-    postedFinalResponse: false,
-    postedError: false,
-  });
+    runningTools: runningTools.get(opencodeSessionId) ?? new Set(),
+    sentTextParts: sentTextParts.get(opencodeSessionId) ?? new Set(),
+    postedFinalResponse: postedFinalResponse.has(opencodeSessionId),
+    postedError: postedError.has(opencodeSessionId),
+  };
 }
 
-export function getSession(sessionId: string): SessionState | null {
-  return sessions.get(sessionId) ?? null;
+// Legacy sync function - always returns null, use getSessionAsync instead
+export function getSession(_sessionId: string): SessionState | null {
+  return null;
+}
+
+// Legacy function - sessions are created by server, not plugin
+export function initSession(_sessionId: string, _linear: LinearContext): void {
+  // No-op - sessions are managed by server and stored in file store
 }
 
 export function markToolRunning(sessionId: string, toolId: string): boolean {
-  const state = sessions.get(sessionId);
-  if (!state) return false;
-  if (state.runningTools.has(toolId)) return false;
-  state.runningTools.add(toolId);
+  let tools = runningTools.get(sessionId);
+  if (!tools) {
+    tools = new Set();
+    runningTools.set(sessionId, tools);
+  }
+  if (tools.has(toolId)) return false;
+  tools.add(toolId);
   return true;
 }
 
 export function markToolCompleted(sessionId: string, toolId: string): void {
-  const state = sessions.get(sessionId);
-  if (state) state.runningTools.delete(toolId);
+  const tools = runningTools.get(sessionId);
+  if (tools) tools.delete(toolId);
 }
 
 export function isTextPartSent(sessionId: string, partId: string): boolean {
-  const state = sessions.get(sessionId);
-  return state?.sentTextParts.has(partId) ?? false;
+  const parts = sentTextParts.get(sessionId);
+  return parts?.has(partId) ?? false;
 }
 
 export function markTextPartSent(sessionId: string, partId: string): void {
-  const state = sessions.get(sessionId);
-  if (state) state.sentTextParts.add(partId);
+  let parts = sentTextParts.get(sessionId);
+  if (!parts) {
+    parts = new Set();
+    sentTextParts.set(sessionId, parts);
+  }
+  parts.add(partId);
 }
 
 export function markFinalResponsePosted(sessionId: string): void {
-  const state = sessions.get(sessionId);
-  if (state) state.postedFinalResponse = true;
+  postedFinalResponse.add(sessionId);
 }
 
 export function markErrorPosted(sessionId: string): void {
-  const state = sessions.get(sessionId);
-  if (state) state.postedError = true;
+  postedError.add(sessionId);
 }
 
 export function hasErrorPosted(sessionId: string): boolean {
-  const state = sessions.get(sessionId);
-  return state?.postedError ?? false;
+  return postedError.has(sessionId);
 }
