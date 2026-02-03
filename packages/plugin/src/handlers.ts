@@ -357,7 +357,7 @@ export async function handleTextPart(
 
   const result = await linear.postActivity(
     session.linear.sessionId,
-    { type: "response", body: text },
+    { type: "thought", body: text },
     false,
   );
   if (result.status === "error") {

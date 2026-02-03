@@ -69,7 +69,7 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: "Hello, world!" },
+      content: { type: "thought", body: "Hello, world!" },
       ephemeral: false,
     });
   });
@@ -150,7 +150,7 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: "  Hello, world!  " },
+      content: { type: "thought", body: "  Hello, world!  " },
       ephemeral: false,
     });
   });
@@ -172,7 +172,7 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: multiLineText },
+      content: { type: "thought", body: multiLineText },
       ephemeral: false,
     });
   });
@@ -195,7 +195,7 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: longText },
+      content: { type: "thought", body: longText },
       ephemeral: false,
     });
   });
@@ -282,7 +282,7 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: specialText },
+      content: { type: "thought", body: specialText },
       ephemeral: false,
     });
   });

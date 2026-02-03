@@ -12,7 +12,11 @@ export interface TextHandlerContext {
 /**
  * Process a text part event - pure function
  *
- * Text parts are posted as response activities when complete.
+ * Text parts are posted as "thought" activities when complete.
+ * We use "thought" instead of "response" to reduce notification
+ * noise - "response" is reserved for final results per Linear's
+ * agent activity documentation.
+ *
  * We detect completion by checking if time.end is set.
  *
  * Takes current state and returns new state + actions.
@@ -54,7 +58,7 @@ export function processTextPart(
     {
       type: "postActivity",
       sessionId: ctx.linearSessionId,
-      content: { type: "response", body: text },
+      content: { type: "thought", body: text },
       ephemeral: false,
     },
   ];
