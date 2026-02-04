@@ -29,6 +29,7 @@ import {
   setLastTextPart,
   getLastTextPart,
   hasPostedFinalResponse,
+  markQuestionElicitationPosted,
 } from "./state";
 import { isInstallCommand } from "@linear-opencode-agent/core";
 
@@ -246,17 +247,32 @@ export async function handleToolPart(
   const part = event.properties.part;
   if (!isToolPart(part)) return;
 
-  // Skip question tool entirely - elicitation is posted in tool.execute.before hook,
-  // and the user's answer comes back via Linear webhook, not tool completion
-  const toolLower = part.tool.toLowerCase();
-  if (toolLower === "question" || toolLower.endsWith("_question")) return;
-
   const session = await getSessionAsync(part.sessionID);
   if (!session || !session.linear.sessionId) return;
 
   const state = part.state;
   const input = getStateInput(state);
   const workdir = session.linear.workdir || null;
+
+  // Handle question tool specially - post elicitation when tool starts running
+  const toolLower = part.tool.toLowerCase();
+  const isQuestionTool =
+    toolLower === "question" || toolLower.endsWith("_question");
+
+  if (isQuestionTool) {
+    // Only post elicitation when tool starts running (before user answers)
+    // Skip completed state - the answer comes back via Linear webhook
+    if (state.status !== "running") return;
+
+    await handleQuestionElicitation(
+      part.sessionID,
+      part.callID,
+      input,
+      linear,
+      log,
+    );
+    return;
+  }
 
   if (state.status === "running") {
     if (!markToolRunning(part.sessionID, part.id)) return;
@@ -582,16 +598,55 @@ export async function handleQuestionElicitation(
   linear: LinearService,
   log: Logger,
 ): Promise<void> {
-  const session = await getSessionAsync(sessionId);
-  if (!session || !session.linear.sessionId) return;
+  // Deduplicate - prevent double-posting if both tool.execute.before and event handler fire
+  if (!markQuestionElicitationPosted(sessionId, requestId)) {
+    log(
+      `handleQuestionElicitation: already posted for callId=${requestId}, skipping`,
+    );
+    return;
+  }
 
-  if (!args || typeof args !== "object") return;
+  log(
+    `handleQuestionElicitation called: sessionId=${sessionId}, requestId=${requestId}, argsType=${typeof args}`,
+  );
+
+  const session = await getSessionAsync(sessionId);
+  if (!session || !session.linear.sessionId) {
+    log(
+      `handleQuestionElicitation: session not found or missing linearSessionId, sessionId=${sessionId}`,
+    );
+    return;
+  }
+
+  log(
+    `handleQuestionElicitation: session found, linearSessionId=${session.linear.sessionId}`,
+  );
+
+  if (!args || typeof args !== "object") {
+    log(
+      `handleQuestionElicitation: args invalid, args=${JSON.stringify(args)}`,
+    );
+    return;
+  }
+
   const questionArgs = args as McpQuestionArgs;
+  log(
+    `handleQuestionElicitation: args parsed, questions=${JSON.stringify(questionArgs.questions)}`,
+  );
+
   if (
     !Array.isArray(questionArgs.questions) ||
     questionArgs.questions.length === 0
-  )
+  ) {
+    log(
+      `handleQuestionElicitation: questions array invalid or empty, isArray=${Array.isArray(questionArgs.questions)}, length=${questionArgs.questions?.length ?? 0}`,
+    );
     return;
+  }
+
+  log(
+    `handleQuestionElicitation: posting ${questionArgs.questions.length} questions to Linear`,
+  );
 
   const linearSessionId = session.linear.sessionId;
 

@@ -24,6 +24,7 @@ const runningTools = new Map<string, Set<string>>();
 const sentTextParts = new Map<string, Set<string>>();
 const postedFinalResponse = new Set<string>();
 const postedError = new Set<string>();
+const postedQuestionElicitations = new Map<string, Set<string>>();
 
 // Track last text part per message for final response posting
 // Map<sessionId, Map<messageId, { partId: string; text: string }>>
@@ -128,4 +129,22 @@ export function getLastTextPart(
 
 export function hasPostedFinalResponse(sessionId: string): boolean {
   return postedFinalResponse.has(sessionId);
+}
+
+/**
+ * Check if a question elicitation has already been posted for this call.
+ * Prevents double-posting if both tool.execute.before and event handler fire.
+ */
+export function markQuestionElicitationPosted(
+  sessionId: string,
+  callId: string,
+): boolean {
+  let posted = postedQuestionElicitations.get(sessionId);
+  if (!posted) {
+    posted = new Set();
+    postedQuestionElicitations.set(sessionId, posted);
+  }
+  if (posted.has(callId)) return false;
+  posted.add(callId);
+  return true;
 }
