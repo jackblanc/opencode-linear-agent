@@ -369,6 +369,11 @@ export class LinearEventProcessor {
     const pendingQuestion =
       await this.sessions.getPendingQuestion(linearSessionId);
 
+    log.info("Checking for pending question", {
+      hasPendingQuestion: !!pendingQuestion,
+      pendingRequestId: pendingQuestion?.requestId,
+    });
+
     if (pendingQuestion) {
       await this.handleQuestionResponse(
         pendingQuestion,

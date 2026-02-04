@@ -37,7 +37,14 @@ export class FileStore implements KeyValueStore {
     if (this.loaded) {
       return;
     }
+    await this.reload();
+  }
 
+  /**
+   * Force reload the store from disk.
+   * Use this when expecting changes from external processes (e.g., plugin).
+   */
+  private async reload(): Promise<void> {
     const file = Bun.file(this.filePath);
     if (await file.exists()) {
       try {
@@ -71,7 +78,8 @@ export class FileStore implements KeyValueStore {
   }
 
   async get<T>(key: string): Promise<T | null> {
-    await this.ensureLoaded();
+    // Always re-read from disk to pick up changes from other processes (e.g., plugin)
+    await this.reload();
 
     const stored = this.data[key];
     if (!stored) {
