@@ -26,6 +26,9 @@ import {
   markFinalResponsePosted,
   markErrorPosted,
   hasErrorPosted,
+  setLastTextPart,
+  getLastTextPart,
+  hasPostedFinalResponse,
 } from "./state";
 import { isInstallCommand } from "@linear-opencode-agent/core";
 
@@ -351,14 +354,74 @@ export async function handleTextPart(
   if (!text) return;
 
   markTextPartSent(part.sessionID, part.id);
-  markFinalResponsePosted(part.sessionID);
 
-  log(`Text complete (length: ${text.length})`);
+  // Track last text part for this message - will be posted as response when message completes
+  setLastTextPart(part.sessionID, part.messageID, part.id, text);
 
+  log(`Text part complete (length: ${text.length}) - posting as thought`);
+
+  // Post as thought (no notification) - final response posted when message completes
   const result = await linear.postActivity(
     session.linear.sessionId,
-    { type: "response", body: text },
-    false,
+    { type: "thought", body: text },
+    true, // ephemeral
+  );
+  if (result.status === "error") {
+    log(`postActivity (thought) failed: ${result.error.message}`);
+  }
+}
+
+interface AssistantMessageInfo {
+  id: string;
+  sessionID: string;
+  role: "assistant";
+  time: {
+    created: number;
+    completed?: number;
+  };
+}
+
+function isAssistantMessage(info: unknown): info is AssistantMessageInfo {
+  if (!info || typeof info !== "object") return false;
+  if (!("role" in info) || !("time" in info)) return false;
+  return info.role === "assistant" && typeof info.time === "object";
+}
+
+export async function handleMessageUpdated(
+  event: Event,
+  linear: LinearService,
+  log: Logger,
+): Promise<void> {
+  if (event.type !== "message.updated") return;
+
+  const props = event.properties as { info?: unknown };
+  const info = props.info;
+  if (!isAssistantMessage(info)) return;
+
+  // Only handle completed messages
+  if (!info.time.completed) return;
+
+  const session = await getSessionAsync(info.sessionID);
+  if (!session || !session.linear.sessionId) return;
+
+  // Check if we already posted a final response for this session
+  if (hasPostedFinalResponse(info.sessionID)) return;
+
+  // Get the last text part for this message
+  const lastText = getLastTextPart(info.sessionID, info.id);
+  if (!lastText) return;
+
+  markFinalResponsePosted(info.sessionID);
+
+  log(
+    `Message completed - posting final response (length: ${lastText.text.length})`,
+  );
+
+  // Post as response (triggers notification) - this is the final message
+  const result = await linear.postActivity(
+    session.linear.sessionId,
+    { type: "response", body: lastText.text },
+    false, // not ephemeral
   );
   if (result.status === "error") {
     log(`postActivity (response) failed: ${result.error.message}`);

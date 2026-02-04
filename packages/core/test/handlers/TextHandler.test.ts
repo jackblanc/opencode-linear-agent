@@ -1,6 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import type { TextPart } from "@opencode-ai/sdk/v2";
-import { processTextPart } from "../../src/handlers/TextHandler";
+import {
+  processTextPart,
+  processMessageCompleted,
+} from "../../src/handlers/TextHandler";
 import { createInitialHandlerState } from "../../src/session/SessionState";
 
 describe("processTextPart", () => {
@@ -46,7 +49,7 @@ describe("processTextPart", () => {
     expect(result.actions).toHaveLength(0);
   });
 
-  test("should post response activity for complete text", () => {
+  test("should post thought activity for complete text", () => {
     const part: TextPart = {
       type: "text",
       id: "text-1",
@@ -61,16 +64,21 @@ describe("processTextPart", () => {
 
     // State should have text part marked as sent
     expect(result.state.sentTextParts.has("text-1")).toBe(true);
-    // Should mark final response as posted
-    expect(result.state.postedFinalResponse).toBe(true);
+    // Should NOT mark final response as posted (that happens when message completes)
+    expect(result.state.postedFinalResponse).toBe(false);
+    // Should track last text part for this message
+    expect(result.state.lastTextParts.get("msg-1")).toEqual({
+      partId: "text-1",
+      text: "Hello, world!",
+    });
 
-    // Should have response activity
+    // Should have thought activity (not response - response is posted when message completes)
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: "Hello, world!" },
-      ephemeral: false,
+      content: { type: "thought", body: "Hello, world!" },
+      ephemeral: true,
     });
   });
 
@@ -146,13 +154,15 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should include the whitespace in the posted response
+    // Should post as thought, and trim the text for storage
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: "  Hello, world!  " },
-      ephemeral: false,
+      content: { type: "thought", body: "  Hello, world!  " },
+      ephemeral: true,
     });
+    // Last text part should be trimmed
+    expect(result.state.lastTextParts.get("msg-1")?.text).toBe("Hello, world!");
   });
 
   test("should handle multi-line text", () => {
@@ -172,8 +182,8 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: multiLineText },
-      ephemeral: false,
+      content: { type: "thought", body: multiLineText },
+      ephemeral: true,
     });
   });
 
@@ -195,8 +205,8 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: longText },
-      ephemeral: false,
+      content: { type: "thought", body: longText },
+      ephemeral: true,
     });
   });
 
@@ -282,8 +292,99 @@ describe("processTextPart", () => {
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
-      content: { type: "response", body: specialText },
+      content: { type: "thought", body: specialText },
+      ephemeral: true,
+    });
+  });
+
+  test("should update lastTextParts for each message", () => {
+    const part1: TextPart = {
+      type: "text",
+      id: "text-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "First text",
+      time: { start: now, end: now + 100 },
+    };
+
+    const part2: TextPart = {
+      type: "text",
+      id: "text-2",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "Second text",
+      time: { start: now + 100, end: now + 200 },
+    };
+
+    const state = createInitialHandlerState();
+    const result1 = processTextPart(part1, state, ctx);
+    const result2 = processTextPart(part2, result1.state, ctx);
+
+    // Last text part for msg-1 should be the second one
+    expect(result2.state.lastTextParts.get("msg-1")).toEqual({
+      partId: "text-2",
+      text: "Second text",
+    });
+  });
+});
+
+describe("processMessageCompleted", () => {
+  const ctx = {
+    linearSessionId: "linear-123",
+  };
+
+  test("should post response when message completes with text", () => {
+    const state = createInitialHandlerState();
+    state.lastTextParts.set("msg-1", {
+      partId: "text-1",
+      text: "Hello, world!",
+    });
+
+    const result = processMessageCompleted("msg-1", state, ctx);
+
+    expect(result.state.postedFinalResponse).toBe(true);
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toEqual({
+      type: "postActivity",
+      sessionId: "linear-123",
+      content: { type: "response", body: "Hello, world!" },
       ephemeral: false,
     });
+  });
+
+  test("should not post response if no last text part", () => {
+    const state = createInitialHandlerState();
+
+    const result = processMessageCompleted("msg-1", state, ctx);
+
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should not post response if already posted", () => {
+    const state = createInitialHandlerState();
+    state.lastTextParts.set("msg-1", {
+      partId: "text-1",
+      text: "Hello, world!",
+    });
+    state.postedFinalResponse = true;
+
+    const result = processMessageCompleted("msg-1", state, ctx);
+
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should not mutate original state", () => {
+    const state = createInitialHandlerState();
+    state.lastTextParts.set("msg-1", {
+      partId: "text-1",
+      text: "Hello, world!",
+    });
+    const originalPostedFinalResponse = state.postedFinalResponse;
+
+    processMessageCompleted("msg-1", state, ctx);
+
+    expect(state.postedFinalResponse).toBe(originalPostedFinalResponse);
   });
 });
