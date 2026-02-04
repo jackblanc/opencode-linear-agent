@@ -102,18 +102,54 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
     /**
      * Hook into tool execution to post question elicitations BEFORE the tool runs.
-     * This ensures the elicitation appears in Linear while OpenCode waits for user response.
+     * This is a backup for native OpenCode tools - the main path is via the event handler.
      */
     "tool.execute.before": async (ctx, output) => {
       const toolLower = ctx.tool.toLowerCase();
-      if (toolLower !== "question" && !toolLower.endsWith("_question")) return;
+      info("tool.execute.before hook fired", {
+        tool: ctx.tool,
+        toolLower,
+        sessionID: ctx.sessionID,
+        callID: ctx.callID,
+      });
+
+      if (toolLower !== "question" && !toolLower.endsWith("_question")) {
+        info("tool.execute.before: skipping non-question tool", { toolLower });
+        return;
+      }
 
       // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);
-      if (!session) return;
+      if (!session) {
+        log(
+          `tool.execute.before: session not found for sessionID=${ctx.sessionID}`,
+        );
+        return;
+      }
+
+      info("tool.execute.before: session found", {
+        linearSessionId: session.linear.sessionId,
+        organizationId: session.linear.organizationId,
+      });
 
       const token = await readAccessToken(session.linear.organizationId);
-      if (!token) return;
+      if (!token) {
+        log(
+          `tool.execute.before: token not found for organizationId=${session.linear.organizationId}`,
+        );
+        return;
+      }
+
+      info(
+        "tool.execute.before: token found, calling handleQuestionElicitation",
+        {
+          argsType: typeof output.args,
+          argsKeys:
+            output.args && typeof output.args === "object"
+              ? Object.keys(output.args)
+              : [],
+        },
+      );
 
       const linear = createLinearService(token);
 
