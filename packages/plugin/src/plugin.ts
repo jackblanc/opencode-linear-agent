@@ -52,6 +52,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
     /**
      * Event handler for streaming OpenCode events to Linear.
+     * Fires AFTER state changes occur (e.g., tool enters "running" state).
      */
     event: async ({ event }) => {
       const props = event.properties as Record<string, unknown>;
@@ -61,6 +62,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
             (props.sessionID as string)
           : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- part contains sessionID
             (props.part as { sessionID?: string } | undefined)?.sessionID;
+
+      info("event hook fired", {
+        type: event.type,
+        sessionID: sessionId ?? "unknown",
+      });
 
       if (!sessionId) return;
 
@@ -165,11 +171,21 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
     /**
      * Hook into permission requests to post elicitations.
+     * Fires BEFORE permission dialog is shown to user.
      */
     "permission.ask": async (ctx: Permission, _output) => {
+      info("permission.ask hook fired", {
+        type: ctx.type,
+        sessionID: ctx.sessionID,
+        id: ctx.id,
+      });
+
       // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);
-      if (!session) return;
+      if (!session) {
+        info("permission.ask: session not found", { sessionID: ctx.sessionID });
+        return;
+      }
 
       const token = await readAccessToken(session.linear.organizationId);
       if (!token) return;
