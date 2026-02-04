@@ -13,6 +13,7 @@ import { getSessionAsync } from "./state";
 import {
   handleToolPart,
   handleTextPart,
+  handleMessageUpdated,
   handleTodoUpdated,
   handleSessionIdle,
   handleSessionError,
@@ -75,6 +76,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (event.type === "message.part.updated") {
         await handleToolPart(event, linear, log);
         await handleTextPart(event, linear, log);
+        return;
+      }
+
+      if (event.type === "message.updated") {
+        await handleMessageUpdated(event, linear, log);
         return;
       }
 

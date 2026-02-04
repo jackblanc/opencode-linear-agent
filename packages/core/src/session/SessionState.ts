@@ -28,6 +28,8 @@ export interface HandlerState {
   sentTextParts: Set<string>;
   /** Whether we've posted a final response (for session completion) */
   postedFinalResponse: boolean;
+  /** Last text part per message - used for posting final response when message completes */
+  lastTextParts: Map<string, { partId: string; text: string }>;
 }
 
 /**
@@ -38,5 +40,6 @@ export function createInitialHandlerState(): HandlerState {
     runningTools: new Set(),
     sentTextParts: new Set(),
     postedFinalResponse: false,
+    lastTextParts: new Map(),
   };
 }
