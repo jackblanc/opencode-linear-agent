@@ -63,11 +63,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
           : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- part contains sessionID
             (props.part as { sessionID?: string } | undefined)?.sessionID;
 
-      info("event hook fired", {
-        type: event.type,
-        sessionID: sessionId ?? "unknown",
-      });
-
       if (!sessionId) return;
 
       // Read session from file store
@@ -112,17 +107,16 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      */
     "tool.execute.before": async (ctx, output) => {
       const toolLower = ctx.tool.toLowerCase();
-      info("tool.execute.before hook fired", {
+
+      if (toolLower !== "question" && !toolLower.endsWith("_question")) {
+        return;
+      }
+
+      info("tool.execute.before: question tool detected", {
         tool: ctx.tool,
-        toolLower,
         sessionID: ctx.sessionID,
         callID: ctx.callID,
       });
-
-      if (toolLower !== "question" && !toolLower.endsWith("_question")) {
-        info("tool.execute.before: skipping non-question tool", { toolLower });
-        return;
-      }
 
       // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);

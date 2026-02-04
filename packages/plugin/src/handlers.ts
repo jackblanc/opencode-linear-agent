@@ -29,6 +29,7 @@ import {
   setLastTextPart,
   getLastTextPart,
   hasPostedFinalResponse,
+  markQuestionElicitationPosted,
 } from "./state";
 import { isInstallCommand } from "@linear-opencode-agent/core";
 
@@ -597,6 +598,14 @@ export async function handleQuestionElicitation(
   linear: LinearService,
   log: Logger,
 ): Promise<void> {
+  // Deduplicate - prevent double-posting if both tool.execute.before and event handler fire
+  if (!markQuestionElicitationPosted(sessionId, requestId)) {
+    log(
+      `handleQuestionElicitation: already posted for callId=${requestId}, skipping`,
+    );
+    return;
+  }
+
   log(
     `handleQuestionElicitation called: sessionId=${sessionId}, requestId=${requestId}, argsType=${typeof args}`,
   );
