@@ -260,7 +260,7 @@ export class LinearEventProcessor {
     log: Logger,
   ): Promise<void> {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
-      log.info("Stop signal received, aborting session");
+      log.info("Stop signal received, aborting session silently");
 
       const abortResult = await this.opencode.abortSession(
         opencodeSessionId,
@@ -274,11 +274,7 @@ export class LinearEventProcessor {
         });
       }
 
-      await this.linear.postActivity(
-        linearSessionId,
-        { type: "response", body: "Work stopped as requested." },
-        false,
-      );
+      // Don't post synthetic response - plugin handles cleanup when session goes idle
       return;
     }
 
@@ -328,7 +324,7 @@ export class LinearEventProcessor {
   ): Promise<void> {
     // Check for stop signal
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
-      log.info("Stop signal received, aborting session");
+      log.info("Stop signal received, aborting session silently");
 
       const abortResult = await this.opencode.abortSession(
         opencodeSessionId,
@@ -342,11 +338,7 @@ export class LinearEventProcessor {
         });
       }
 
-      await this.linear.postActivity(
-        linearSessionId,
-        { type: "response", body: "Work stopped as requested." },
-        false,
-      );
+      // Don't post synthetic response - plugin handles cleanup when session goes idle
       return;
     }
 
