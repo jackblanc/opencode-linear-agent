@@ -12,8 +12,8 @@ export interface TextHandlerContext {
 /**
  * Process a text part event - pure function
  *
- * Text parts are posted as response activities when complete.
- * We detect completion by checking if time.end is set.
+ * Intermediate text parts are posted as "thought" activities (no notification).
+ * The final response is posted when the message completes (see processMessageCompleted).
  *
  * Takes current state and returns new state + actions.
  * No side effects, no I/O.
@@ -23,7 +23,7 @@ export function processTextPart(
   state: HandlerState,
   ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
-  const { id, text, time } = part;
+  const { id, messageID, text, time } = part;
 
   // Skip empty text
   if (!text.trim()) {
@@ -42,19 +42,67 @@ export function processTextPart(
     return { state, actions: [] };
   }
 
-  // Create new state with this part marked as sent and final response posted
+  // Track last text part for this message - used for final response
+  const newLastTextParts = new Map(state.lastTextParts);
+  newLastTextParts.set(messageID, { partId: id, text: text.trim() });
+
+  // Create new state with this part marked as sent
   const newState: HandlerState = {
     ...state,
     sentTextParts: new Set([...state.sentTextParts, id]),
-    postedFinalResponse: true,
+    lastTextParts: newLastTextParts,
   };
 
-  // Post response activity
+  // Post as thought (no notification) - final response posted when message completes
   const actions: Action[] = [
     {
       type: "postActivity",
       sessionId: ctx.linearSessionId,
-      content: { type: "response", body: text },
+      content: { type: "thought", body: text },
+      ephemeral: true,
+    },
+  ];
+
+  return { state: newState, actions };
+}
+
+/**
+ * Process message completion - pure function
+ *
+ * When a message completes (time.completed is set), post the last text part
+ * as a "response" activity to trigger notification.
+ *
+ * Takes current state and returns new state + actions.
+ * No side effects, no I/O.
+ */
+export function processMessageCompleted(
+  messageId: string,
+  state: HandlerState,
+  ctx: TextHandlerContext,
+): HandlerResult<HandlerState> {
+  // Check if we already posted a final response
+  if (state.postedFinalResponse) {
+    return { state, actions: [] };
+  }
+
+  // Get the last text part for this message
+  const lastText = state.lastTextParts.get(messageId);
+  if (!lastText) {
+    return { state, actions: [] };
+  }
+
+  // Mark final response as posted
+  const newState: HandlerState = {
+    ...state,
+    postedFinalResponse: true,
+  };
+
+  // Post as response (triggers notification)
+  const actions: Action[] = [
+    {
+      type: "postActivity",
+      sessionId: ctx.linearSessionId,
+      content: { type: "response", body: lastText.text },
       ephemeral: false,
     },
   ];

@@ -25,6 +25,13 @@ const sentTextParts = new Map<string, Set<string>>();
 const postedFinalResponse = new Set<string>();
 const postedError = new Set<string>();
 
+// Track last text part per message for final response posting
+// Map<sessionId, Map<messageId, { partId: string; text: string }>>
+const lastTextParts = new Map<
+  string,
+  Map<string, { partId: string; text: string }>
+>();
+
 /**
  * Get session state by reading from file store.
  * Returns null if session not found.
@@ -53,16 +60,6 @@ export async function getSessionAsync(
     postedFinalResponse: postedFinalResponse.has(opencodeSessionId),
     postedError: postedError.has(opencodeSessionId),
   };
-}
-
-// Legacy sync function - always returns null, use getSessionAsync instead
-export function getSession(_sessionId: string): SessionState | null {
-  return null;
-}
-
-// Legacy function - sessions are created by server, not plugin
-export function initSession(_sessionId: string, _linear: LinearContext): void {
-  // No-op - sessions are managed by server and stored in file store
 }
 
 export function markToolRunning(sessionId: string, toolId: string): boolean {
@@ -105,4 +102,30 @@ export function markErrorPosted(sessionId: string): void {
 
 export function hasErrorPosted(sessionId: string): boolean {
   return postedError.has(sessionId);
+}
+
+export function setLastTextPart(
+  sessionId: string,
+  messageId: string,
+  partId: string,
+  text: string,
+): void {
+  let messages = lastTextParts.get(sessionId);
+  if (!messages) {
+    messages = new Map();
+    lastTextParts.set(sessionId, messages);
+  }
+  messages.set(messageId, { partId, text });
+}
+
+export function getLastTextPart(
+  sessionId: string,
+  messageId: string,
+): { partId: string; text: string } | null {
+  const messages = lastTextParts.get(sessionId);
+  return messages?.get(messageId) ?? null;
+}
+
+export function hasPostedFinalResponse(sessionId: string): boolean {
+  return postedFinalResponse.has(sessionId);
 }
