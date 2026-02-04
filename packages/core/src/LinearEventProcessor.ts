@@ -274,7 +274,12 @@ export class LinearEventProcessor {
         });
       }
 
-      // Don't post synthetic response - plugin handles cleanup when session goes idle
+      // Post response to confirm stop - required by Linear agent protocol
+      await this.linear.postActivity(
+        linearSessionId,
+        { type: "response", body: "Stopped." },
+        false,
+      );
       return;
     }
 
@@ -338,7 +343,12 @@ export class LinearEventProcessor {
         });
       }
 
-      // Don't post synthetic response - plugin handles cleanup when session goes idle
+      // Post response to confirm stop - required by Linear agent protocol
+      await this.linear.postActivity(
+        linearSessionId,
+        { type: "response", body: "Stopped." },
+        false,
+      );
       return;
     }
 
