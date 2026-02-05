@@ -26,12 +26,15 @@ export type { LinearEventProcessorConfig as EventProcessorConfig } from "./Linea
 export {
   processToolPart,
   processTextPart,
-  processMessageCompleted,
+  processSessionIdle,
   processTodoUpdated,
   processPermissionAsked,
   processQuestionAsked,
+  processQuestionFromTool,
+  processSessionError,
   getToolActionName,
   extractToolParameter,
+  isQuestionTool,
 } from "./handlers";
 export type {
   ToolHandlerContext,
@@ -39,11 +42,19 @@ export type {
   TodoHandlerContext,
   TodoUpdatedProperties,
   PermissionHandlerContext,
+  PermissionHandlerInput,
   QuestionHandlerContext,
+  SessionErrorHandlerContext,
+  SessionErrorProperties,
 } from "./handlers";
 
 // Actions - outputs from event processing
-export { ActionExecutor } from "./actions";
+export {
+  executeLinearAction,
+  executeOpencodeAction,
+  executeLinearActions,
+  executeActions,
+} from "./actions";
 export type {
   // Linear actions (→ LinearService)
   LinearAction,
@@ -61,9 +72,6 @@ export type {
   HandlerResult,
   HandlerResultWithQuestion,
   HandlerResultWithPermission,
-  // Executor types
-  ActionExecutionError,
-  ActionResult,
 } from "./actions";
 
 // Session management

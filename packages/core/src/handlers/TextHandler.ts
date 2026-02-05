@@ -13,7 +13,7 @@ export interface TextHandlerContext {
  * Process a text part event - pure function
  *
  * Intermediate text parts are posted as "thought" activities (no notification).
- * The final response is posted when the message completes (see processMessageCompleted).
+ * The final response is posted when the session goes idle (see processSessionIdle).
  *
  * Takes current state and returns new state + actions.
  * No side effects, no I/O.
@@ -23,7 +23,7 @@ export function processTextPart(
   state: HandlerState,
   ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
-  const { id, messageID, text, time } = part;
+  const { id, text, time } = part;
 
   // Skip empty text
   if (!text.trim()) {
@@ -42,18 +42,14 @@ export function processTextPart(
     return { state, actions: [] };
   }
 
-  // Track last text part for this message - used for final response
-  const newLastTextParts = new Map(state.lastTextParts);
-  newLastTextParts.set(messageID, { partId: id, text: text.trim() });
-
-  // Create new state with this part marked as sent
+  // Create new state with this part marked as sent and latest text tracked
   const newState: HandlerState = {
     ...state,
     sentTextParts: new Set([...state.sentTextParts, id]),
-    lastTextParts: newLastTextParts,
+    latestResponseText: text.trim(),
   };
 
-  // Post as thought (no notification) - final response posted when message completes
+  // Post as thought (no notification) - final response posted on session idle
   const actions: Action[] = [
     {
       type: "postActivity",
@@ -67,42 +63,41 @@ export function processTextPart(
 }
 
 /**
- * Process message completion - pure function
+ * Process session idle event - pure function
  *
- * When a message completes (time.completed is set), post the last text part
- * as a "response" activity to trigger notification.
+ * When the session becomes idle (processing complete), post the latest
+ * text as a "response" activity to mark the session as complete on Linear.
+ *
+ * Guards:
+ * - Skip if already posted a final response (defense-in-depth)
+ * - Skip if an error was already posted (session is in error state)
+ * - Skip if no text was processed (tool-only session)
  *
  * Takes current state and returns new state + actions.
  * No side effects, no I/O.
  */
-export function processMessageCompleted(
-  messageId: string,
+export function processSessionIdle(
   state: HandlerState,
   ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
-  // Check if we already posted a final response
-  if (state.postedFinalResponse) {
+  if (state.postedFinalResponse || state.postedError) {
     return { state, actions: [] };
   }
 
-  // Get the last text part for this message
-  const lastText = state.lastTextParts.get(messageId);
-  if (!lastText) {
+  if (!state.latestResponseText) {
     return { state, actions: [] };
   }
 
-  // Mark final response as posted
   const newState: HandlerState = {
     ...state,
     postedFinalResponse: true,
   };
 
-  // Post as response (triggers notification)
   const actions: Action[] = [
     {
       type: "postActivity",
       sessionId: ctx.linearSessionId,
-      content: { type: "response", body: lastText.text },
+      content: { type: "response", body: state.latestResponseText },
       ephemeral: false,
     },
   ];

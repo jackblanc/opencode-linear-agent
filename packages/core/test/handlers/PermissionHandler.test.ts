@@ -1,18 +1,17 @@
 import { describe, test, expect } from "bun:test";
-import type { PermissionRequest } from "@opencode-ai/sdk/v2";
 import { processPermissionAsked } from "../../src/handlers/PermissionHandler";
+import type { PermissionHandlerInput } from "../../src/handlers/PermissionHandler";
 import type { PostElicitationAction, Action } from "../../src/actions/types";
 
-function createPermissionRequest(
-  overrides: Partial<PermissionRequest> = {},
-): PermissionRequest {
+function createPermissionInput(
+  overrides: Partial<PermissionHandlerInput> = {},
+): PermissionHandlerInput {
   return {
     id: "perm-1",
     sessionID: "opencode-456",
     permission: "Bash",
     patterns: [],
     metadata: {},
-    always: [],
     ...overrides,
   };
 }
@@ -32,7 +31,7 @@ describe("processPermissionAsked", () => {
   };
 
   test("should return elicitation action and pending permission", () => {
-    const properties = createPermissionRequest();
+    const properties = createPermissionInput();
 
     const result = processPermissionAsked(properties, ctx);
 
@@ -48,7 +47,7 @@ describe("processPermissionAsked", () => {
   });
 
   test("should skip events for other sessions", () => {
-    const properties = createPermissionRequest({
+    const properties = createPermissionInput({
       sessionID: "other-session",
     });
 
@@ -59,7 +58,7 @@ describe("processPermissionAsked", () => {
   });
 
   test("should include patterns in elicitation body", () => {
-    const properties = createPermissionRequest({
+    const properties = createPermissionInput({
       patterns: ["/path/to/file.ts", "*.json"],
     });
 
@@ -78,7 +77,7 @@ describe("processPermissionAsked", () => {
   });
 
   test("should include approval options in metadata", () => {
-    const properties = createPermissionRequest();
+    const properties = createPermissionInput();
 
     const result = processPermissionAsked(properties, ctx);
 
@@ -99,7 +98,7 @@ describe("processPermissionAsked", () => {
   });
 
   test("should store correct data in pending permission", () => {
-    const properties = createPermissionRequest({
+    const properties = createPermissionInput({
       id: "perm-unique",
       permission: "Edit",
       patterns: ["/src/**/*.ts"],
@@ -129,7 +128,7 @@ describe("processPermissionAsked", () => {
       issueId: "CODE-123",
     };
 
-    const properties = createPermissionRequest();
+    const properties = createPermissionInput();
 
     const result = processPermissionAsked(properties, ctxNoWorkdir);
 
@@ -140,7 +139,7 @@ describe("processPermissionAsked", () => {
     const permissionTypes = ["Bash", "Write", "Edit", "Read"];
 
     for (const permission of permissionTypes) {
-      const properties = createPermissionRequest({ permission });
+      const properties = createPermissionInput({ permission });
 
       const result = processPermissionAsked(properties, ctx);
 

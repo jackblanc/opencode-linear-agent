@@ -11,7 +11,18 @@
 import { open, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parseStoreData, type StoreData } from "@linear-opencode-agent/core";
+import {
+  parseStoreData,
+  type StoreData,
+  type PendingQuestion,
+  type PendingPermission,
+} from "@linear-opencode-agent/core";
+export interface LinearContext {
+  sessionId: string | null;
+  issueId: string;
+  organizationId: string;
+  workdir: string;
+}
 
 /**
  * XDG-compliant path to the shared store file.
@@ -92,52 +103,7 @@ async function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * Question option for elicitation
- */
-interface QuestionOption {
-  label: string;
-  description: string;
-}
-
-/**
- * A single question from OpenCode's mcp_question tool
- */
-export interface QuestionInfo {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiple?: boolean;
-}
-
-/**
- * Pending question waiting for user response
- */
-export interface PendingQuestion {
-  requestId: string;
-  opencodeSessionId: string;
-  linearSessionId: string;
-  workdir: string;
-  issueId: string;
-  questions: QuestionInfo[];
-  answers: Array<string[] | null>;
-  createdAt: number;
-}
-
-/**
- * Pending permission waiting for user approval
- */
-export interface PendingPermission {
-  requestId: string;
-  opencodeSessionId: string;
-  linearSessionId: string;
-  workdir: string;
-  issueId: string;
-  permission: string;
-  patterns: string[];
-  metadata: Record<string, unknown>;
-  createdAt: number;
-}
+export type { PendingQuestion, PendingPermission };
 
 /**
  * Read JSON data from the shared store file (no locking - for read-only operations)
@@ -217,7 +183,7 @@ export async function readAnyAccessToken(): Promise<string | null> {
  * Read the first available OAuth access token and its organization ID from the store.
  * Returns both so caller can initialize session context properly.
  */
-export async function readAnyAccessTokenWithOrg(): Promise<{
+async function readAnyAccessTokenWithOrg(): Promise<{
   token: string;
   organizationId: string;
 } | null> {
@@ -263,7 +229,7 @@ export async function savePendingPermission(
 /**
  * Session state stored by the server
  */
-export interface StoredSession {
+interface StoredSession {
   opencodeSessionId: string;
   linearSessionId: string;
   issueId: string;
@@ -276,7 +242,7 @@ export interface StoredSession {
  * Read session state from the shared store file by OpenCode session ID.
  * Scans all session:* keys to find a match.
  */
-export async function readSessionByOpencodeId(
+async function readSessionByOpencodeId(
   opencodeSessionId: string,
 ): Promise<StoredSession | null> {
   const data = await readStore(storePath);
@@ -289,4 +255,28 @@ export async function readSessionByOpencodeId(
     }
   }
   return null;
+}
+
+/**
+ * Get session state by reading from file store.
+ * Combines stored session data with organization ID from token store.
+ * Returns null if session or token not found.
+ */
+export async function getSessionAsync(
+  opencodeSessionId: string,
+): Promise<{ linear: LinearContext } | null> {
+  const stored = await readSessionByOpencodeId(opencodeSessionId);
+  if (!stored) return null;
+
+  const tokenInfo = await readAnyAccessTokenWithOrg();
+  if (!tokenInfo) return null;
+
+  return {
+    linear: {
+      sessionId: stored.linearSessionId,
+      issueId: stored.issueId,
+      organizationId: tokenInfo.organizationId,
+      workdir: stored.workdir,
+    },
+  };
 }
