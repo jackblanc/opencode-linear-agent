@@ -10,40 +10,17 @@
  * - No side effects, no I/O
  */
 
-export {
-  processToolPart,
-  getToolActionName,
-  extractToolParameter,
-  isQuestionTool,
-  type ToolHandlerContext,
-} from "./ToolHandler";
+export { processToolPart, isQuestionTool } from "./ToolHandler";
 
-export {
-  processTextPart,
-  processSessionIdle,
-  type TextHandlerContext,
-} from "./TextHandler";
+export { processTextPart, processSessionIdle } from "./TextHandler";
 
-export {
-  processTodoUpdated,
-  type TodoHandlerContext,
-  type TodoUpdatedProperties,
-} from "./TodoHandler";
+export { processTodoUpdated } from "./TodoHandler";
 
-export {
-  processPermissionAsked,
-  type PermissionHandlerContext,
-  type PermissionHandlerInput,
-} from "./PermissionHandler";
+export { processPermissionAsked } from "./PermissionHandler";
 
-export {
-  processQuestionAsked,
-  processQuestionFromTool,
-  type QuestionHandlerContext,
-} from "./QuestionHandler";
+export { processQuestionFromTool } from "./QuestionHandler";
 
 export {
   processSessionError,
-  type SessionErrorHandlerContext,
   type SessionErrorProperties,
 } from "./SessionErrorHandler";

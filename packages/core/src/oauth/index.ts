@@ -1,4 +1,4 @@
-export type { OAuthConfig, OAuthCallbackResult } from "./types";
+export type { OAuthConfig } from "./types";
 export {
   handleAuthorize,
   handleCallback,

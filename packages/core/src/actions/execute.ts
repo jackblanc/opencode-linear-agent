@@ -1,10 +1,9 @@
 import type { Result } from "better-result";
 import type { LinearService } from "../linear/LinearService";
-import type { OpencodeService } from "../opencode/OpencodeService";
-import type { LinearServiceError, OpencodeServiceError } from "../errors";
-import type { Action, LinearAction, OpencodeAction } from "./types";
+import type { LinearServiceError } from "../errors";
+import type { Action, LinearAction } from "./types";
 
-export async function executeLinearAction(
+async function executeLinearAction(
   action: LinearAction,
   linear: LinearService,
 ): Promise<Result<void, LinearServiceError>> {
@@ -26,35 +25,6 @@ export async function executeLinearAction(
       return linear.updatePlan(action.sessionId, action.plan);
     case "postError":
       return linear.postError(action.sessionId, action.error);
-  }
-}
-
-export async function executeOpencodeAction(
-  action: OpencodeAction,
-  opencode: OpencodeService,
-): Promise<Result<void, OpencodeServiceError>> {
-  switch (action.type) {
-    case "replyPermission":
-      return opencode.replyPermission(
-        action.requestId,
-        action.reply,
-        action.directory,
-      );
-    case "replyQuestion":
-      return opencode.replyQuestion(
-        action.requestId,
-        action.answers,
-        action.directory,
-      );
-  }
-}
-
-export async function executeLinearActions(
-  actions: LinearAction[],
-  linear: LinearService,
-): Promise<void> {
-  for (const action of actions) {
-    await executeLinearAction(action, linear);
   }
 }
 
