@@ -17,7 +17,12 @@ import {
   type PendingQuestion,
   type PendingPermission,
 } from "@linear-opencode-agent/core";
-import type { LinearContext } from "./parser";
+export interface LinearContext {
+  sessionId: string | null;
+  issueId: string;
+  organizationId: string;
+  workdir: string;
+}
 
 /**
  * XDG-compliant path to the shared store file.

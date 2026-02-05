@@ -38,7 +38,7 @@ import {
   savePendingQuestion,
   savePendingPermission,
 } from "./storage";
-import type { LinearContext } from "./parser";
+import type { LinearContext } from "./storage";
 
 export type Logger = (message: string) => void;
 
@@ -294,7 +294,7 @@ export async function handlePermissionAskHook(
 export async function handleQuestionToolHook(
   sessionId: string,
   callId: string,
-  args: unknown,
+  args: Record<string, unknown>,
   linear: LinearService,
   log: Logger,
 ): Promise<void> {

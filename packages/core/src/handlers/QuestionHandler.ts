@@ -1,4 +1,7 @@
-import type { QuestionRequest } from "@opencode-ai/sdk/v2";
+import type {
+  QuestionInfo as SdkQuestionInfo,
+  QuestionRequest,
+} from "@opencode-ai/sdk/v2";
 import type {
   PendingQuestion,
   QuestionInfo,
@@ -87,21 +90,14 @@ export function processQuestionAsked(
 }
 
 /**
- * Input format for question tool args
+ * Type guard for question tool args from ToolPart.state.input (Record<string, unknown>).
+ * The actual shape is { questions: SdkQuestionInfo[] } — validated upstream by
+ * Zod (native question tool) or MCP protocol (mcp_question tool).
  */
-interface QuestionToolOption {
-  label: string;
-  description?: string;
-}
-
-interface QuestionToolQuestion {
-  question: string;
-  header?: string;
-  options?: QuestionToolOption[];
-}
-
-interface QuestionToolArgs {
-  questions?: QuestionToolQuestion[];
+function hasQuestions(
+  args: Record<string, unknown>,
+): args is { questions: SdkQuestionInfo[] } {
+  return Array.isArray(args.questions) && args.questions.length > 0;
 }
 
 /**
@@ -125,7 +121,7 @@ export type QuestionToolResult = HandlerResult<HandlerState> & {
  */
 export function processQuestionFromTool(
   callId: string,
-  args: unknown,
+  args: Record<string, unknown>,
   state: HandlerState,
   ctx: QuestionHandlerContext,
 ): QuestionToolResult {
@@ -133,12 +129,7 @@ export function processQuestionFromTool(
     return { state, actions: [] };
   }
 
-  if (!args || typeof args !== "object") {
-    return { state, actions: [] };
-  }
-
-  const toolArgs = args as QuestionToolArgs;
-  if (!Array.isArray(toolArgs.questions) || toolArgs.questions.length === 0) {
+  if (!hasQuestions(args)) {
     return { state, actions: [] };
   }
 
@@ -150,7 +141,7 @@ export function processQuestionFromTool(
     ]),
   };
 
-  const questionInfos: QuestionInfo[] = toolArgs.questions
+  const questionInfos: QuestionInfo[] = args.questions
     .filter((q) => q.question)
     .map((q) => ({
       question: q.question,

@@ -472,23 +472,6 @@ describe("processQuestionFromTool", () => {
     expect(second.pendingQuestion).toBeUndefined();
   });
 
-  test("should return empty for null args", () => {
-    const state = createInitialHandlerState();
-
-    const result = processQuestionFromTool("call-1", null, state, ctx);
-
-    expect(result.actions).toHaveLength(0);
-    expect(result.state).toBe(state);
-  });
-
-  test("should return empty for non-object args", () => {
-    const state = createInitialHandlerState();
-
-    const result = processQuestionFromTool("call-1", "string", state, ctx);
-
-    expect(result.actions).toHaveLength(0);
-  });
-
   test("should return empty for args with empty questions array", () => {
     const state = createInitialHandlerState();
 
