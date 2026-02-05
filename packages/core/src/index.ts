@@ -30,8 +30,11 @@ export {
   processTodoUpdated,
   processPermissionAsked,
   processQuestionAsked,
+  processQuestionFromTool,
+  processSessionError,
   getToolActionName,
   extractToolParameter,
+  isQuestionTool,
 } from "./handlers";
 export type {
   ToolHandlerContext,
@@ -40,10 +43,17 @@ export type {
   TodoUpdatedProperties,
   PermissionHandlerContext,
   QuestionHandlerContext,
+  QuestionToolResult,
+  SessionErrorHandlerContext,
+  SessionErrorProperties,
 } from "./handlers";
 
 // Actions - outputs from event processing
-export { ActionExecutor } from "./actions";
+export {
+  executeLinearAction,
+  executeOpencodeAction,
+  executeLinearActions,
+} from "./actions";
 export type {
   // Linear actions (→ LinearService)
   LinearAction,
@@ -61,9 +71,6 @@ export type {
   HandlerResult,
   HandlerResultWithQuestion,
   HandlerResultWithPermission,
-  // Executor types
-  ActionExecutionError,
-  ActionResult,
 } from "./actions";
 
 // Session management

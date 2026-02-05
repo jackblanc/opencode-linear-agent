@@ -3,6 +3,7 @@ import type {
   PendingQuestion,
   QuestionInfo,
 } from "../session/SessionRepository";
+import type { HandlerState } from "../session/SessionState";
 import type { Action, HandlerResultWithQuestion } from "../actions/types";
 
 /**
@@ -79,4 +80,118 @@ export function processQuestionAsked(
   };
 
   return { actions, pendingQuestion };
+}
+
+/**
+ * Input format for question tool args
+ */
+interface QuestionToolOption {
+  label: string;
+  description?: string;
+}
+
+interface QuestionToolQuestion {
+  question: string;
+  header?: string;
+  options?: QuestionToolOption[];
+}
+
+interface QuestionToolArgs {
+  questions?: QuestionToolQuestion[];
+}
+
+/**
+ * Result from processing a question tool - includes state changes and pending question
+ */
+export interface QuestionToolResult {
+  state: HandlerState;
+  actions: Action[];
+  pendingQuestion?: PendingQuestion;
+}
+
+/**
+ * Process a question tool call from message.part.updated - pure function
+ *
+ * Handles mcp_question / question tools by posting elicitations to Linear
+ * and returning the pending question for storage.
+ *
+ * Uses postedQuestionElicitations for deduplication (prevents double-posting
+ * if both tool.execute.before hook and event handler fire).
+ *
+ * Takes current state and returns new state + actions + pending question.
+ * No side effects, no I/O.
+ */
+export function processQuestionFromTool(
+  callId: string,
+  args: unknown,
+  state: HandlerState,
+  ctx: QuestionHandlerContext,
+): QuestionToolResult {
+  if (state.postedQuestionElicitations.has(callId)) {
+    return { state, actions: [] };
+  }
+
+  if (!args || typeof args !== "object") {
+    return { state, actions: [] };
+  }
+
+  const toolArgs = args as QuestionToolArgs;
+  if (!Array.isArray(toolArgs.questions) || toolArgs.questions.length === 0) {
+    return { state, actions: [] };
+  }
+
+  const newState: HandlerState = {
+    ...state,
+    postedQuestionElicitations: new Set([
+      ...state.postedQuestionElicitations,
+      callId,
+    ]),
+  };
+
+  const questionInfos: QuestionInfo[] = toolArgs.questions
+    .filter((q) => q.question)
+    .map((q) => ({
+      question: q.question,
+      header: q.header ?? "",
+      options: (q.options ?? []).map((o) => ({
+        label: o.label,
+        description: o.description ?? "",
+      })),
+    }));
+
+  const actions: Action[] = questionInfos.map((q) => {
+    const header = q.header ? `**${q.header}**\n\n` : "";
+    const body = `${header}${q.question}`;
+
+    if (q.options.length > 0) {
+      const options = q.options.map((opt) => ({ value: opt.label }));
+      return {
+        type: "postElicitation" as const,
+        sessionId: ctx.linearSessionId,
+        body,
+        signal: "select" as const,
+        metadata: { options },
+      };
+    }
+
+    return {
+      type: "postActivity" as const,
+      sessionId: ctx.linearSessionId,
+      content: { type: "elicitation" as const, body },
+      ephemeral: false,
+    };
+  });
+
+  const pendingQuestion: PendingQuestion = {
+    requestId: callId,
+    opencodeSessionId: ctx.opencodeSessionId,
+    linearSessionId: ctx.linearSessionId,
+    workdir: ctx.workdir ?? "",
+    issueId: ctx.issueId,
+    questions: questionInfos,
+    answers: questionInfos.map(() => null),
+    createdAt: Date.now(),
+  };
+
+  return { state: newState, actions, pendingQuestion };
 }

@@ -14,6 +14,7 @@ export {
   processToolPart,
   getToolActionName,
   extractToolParameter,
+  isQuestionTool,
   type ToolHandlerContext,
 } from "./ToolHandler";
 
@@ -36,5 +37,13 @@ export {
 
 export {
   processQuestionAsked,
+  processQuestionFromTool,
   type QuestionHandlerContext,
+  type QuestionToolResult,
 } from "./QuestionHandler";
+
+export {
+  processSessionError,
+  type SessionErrorHandlerContext,
+  type SessionErrorProperties,
+} from "./SessionErrorHandler";

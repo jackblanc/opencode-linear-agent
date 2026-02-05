@@ -28,8 +28,12 @@ export interface HandlerState {
   sentTextParts: Set<string>;
   /** Whether we've posted a final response (for session completion) */
   postedFinalResponse: boolean;
+  /** Whether we've posted an error activity (prevents duplicate error posts) */
+  postedError: boolean;
   /** Last text part per message - used for posting final response when message completes */
   lastTextParts: Map<string, { partId: string; text: string }>;
+  /** Question elicitation call IDs already posted (prevents double-posting) */
+  postedQuestionElicitations: Set<string>;
 }
 
 /**
@@ -40,6 +44,8 @@ export function createInitialHandlerState(): HandlerState {
     runningTools: new Set(),
     sentTextParts: new Set(),
     postedFinalResponse: false,
+    postedError: false,
     lastTextParts: new Map(),
+    postedQuestionElicitations: new Set(),
   };
 }

@@ -16,7 +16,7 @@ import { Result } from "better-result";
 /**
  * Linear context extracted from frontmatter.
  */
-export interface LinearContext {
+interface LinearContext {
   sessionId: string | null;
   issueId: string;
   organizationId: string;

@@ -7,20 +7,15 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Permission } from "@opencode-ai/sdk";
-import { createLinearService } from "./linear/client";
-import { readAccessToken } from "./storage";
-import { getSessionAsync } from "./state";
+import { isQuestionTool } from "@linear-opencode-agent/core";
+import { createLinearService } from "./linear";
+import { readAccessToken, getSessionAsync } from "./storage";
 import {
-  handleToolPart,
-  handleTextPart,
-  handleMessageUpdated,
-  handleTodoUpdated,
-  handleSessionIdle,
-  handleSessionError,
-  handlePermissionAsk,
-  handleQuestionElicitation,
+  handleEvent,
+  handlePermissionAskHook,
+  handleQuestionToolHook,
   type Logger,
-} from "./handlers";
+} from "./orchestrator";
 import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
@@ -65,7 +60,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
       if (!sessionId) return;
 
-      // Read session from file store
       const session = await getSessionAsync(sessionId);
       if (!session) return;
 
@@ -73,32 +67,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (!token) return;
 
       const linear = createLinearService(token);
-
-      if (event.type === "message.part.updated") {
-        await handleToolPart(event, linear, log);
-        await handleTextPart(event, linear, log);
-        return;
-      }
-
-      if (event.type === "message.updated") {
-        await handleMessageUpdated(event, linear, log);
-        return;
-      }
-
-      if (event.type === "todo.updated") {
-        await handleTodoUpdated(event, linear, log);
-        return;
-      }
-
-      if (event.type === "session.idle") {
-        handleSessionIdle(event);
-        return;
-      }
-
-      if (event.type === "session.error") {
-        await handleSessionError(event, linear, log);
-        return;
-      }
+      await handleEvent(event, linear, log);
     },
 
     /**
@@ -106,11 +75,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      * This is a backup for native OpenCode tools - the main path is via the event handler.
      */
     "tool.execute.before": async (ctx, output) => {
-      const toolLower = ctx.tool.toLowerCase();
-
-      if (toolLower !== "question" && !toolLower.endsWith("_question")) {
-        return;
-      }
+      if (!isQuestionTool(ctx.tool)) return;
 
       info("tool.execute.before: question tool detected", {
         tool: ctx.tool,
@@ -118,7 +83,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         callID: ctx.callID,
       });
 
-      // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);
       if (!session) {
         log(
@@ -126,11 +90,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         );
         return;
       }
-
-      info("tool.execute.before: session found", {
-        linearSessionId: session.linear.sessionId,
-        organizationId: session.linear.organizationId,
-      });
 
       const token = await readAccessToken(session.linear.organizationId);
       if (!token) {
@@ -140,26 +99,12 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         return;
       }
 
-      info(
-        "tool.execute.before: token found, calling handleQuestionElicitation",
-        {
-          argsType: typeof output.args,
-          argsKeys:
-            output.args && typeof output.args === "object"
-              ? Object.keys(output.args)
-              : [],
-        },
-      );
-
       const linear = createLinearService(token);
-
-      // Post elicitation immediately so it appears in Linear before user answers
-      await handleQuestionElicitation(
+      await handleQuestionToolHook(
         ctx.sessionID,
         ctx.callID,
         output.args,
         linear,
-        log,
       );
     },
 
@@ -174,7 +119,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         id: ctx.id,
       });
 
-      // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);
       if (!session) {
         info("permission.ask: session not found", { sessionID: ctx.sessionID });
@@ -185,21 +129,19 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (!token) return;
 
       const linear = createLinearService(token);
-
       const patterns = Array.isArray(ctx.pattern)
         ? ctx.pattern
         : ctx.pattern
           ? [ctx.pattern]
           : [];
 
-      await handlePermissionAsk(
+      await handlePermissionAskHook(
         ctx.sessionID,
         ctx.id,
         ctx.type,
         patterns,
         ctx.metadata,
         linear,
-        log,
       );
     },
   };
