@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@linear-opencode-agent/core": "workspace:*",
-    "@linear/sdk": "^68.1.0",
+    "@linear/sdk": "catalog:",
     "@opencode-ai/plugin": "catalog:",
     "@opencode-ai/sdk": "catalog:",
-    "better-result": "^2.1.0"
+    "better-result": "catalog:"
   },
   "devDependencies": {},
   "peerDependencies": {

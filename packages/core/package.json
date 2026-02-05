@@ -7,10 +7,10 @@
   "types": "src/index.ts",
   "scripts": {},
   "dependencies": {
-    "@linear/sdk": "^68.1.0",
+    "@linear/sdk": "catalog:",
     "@opencode-ai/sdk": "catalog:",
-    "better-result": "^2.0.0",
-    "zod": "^4.3.5"
+    "better-result": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {}
 }
