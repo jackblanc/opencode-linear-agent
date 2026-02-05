@@ -40,7 +40,6 @@ export {
   processQuestionAsked,
   processQuestionFromTool,
   type QuestionHandlerContext,
-  type QuestionToolResult,
 } from "./QuestionHandler";
 
 export {

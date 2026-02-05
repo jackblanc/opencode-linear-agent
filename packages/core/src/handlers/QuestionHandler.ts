@@ -6,12 +6,7 @@ import type {
   PendingQuestion,
   QuestionInfo,
 } from "../session/SessionRepository";
-import type { HandlerState } from "../session/SessionState";
-import type {
-  Action,
-  HandlerResult,
-  HandlerResultWithQuestion,
-} from "../actions/types";
+import type { Action, HandlerResultWithQuestion } from "../actions/types";
 
 /**
  * Context needed for question handler processing
@@ -101,45 +96,24 @@ function hasQuestions(
 }
 
 /**
- * Result from processing a question tool - includes state changes and pending question
- */
-export type QuestionToolResult = HandlerResult<HandlerState> & {
-  pendingQuestion?: PendingQuestion;
-};
-
-/**
- * Process a question tool call from message.part.updated - pure function
+ * Process a question tool call from tool.execute.before hook - pure function
  *
  * Handles mcp_question / question tools by posting elicitations to Linear
  * and returning the pending question for storage.
  *
- * Uses postedQuestionElicitations for deduplication (prevents double-posting
- * if both tool.execute.before hook and event handler fire).
+ * Only called from the tool.execute.before hook path — the event handler
+ * path (message.part.updated) skips question tools entirely via isQuestionTool.
  *
- * Takes current state and returns new state + actions + pending question.
  * No side effects, no I/O.
  */
 export function processQuestionFromTool(
   callId: string,
   args: Record<string, unknown>,
-  state: HandlerState,
   ctx: QuestionHandlerContext,
-): QuestionToolResult {
-  if (state.postedQuestionElicitations.has(callId)) {
-    return { state, actions: [] };
-  }
-
+): HandlerResultWithQuestion {
   if (!hasQuestions(args)) {
-    return { state, actions: [] };
+    return { actions: [] };
   }
-
-  const newState: HandlerState = {
-    ...state,
-    postedQuestionElicitations: new Set([
-      ...state.postedQuestionElicitations,
-      callId,
-    ]),
-  };
 
   const questionInfos: QuestionInfo[] = args.questions
     .filter((q) => q.question)
@@ -186,5 +160,5 @@ export function processQuestionFromTool(
     createdAt: Date.now(),
   };
 
-  return { state: newState, actions, pendingQuestion };
+  return { actions, pendingQuestion };
 }

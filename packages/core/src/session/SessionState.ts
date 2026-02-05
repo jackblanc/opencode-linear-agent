@@ -32,8 +32,6 @@ export interface HandlerState {
   postedError: boolean;
   /** Last text part per message - used for posting final response when message completes */
   lastTextParts: Map<string, { partId: string; text: string }>;
-  /** Question elicitation call IDs already posted (prevents double-posting) */
-  postedQuestionElicitations: Set<string>;
 }
 
 /**
@@ -46,6 +44,5 @@ export function createInitialHandlerState(): HandlerState {
     postedFinalResponse: false,
     postedError: false,
     lastTextParts: new Map(),
-    postedQuestionElicitations: new Set(),
   };
 }

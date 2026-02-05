@@ -24,7 +24,6 @@ import {
   processQuestionFromTool,
   processSessionError,
   processPermissionAsked,
-  isQuestionTool,
   executeActions,
   createInitialHandlerState,
   type HandlerState,
@@ -166,22 +165,6 @@ async function handlePartUpdated(
   const state = getHandlerState(part.sessionID);
 
   if (isToolPart(part)) {
-    if (isQuestionTool(part.tool) && part.state.status === "running") {
-      const result = processQuestionFromTool(
-        part.callID,
-        part.state.input,
-        state,
-        resolved.ctx,
-      );
-      updateHandlerState(part.sessionID, result.state);
-      await executeActions(result.actions, resolved.linear, log);
-      await persistPendingQuestion(result.pendingQuestion);
-      log(
-        `Question tool: ${part.tool} (callId=${part.callID}, actions=${result.actions.length})`,
-      );
-      return;
-    }
-
     const result = processToolPart(part, state, resolved.ctx);
     updateHandlerState(part.sessionID, result.state);
     await executeActions(result.actions, resolved.linear, log);
@@ -304,9 +287,7 @@ export async function handleQuestionToolHook(
   const ctx = toSessionContext(sessionId, session.linear);
   if (!ctx) return;
 
-  const state = getHandlerState(sessionId);
-  const result = processQuestionFromTool(callId, args, state, ctx);
-  updateHandlerState(sessionId, result.state);
+  const result = processQuestionFromTool(callId, args, ctx);
   await executeActions(result.actions, linear, log);
   await persistPendingQuestion(result.pendingQuestion);
 }

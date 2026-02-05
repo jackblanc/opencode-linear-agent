@@ -44,7 +44,6 @@ export type {
   PermissionHandlerContext,
   PermissionHandlerInput,
   QuestionHandlerContext,
-  QuestionToolResult,
   SessionErrorHandlerContext,
   SessionErrorProperties,
 } from "./handlers";
