@@ -12,8 +12,8 @@
   "dependencies": {
     "@linear-opencode-agent/core": "workspace:*",
     "@linear/sdk": "^68.1.0",
-    "@opencode-ai/plugin": "^1.1.21",
-    "@opencode-ai/sdk": "^1.1.21",
+    "@opencode-ai/plugin": "catalog:",
+    "@opencode-ai/sdk": "catalog:",
     "better-result": "^2.1.0"
   },
   "devDependencies": {},
