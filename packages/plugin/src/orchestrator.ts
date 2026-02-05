@@ -11,7 +11,7 @@
 import type {
   Event,
   EventMessagePartUpdated,
-  EventMessageUpdated,
+  EventSessionStatus,
   EventTodoUpdated,
   EventSessionError,
 } from "@opencode-ai/sdk";
@@ -19,7 +19,7 @@ import type { ToolPart, TextPart } from "@opencode-ai/sdk/v2";
 import {
   processToolPart,
   processTextPart,
-  processMessageCompleted,
+  processSessionIdle,
   processTodoUpdated,
   processQuestionFromTool,
   processSessionError,
@@ -135,8 +135,8 @@ export async function handleEvent(
   if (event.type === "message.part.updated") {
     return handlePartUpdated(event, readToken, createService, log);
   }
-  if (event.type === "message.updated") {
-    return handleMessageUpdated(event, readToken, createService, log);
+  if (event.type === "session.status") {
+    return handleSessionStatus(event, readToken, createService, log);
   }
   if (event.type === "todo.updated") {
     return handleTodoUpdated(event, readToken, createService, log);
@@ -179,27 +179,25 @@ async function handlePartUpdated(
   }
 }
 
-async function handleMessageUpdated(
-  event: EventMessageUpdated,
+async function handleSessionStatus(
+  event: EventSessionStatus,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  const info = event.properties.info;
-  if (info.role !== "assistant") return;
-  if (!info.time.completed) return;
+  if (event.properties.status.type !== "idle") return;
 
-  const resolved = await resolveSession(
-    info.sessionID,
-    readToken,
-    createService,
-  );
+  const sessionID = event.properties.sessionID;
+  const resolved = await resolveSession(sessionID, readToken, createService);
   if (!resolved) return;
 
-  const state = getHandlerState(info.sessionID);
-  const result = processMessageCompleted(info.id, state, resolved.ctx);
-  updateHandlerState(info.sessionID, result.state);
+  const state = getHandlerState(sessionID);
+  const result = processSessionIdle(state, resolved.ctx);
+  updateHandlerState(sessionID, result.state);
   await executeActions(result.actions, resolved.linear, log);
+
+  // Clean up handler state so resumed sessions start fresh
+  handlerStates.delete(sessionID);
 }
 
 async function handleTodoUpdated(

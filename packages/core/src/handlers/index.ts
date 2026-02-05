@@ -20,7 +20,7 @@ export {
 
 export {
   processTextPart,
-  processMessageCompleted,
+  processSessionIdle,
   type TextHandlerContext,
 } from "./TextHandler";
 

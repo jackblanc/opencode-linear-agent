@@ -26,7 +26,7 @@ export type { LinearEventProcessorConfig as EventProcessorConfig } from "./Linea
 export {
   processToolPart,
   processTextPart,
-  processMessageCompleted,
+  processSessionIdle,
   processTodoUpdated,
   processPermissionAsked,
   processQuestionAsked,
