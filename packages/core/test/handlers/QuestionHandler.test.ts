@@ -1,5 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import { processQuestionAsked } from "../../src/handlers/QuestionHandler";
+import {
+  processQuestionAsked,
+  processQuestionFromTool,
+} from "../../src/handlers/QuestionHandler";
+import { createInitialHandlerState } from "../../src/session/SessionState";
 
 describe("processQuestionAsked", () => {
   const ctx = {
@@ -391,5 +395,165 @@ describe("processQuestionAsked", () => {
     expect(result.actions[0]).toMatchObject({
       body: `Choose?\n\n- **Long**: ${longDescription}`,
     });
+  });
+});
+
+describe("processQuestionFromTool", () => {
+  const ctx = {
+    linearSessionId: "linear-123",
+    opencodeSessionId: "opencode-456",
+    workdir: "/workdir",
+    issueId: "CODE-123",
+  };
+
+  test("should post elicitation for question tool with options", () => {
+    const state = createInitialHandlerState();
+    const args = {
+      questions: [
+        {
+          question: "Which option?",
+          header: "Choice",
+          options: [
+            { label: "A", description: "Option A" },
+            { label: "B", description: "Option B" },
+          ],
+        },
+      ],
+    };
+
+    const result = processQuestionFromTool("call-1", args, state, ctx);
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "postElicitation",
+      sessionId: "linear-123",
+      signal: "select",
+      metadata: {
+        options: [{ value: "A" }, { value: "B" }],
+      },
+    });
+    expect(result.pendingQuestion).toBeDefined();
+    expect(result.pendingQuestion?.requestId).toBe("call-1");
+    expect(result.state.postedQuestionElicitations.has("call-1")).toBe(true);
+  });
+
+  test("should post activity for question tool without options", () => {
+    const state = createInitialHandlerState();
+    const args = {
+      questions: [{ question: "What should we do?" }],
+    };
+
+    const result = processQuestionFromTool("call-2", args, state, ctx);
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "postActivity",
+      sessionId: "linear-123",
+      content: { type: "elicitation", body: "What should we do?" },
+    });
+  });
+
+  test("should deduplicate via postedQuestionElicitations", () => {
+    const state = createInitialHandlerState();
+    const args = {
+      questions: [
+        {
+          question: "Q?",
+          options: [{ label: "A" }],
+        },
+      ],
+    };
+
+    const first = processQuestionFromTool("call-1", args, state, ctx);
+    expect(first.actions).toHaveLength(1);
+
+    const second = processQuestionFromTool("call-1", args, first.state, ctx);
+    expect(second.actions).toHaveLength(0);
+    expect(second.pendingQuestion).toBeUndefined();
+  });
+
+  test("should return empty for null args", () => {
+    const state = createInitialHandlerState();
+
+    const result = processQuestionFromTool("call-1", null, state, ctx);
+
+    expect(result.actions).toHaveLength(0);
+    expect(result.state).toBe(state);
+  });
+
+  test("should return empty for non-object args", () => {
+    const state = createInitialHandlerState();
+
+    const result = processQuestionFromTool("call-1", "string", state, ctx);
+
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should return empty for args with empty questions array", () => {
+    const state = createInitialHandlerState();
+
+    const result = processQuestionFromTool(
+      "call-1",
+      { questions: [] },
+      state,
+      ctx,
+    );
+
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should return empty for args with no questions field", () => {
+    const state = createInitialHandlerState();
+
+    const result = processQuestionFromTool("call-1", {}, state, ctx);
+
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should filter out questions without question text", () => {
+    const state = createInitialHandlerState();
+    const args = {
+      questions: [
+        { question: "", options: [{ label: "A" }] },
+        { question: "Valid?", options: [{ label: "B" }] },
+      ],
+    };
+
+    const result = processQuestionFromTool("call-1", args, state, ctx);
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.pendingQuestion?.questions).toHaveLength(1);
+    expect(result.pendingQuestion?.questions[0]?.question).toBe("Valid?");
+  });
+
+  test("should include header in body when present", () => {
+    const state = createInitialHandlerState();
+    const args = {
+      questions: [
+        {
+          question: "Pick one",
+          header: "Selection",
+          options: [{ label: "A" }],
+        },
+      ],
+    };
+
+    const result = processQuestionFromTool("call-1", args, state, ctx);
+
+    expect(result.actions[0]).toMatchObject({
+      body: "**Selection**\n\nPick one",
+    });
+  });
+
+  test("should handle null workdir in context", () => {
+    const ctxNoWorkdir = { ...ctx, workdir: null };
+    const state = createInitialHandlerState();
+    const args = {
+      questions: [{ question: "Q?", options: [{ label: "A" }] }],
+    };
+
+    const result = processQuestionFromTool("call-1", args, state, ctxNoWorkdir);
+
+    expect(result.pendingQuestion?.workdir).toBe("");
   });
 });

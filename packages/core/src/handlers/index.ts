@@ -33,6 +33,7 @@ export {
 export {
   processPermissionAsked,
   type PermissionHandlerContext,
+  type PermissionHandlerInput,
 } from "./PermissionHandler";
 
 export {

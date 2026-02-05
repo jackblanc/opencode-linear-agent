@@ -4,7 +4,11 @@ import type {
   QuestionInfo,
 } from "../session/SessionRepository";
 import type { HandlerState } from "../session/SessionState";
-import type { Action, HandlerResultWithQuestion } from "../actions/types";
+import type {
+  Action,
+  HandlerResult,
+  HandlerResultWithQuestion,
+} from "../actions/types";
 
 /**
  * Context needed for question handler processing
@@ -103,11 +107,9 @@ interface QuestionToolArgs {
 /**
  * Result from processing a question tool - includes state changes and pending question
  */
-export interface QuestionToolResult {
-  state: HandlerState;
-  actions: Action[];
+export type QuestionToolResult = HandlerResult<HandlerState> & {
   pendingQuestion?: PendingQuestion;
-}
+};
 
 /**
  * Process a question tool call from message.part.updated - pure function

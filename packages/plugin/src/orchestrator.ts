@@ -2,11 +2,20 @@
  * Orchestrator for routing OpenCode events to core's pure handler functions.
  *
  * Manages in-memory HandlerState per OpenCode session and executes
- * resulting LinearActions against the LinearService.
+ * resulting actions against the LinearService.
+ *
+ * Uses the SDK's discriminated union on Event.type to narrow
+ * event.properties automatically — no unsafe casts needed.
  */
 
-import type { Event } from "@opencode-ai/sdk";
-import type { ToolPart, TextPart, Todo } from "@opencode-ai/sdk/v2";
+import type {
+  Event,
+  EventMessagePartUpdated,
+  EventMessageUpdated,
+  EventTodoUpdated,
+  EventSessionError,
+} from "@opencode-ai/sdk";
+import type { ToolPart, TextPart } from "@opencode-ai/sdk/v2";
 import {
   processToolPart,
   processTextPart,
@@ -16,11 +25,10 @@ import {
   processSessionError,
   processPermissionAsked,
   isQuestionTool,
-  executeLinearActions,
+  executeActions,
   createInitialHandlerState,
   type HandlerState,
   type LinearService,
-  type LinearAction,
   type PendingQuestion,
   type PendingPermission,
   type SessionErrorProperties,
@@ -29,10 +37,14 @@ import {
   getSessionAsync,
   savePendingQuestion,
   savePendingPermission,
-  type PluginSessionState,
 } from "./storage";
+import type { LinearContext } from "./parser";
 
 export type Logger = (message: string) => void;
+
+export type TokenReader = (organizationId: string) => Promise<string | null>;
+
+export type LinearServiceFactory = (accessToken: string) => LinearService;
 
 const handlerStates = new Map<string, HandlerState>();
 
@@ -58,7 +70,7 @@ interface SessionContext {
 
 function toSessionContext(
   opencodeSessionId: string,
-  linear: PluginSessionState["linear"],
+  linear: LinearContext,
 ): SessionContext | null {
   if (!linear.sessionId) return null;
   return {
@@ -93,182 +105,155 @@ function isTextPart(part: { type: string }): part is TextPart {
   return part.type === "text";
 }
 
-interface AssistantMessageInfo {
-  id: string;
-  sessionID: string;
-  role: "assistant";
-  time: { created: number; completed?: number };
+interface ResolvedSession {
+  ctx: SessionContext;
+  linear: LinearService;
 }
 
-function isCompletedAssistantMessage(
-  info: unknown,
-): info is AssistantMessageInfo {
-  if (!info || typeof info !== "object") return false;
-  if (!("role" in info) || !("time" in info)) return false;
-  if (info.role !== "assistant") return false;
-  const time = (info as { time: unknown }).time;
-  if (!time || typeof time !== "object") return false;
-  return "completed" in time && !!(time as { completed: unknown }).completed;
-}
+async function resolveSession(
+  opencodeSessionId: string,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
+): Promise<ResolvedSession | null> {
+  const session = await getSessionAsync(opencodeSessionId);
+  if (!session?.linear.sessionId) return null;
 
-/**
- * Cast event.properties for events where we've already checked event.type.
- * The SDK Event union doesn't discriminate properties by event.type,
- * so we need unsafe casts after the type guard.
- */
-type EventProps = Record<string, unknown>;
+  const ctx = toSessionContext(opencodeSessionId, session.linear);
+  if (!ctx) return null;
 
-function props(event: Event): EventProps {
-  return event.properties as EventProps;
+  const token = await readToken(session.linear.organizationId);
+  if (!token) return null;
+
+  return { ctx, linear: createService(token) };
 }
 
 export async function handleEvent(
   event: Event,
-  linear: LinearService,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   if (event.type === "message.part.updated") {
-    await handlePartUpdated(event, linear, log);
-    return;
+    return handlePartUpdated(event, readToken, createService, log);
   }
-
   if (event.type === "message.updated") {
-    await handleMessageUpdated(event, linear);
-    return;
+    return handleMessageUpdated(event, readToken, createService, log);
   }
-
   if (event.type === "todo.updated") {
-    await handleTodoUpdated(event, linear);
-    return;
+    return handleTodoUpdated(event, readToken, createService, log);
   }
-
   if (event.type === "session.error") {
-    await handleSessionErrorEvent(event, linear);
-    return;
+    return handleSessionErrorEvent(event, readToken, createService, log);
   }
 }
 
 async function handlePartUpdated(
-  event: Event,
-  linear: LinearService,
+  event: EventMessagePartUpdated,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  const p = props(event);
-  const part = p.part as { type: string; sessionID?: string } | undefined; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- Event properties narrowed by event.type check
-  if (!part?.sessionID) return;
+  const part = event.properties.part;
+  if (!("sessionID" in part)) return;
 
-  const sessionId = part.sessionID;
-  const session = await getSessionAsync(sessionId);
-  if (!session?.linear.sessionId) return;
+  const resolved = await resolveSession(
+    part.sessionID,
+    readToken,
+    createService,
+  );
+  if (!resolved) return;
 
-  const ctx = toSessionContext(sessionId, session.linear);
-  if (!ctx) return;
+  const state = getHandlerState(part.sessionID);
 
-  const state = getHandlerState(sessionId);
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated by isToolPart/isTextPart guards
-  if (isToolPart(part as ToolPart)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed by isToolPart
-    const toolPart = part as unknown as ToolPart;
-
-    if (isQuestionTool(toolPart.tool) && toolPart.state.status === "running") {
+  if (isToolPart(part)) {
+    if (isQuestionTool(part.tool) && part.state.status === "running") {
       const result = processQuestionFromTool(
-        toolPart.callID,
-        toolPart.state.input,
+        part.callID,
+        part.state.input,
         state,
-        ctx,
+        resolved.ctx,
       );
-      updateHandlerState(sessionId, result.state);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-      await executeLinearActions(result.actions as LinearAction[], linear);
+      updateHandlerState(part.sessionID, result.state);
+      await executeActions(result.actions, resolved.linear, log);
       await persistPendingQuestion(result.pendingQuestion);
       log(
-        `Question tool: ${toolPart.tool} (callId=${toolPart.callID}, actions=${result.actions.length})`,
+        `Question tool: ${part.tool} (callId=${part.callID}, actions=${result.actions.length})`,
       );
       return;
     }
 
-    const result = processToolPart(toolPart, state, ctx);
-    updateHandlerState(sessionId, result.state);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-    await executeLinearActions(result.actions as LinearAction[], linear);
+    const result = processToolPart(part, state, resolved.ctx);
+    updateHandlerState(part.sessionID, result.state);
+    await executeActions(result.actions, resolved.linear, log);
     return;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- validated by isTextPart guard
-  if (isTextPart(part as TextPart)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed by isTextPart
-    const textPart = part as unknown as TextPart;
-    const result = processTextPart(textPart, state, ctx);
-    updateHandlerState(sessionId, result.state);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-    await executeLinearActions(result.actions as LinearAction[], linear);
+  if (isTextPart(part)) {
+    const result = processTextPart(part, state, resolved.ctx);
+    updateHandlerState(part.sessionID, result.state);
+    await executeActions(result.actions, resolved.linear, log);
     return;
   }
 }
 
 async function handleMessageUpdated(
-  event: Event,
-  linear: LinearService,
+  event: EventMessageUpdated,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
+  log: Logger,
 ): Promise<void> {
-  const p = props(event);
-  if (!isCompletedAssistantMessage(p.info)) return;
+  const info = event.properties.info;
+  if (info.role !== "assistant") return;
+  if (!info.time.completed) return;
 
-  const info = p.info;
-  const session = await getSessionAsync(info.sessionID);
-  if (!session?.linear.sessionId) return;
-
-  const ctx = toSessionContext(info.sessionID, session.linear);
-  if (!ctx) return;
+  const resolved = await resolveSession(
+    info.sessionID,
+    readToken,
+    createService,
+  );
+  if (!resolved) return;
 
   const state = getHandlerState(info.sessionID);
-  const result = processMessageCompleted(info.id, state, ctx);
+  const result = processMessageCompleted(info.id, state, resolved.ctx);
   updateHandlerState(info.sessionID, result.state);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-  await executeLinearActions(result.actions as LinearAction[], linear);
+  await executeActions(result.actions, resolved.linear, log);
 }
 
 async function handleTodoUpdated(
-  event: Event,
-  linear: LinearService,
+  event: EventTodoUpdated,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
+  log: Logger,
 ): Promise<void> {
-  const p = props(event);
-  const sessionID = p.sessionID as string | undefined; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- Event properties narrowed by event.type check
-  const todos = p.todos as Todo[] | undefined; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- Event properties narrowed by event.type check
-  if (!sessionID || !todos) return;
+  const { sessionID, todos } = event.properties;
 
-  const session = await getSessionAsync(sessionID);
-  if (!session?.linear.sessionId) return;
+  const resolved = await resolveSession(sessionID, readToken, createService);
+  if (!resolved) return;
 
-  const ctx = toSessionContext(sessionID, session.linear);
-  if (!ctx) return;
-
-  const actions = processTodoUpdated({ sessionID, todos }, ctx);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-  await executeLinearActions(actions as LinearAction[], linear);
+  const actions = processTodoUpdated({ sessionID, todos }, resolved.ctx);
+  await executeActions(actions, resolved.linear, log);
 }
 
 async function handleSessionErrorEvent(
-  event: Event,
-  linear: LinearService,
+  event: EventSessionError,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
+  log: Logger,
 ): Promise<void> {
-  const p = props(event);
-  const sessionID = p.sessionID as string | undefined; // eslint-disable-line @typescript-eslint/no-unsafe-type-assertion -- Event properties narrowed by event.type check
+  const sessionID = event.properties.sessionID;
   if (!sessionID) return;
 
-  const session = await getSessionAsync(sessionID);
-  if (!session?.linear.sessionId) return;
-
-  const ctx = toSessionContext(sessionID, session.linear);
-  if (!ctx) return;
+  const resolved = await resolveSession(sessionID, readToken, createService);
+  if (!resolved) return;
 
   const state = getHandlerState(sessionID);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Event properties match SessionErrorProperties after type check
-  const errorProps = p as unknown as SessionErrorProperties;
-  const result = processSessionError(errorProps, state, ctx);
+  const errorProps: SessionErrorProperties = {
+    sessionID,
+    error: event.properties.error,
+  };
+  const result = processSessionError(errorProps, state, resolved.ctx);
   updateHandlerState(sessionID, result.state);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-  await executeLinearActions(result.actions as LinearAction[], linear);
+  await executeActions(result.actions, resolved.linear, log);
 }
 
 /**
@@ -281,6 +266,7 @@ export async function handlePermissionAskHook(
   patterns: string[],
   metadata: Record<string, unknown>,
   linear: LinearService,
+  log: Logger,
 ): Promise<void> {
   const session = await getSessionAsync(sessionId);
   if (!session?.linear.sessionId) return;
@@ -295,12 +281,10 @@ export async function handlePermissionAskHook(
       permission,
       patterns,
       metadata,
-      always: [],
     },
     ctx,
   );
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-  await executeLinearActions(result.actions as LinearAction[], linear);
+  await executeActions(result.actions, linear, log);
   await persistPendingPermission(result.pendingPermission);
 }
 
@@ -312,6 +296,7 @@ export async function handleQuestionToolHook(
   callId: string,
   args: unknown,
   linear: LinearService,
+  log: Logger,
 ): Promise<void> {
   const session = await getSessionAsync(sessionId);
   if (!session?.linear.sessionId) return;
@@ -322,7 +307,6 @@ export async function handleQuestionToolHook(
   const state = getHandlerState(sessionId);
   const result = processQuestionFromTool(callId, args, state, ctx);
   updateHandlerState(sessionId, result.state);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- handler only returns LinearActions
-  await executeLinearActions(result.actions as LinearAction[], linear);
+  await executeActions(result.actions, linear, log);
   await persistPendingQuestion(result.pendingQuestion);
 }

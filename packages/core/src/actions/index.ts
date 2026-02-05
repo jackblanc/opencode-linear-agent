@@ -35,4 +35,5 @@ export {
   executeLinearAction,
   executeOpencodeAction,
   executeLinearActions,
+  executeActions,
 } from "./execute";

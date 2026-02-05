@@ -50,24 +50,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      * Fires AFTER state changes occur (e.g., tool enters "running" state).
      */
     event: async ({ event }) => {
-      const props = event.properties as Record<string, unknown>;
-      const sessionId =
-        "sessionID" in props
-          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- sessionID is string when present
-            (props.sessionID as string)
-          : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- part contains sessionID
-            (props.part as { sessionID?: string } | undefined)?.sessionID;
-
-      if (!sessionId) return;
-
-      const session = await getSessionAsync(sessionId);
-      if (!session) return;
-
-      const token = await readAccessToken(session.linear.organizationId);
-      if (!token) return;
-
-      const linear = createLinearService(token);
-      await handleEvent(event, linear, log);
+      await handleEvent(event, readAccessToken, createLinearService, log);
     },
 
     /**
@@ -105,6 +88,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         ctx.callID,
         output.args,
         linear,
+        log,
       );
     },
 
@@ -142,6 +126,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         patterns,
         ctx.metadata,
         linear,
+        log,
       );
     },
   };

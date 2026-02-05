@@ -17,6 +17,7 @@ import {
   type PendingQuestion,
   type PendingPermission,
 } from "@linear-opencode-agent/core";
+import type { LinearContext } from "./parser";
 
 /**
  * XDG-compliant path to the shared store file.
@@ -252,25 +253,13 @@ async function readSessionByOpencodeId(
 }
 
 /**
- * Per-session state combining stored context with Linear metadata
- */
-export interface PluginSessionState {
-  linear: {
-    sessionId: string | null;
-    issueId: string;
-    organizationId: string;
-    workdir: string;
-  };
-}
-
-/**
  * Get session state by reading from file store.
  * Combines stored session data with organization ID from token store.
  * Returns null if session or token not found.
  */
 export async function getSessionAsync(
   opencodeSessionId: string,
-): Promise<PluginSessionState | null> {
+): Promise<{ linear: LinearContext } | null> {
   const stored = await readSessionByOpencodeId(opencodeSessionId);
   if (!stored) return null;
 

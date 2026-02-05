@@ -42,6 +42,7 @@ export type {
   TodoHandlerContext,
   TodoUpdatedProperties,
   PermissionHandlerContext,
+  PermissionHandlerInput,
   QuestionHandlerContext,
   QuestionToolResult,
   SessionErrorHandlerContext,
@@ -53,6 +54,7 @@ export {
   executeLinearAction,
   executeOpencodeAction,
   executeLinearActions,
+  executeActions,
 } from "./actions";
 export type {
   // Linear actions (→ LinearService)
