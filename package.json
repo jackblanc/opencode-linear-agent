@@ -4,9 +4,15 @@
   "type": "module",
   "private": true,
   "description": "Self-hosted Linear agent powered by OpenCode",
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "@opencode-ai/sdk": "1.1.51",
+      "@opencode-ai/plugin": "1.1.51"
+    }
+  },
   "scripts": {
     "prepare": "lefthook install || true",
     "start": "bun run --filter @linear-opencode-agent/server start",
