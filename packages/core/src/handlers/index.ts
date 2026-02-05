@@ -14,12 +14,13 @@ export {
   processToolPart,
   getToolActionName,
   extractToolParameter,
+  isQuestionTool,
   type ToolHandlerContext,
 } from "./ToolHandler";
 
 export {
   processTextPart,
-  processMessageCompleted,
+  processSessionIdle,
   type TextHandlerContext,
 } from "./TextHandler";
 
@@ -32,9 +33,17 @@ export {
 export {
   processPermissionAsked,
   type PermissionHandlerContext,
+  type PermissionHandlerInput,
 } from "./PermissionHandler";
 
 export {
   processQuestionAsked,
+  processQuestionFromTool,
   type QuestionHandlerContext,
 } from "./QuestionHandler";
+
+export {
+  processSessionError,
+  type SessionErrorHandlerContext,
+  type SessionErrorProperties,
+} from "./SessionErrorHandler";

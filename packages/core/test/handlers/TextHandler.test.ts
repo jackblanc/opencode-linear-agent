@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import type { TextPart } from "@opencode-ai/sdk/v2";
 import {
   processTextPart,
-  processMessageCompleted,
+  processSessionIdle,
 } from "../../src/handlers/TextHandler";
 import { createInitialHandlerState } from "../../src/session/SessionState";
 
@@ -26,7 +26,6 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // No change, no actions
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
@@ -44,7 +43,6 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // No change, no actions
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
@@ -62,17 +60,10 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // State should have text part marked as sent
     expect(result.state.sentTextParts.has("text-1")).toBe(true);
-    // Should NOT mark final response as posted (that happens when message completes)
     expect(result.state.postedFinalResponse).toBe(false);
-    // Should track last text part for this message
-    expect(result.state.lastTextParts.get("msg-1")).toEqual({
-      partId: "text-1",
-      text: "Hello, world!",
-    });
+    expect(result.state.latestResponseText).toBe("Hello, world!");
 
-    // Should have thought activity (not response - response is posted when message completes)
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toEqual({
       type: "postActivity",
@@ -92,13 +83,11 @@ describe("processTextPart", () => {
       time: { start: now, end: now + 100 },
     };
 
-    // Start with text already sent
     const state = createInitialHandlerState();
     state.sentTextParts.add("text-1");
 
     const result = processTextPart(part, state, ctx);
 
-    // No change, no actions
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
@@ -116,12 +105,13 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const originalSentTextParts = new Set(state.sentTextParts);
     const originalPostedFinalResponse = state.postedFinalResponse;
+    const originalLatestResponseText = state.latestResponseText;
 
     processTextPart(part, state, ctx);
 
-    // Original state should be unchanged
     expect(state.sentTextParts).toEqual(originalSentTextParts);
     expect(state.postedFinalResponse).toBe(originalPostedFinalResponse);
+    expect(state.latestResponseText).toBe(originalLatestResponseText);
   });
 
   test("should handle text with only whitespace characters", () => {
@@ -154,15 +144,13 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should post as thought, and trim the text for storage
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
       content: { type: "thought", body: "  Hello, world!  " },
       ephemeral: true,
     });
-    // Last text part should be trimmed
-    expect(result.state.lastTextParts.get("msg-1")?.text).toBe("Hello, world!");
+    expect(result.state.latestResponseText).toBe("Hello, world!");
   });
 
   test("should handle multi-line text", () => {
@@ -201,7 +189,6 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should pass through the full text (truncation is Linear's responsibility)
     expect(result.actions[0]).toEqual({
       type: "postActivity",
       sessionId: "linear-123",
@@ -237,6 +224,7 @@ describe("processTextPart", () => {
     expect(result2.state.sentTextParts.has("text-1")).toBe(true);
     expect(result2.state.sentTextParts.has("text-2")).toBe(true);
     expect(result2.actions).toHaveLength(1);
+    expect(result2.state.latestResponseText).toBe("Second response");
   });
 
   test("should handle time object with only start time", () => {
@@ -252,7 +240,6 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should not process incomplete text
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
   });
@@ -270,7 +257,6 @@ describe("processTextPart", () => {
     const state = createInitialHandlerState();
     const result = processTextPart(part, state, ctx);
 
-    // Should return exact same state object (not a copy)
     expect(result.state).toBe(state);
   });
 
@@ -297,7 +283,7 @@ describe("processTextPart", () => {
     });
   });
 
-  test("should update lastTextParts for each message", () => {
+  test("should track latest response text across messages", () => {
     const part1: TextPart = {
       type: "text",
       id: "text-1",
@@ -311,7 +297,7 @@ describe("processTextPart", () => {
       type: "text",
       id: "text-2",
       sessionID: "session-1",
-      messageID: "msg-1",
+      messageID: "msg-2",
       text: "Second text",
       time: { start: now + 100, end: now + 200 },
     };
@@ -320,27 +306,21 @@ describe("processTextPart", () => {
     const result1 = processTextPart(part1, state, ctx);
     const result2 = processTextPart(part2, result1.state, ctx);
 
-    // Last text part for msg-1 should be the second one
-    expect(result2.state.lastTextParts.get("msg-1")).toEqual({
-      partId: "text-2",
-      text: "Second text",
-    });
+    expect(result1.state.latestResponseText).toBe("First text");
+    expect(result2.state.latestResponseText).toBe("Second text");
   });
 });
 
-describe("processMessageCompleted", () => {
+describe("processSessionIdle", () => {
   const ctx = {
     linearSessionId: "linear-123",
   };
 
-  test("should post response when message completes with text", () => {
+  test("should post response when latestResponseText exists", () => {
     const state = createInitialHandlerState();
-    state.lastTextParts.set("msg-1", {
-      partId: "text-1",
-      text: "Hello, world!",
-    });
+    state.latestResponseText = "Hello, world!";
 
-    const result = processMessageCompleted("msg-1", state, ctx);
+    const result = processSessionIdle(state, ctx);
 
     expect(result.state.postedFinalResponse).toBe(true);
     expect(result.actions).toHaveLength(1);
@@ -352,10 +332,10 @@ describe("processMessageCompleted", () => {
     });
   });
 
-  test("should not post response if no last text part", () => {
+  test("should not post response if no text was processed", () => {
     const state = createInitialHandlerState();
 
-    const result = processMessageCompleted("msg-1", state, ctx);
+    const result = processSessionIdle(state, ctx);
 
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
@@ -363,13 +343,21 @@ describe("processMessageCompleted", () => {
 
   test("should not post response if already posted", () => {
     const state = createInitialHandlerState();
-    state.lastTextParts.set("msg-1", {
-      partId: "text-1",
-      text: "Hello, world!",
-    });
+    state.latestResponseText = "Hello, world!";
     state.postedFinalResponse = true;
 
-    const result = processMessageCompleted("msg-1", state, ctx);
+    const result = processSessionIdle(state, ctx);
+
+    expect(result.state).toBe(state);
+    expect(result.actions).toHaveLength(0);
+  });
+
+  test("should not post response if error was already posted", () => {
+    const state = createInitialHandlerState();
+    state.latestResponseText = "Hello, world!";
+    state.postedError = true;
+
+    const result = processSessionIdle(state, ctx);
 
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
@@ -377,13 +365,10 @@ describe("processMessageCompleted", () => {
 
   test("should not mutate original state", () => {
     const state = createInitialHandlerState();
-    state.lastTextParts.set("msg-1", {
-      partId: "text-1",
-      text: "Hello, world!",
-    });
+    state.latestResponseText = "Hello, world!";
     const originalPostedFinalResponse = state.postedFinalResponse;
 
-    processMessageCompleted("msg-1", state, ctx);
+    processSessionIdle(state, ctx);
 
     expect(state.postedFinalResponse).toBe(originalPostedFinalResponse);
   });

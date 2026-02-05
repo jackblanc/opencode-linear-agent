@@ -52,8 +52,26 @@ describe("getToolActionName", () => {
   });
 
   test("should handle unknown tools", () => {
-    expect(getToolActionName("custom", false)).toBe("Customing");
-    expect(getToolActionName("custom", true)).toBe("Custom");
+    expect(getToolActionName("fetch", false)).toBe("Fetching");
+    expect(getToolActionName("fetch", true)).toBe("Fetch");
+    expect(getToolActionName("compile", false)).toBe("Compiling");
+    expect(getToolActionName("compile", true)).toBe("Compile");
+  });
+
+  test("should handle gerund edge cases", () => {
+    // Words ending in 'e' should drop the 'e'
+    expect(getToolActionName("make", false)).toBe("Making");
+    expect(getToolActionName("create", false)).toBe("Creating");
+    // Words ending in 'ee' should not drop the 'e'
+    expect(getToolActionName("see", false)).toBe("Seeing");
+    // CVC pattern should double the final consonant
+    expect(getToolActionName("run", false)).toBe("Running");
+    expect(getToolActionName("get", false)).toBe("Getting");
+  });
+
+  test("should return mcp_question tool names", () => {
+    expect(getToolActionName("mcp_question", false)).toBe("Asking question");
+    expect(getToolActionName("mcp_question", true)).toBe("Asked question");
   });
 });
 

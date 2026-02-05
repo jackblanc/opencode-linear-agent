@@ -17,12 +17,42 @@ const TOOL_ACTION_MAP: Record<string, { action: string; pastTense: string }> = {
   todowrite: { action: "Updating plan", pastTense: "Updated plan" },
   todoread: { action: "Reading plan", pastTense: "Read plan" },
   question: { action: "Asking question", pastTense: "Asked question" },
+  mcp_question: { action: "Asking question", pastTense: "Asked question" },
 };
 
 /**
  * Maximum length for tool output before truncation
  */
 const MAX_OUTPUT_LENGTH = 500;
+
+/**
+ * Convert a verb to its gerund (-ing) form with proper English rules.
+ * Handles consonant doubling (run→running), silent-e dropping (make→making),
+ * and special endings (see→seeing).
+ */
+function toGerund(verb: string): string {
+  const lower = verb.toLowerCase();
+  if (lower.endsWith("e") && !lower.endsWith("ee")) {
+    return verb.slice(0, -1) + "ing";
+  }
+  const len = lower.length;
+  if (len >= 3) {
+    const last = lower.charAt(len - 1);
+    const secondLast = lower.charAt(len - 2);
+    const thirdLast = lower.charAt(len - 3);
+    const vowels = "aeiou";
+    const noDouble = "wxy";
+    if (
+      !vowels.includes(last) &&
+      !noDouble.includes(last) &&
+      vowels.includes(secondLast) &&
+      !vowels.includes(thirdLast)
+    ) {
+      return verb + last + "ing";
+    }
+  }
+  return verb + "ing";
+}
 
 /**
  * Get friendly tool action name
@@ -33,9 +63,8 @@ export function getToolActionName(
 ): string {
   const mapping = TOOL_ACTION_MAP[toolName.toLowerCase()];
   if (!mapping) {
-    return completed
-      ? toolName.charAt(0).toUpperCase() + toolName.slice(1)
-      : toolName.charAt(0).toUpperCase() + toolName.slice(1) + "ing";
+    const capitalized = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+    return completed ? capitalized : toGerund(capitalized);
   }
   return completed ? mapping.pastTense : mapping.action;
 }
@@ -221,6 +250,14 @@ export interface ToolHandlerContext {
  * Takes current state and returns new state + actions.
  * No side effects, no I/O.
  */
+/**
+ * Check if a tool is a question tool (handled separately by QuestionHandler)
+ */
+export function isQuestionTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase();
+  return lower === "question" || lower.endsWith("_question");
+}
+
 export function processToolPart(
   part: ToolPart,
   state: HandlerState,
@@ -228,6 +265,10 @@ export function processToolPart(
 ): HandlerResult<HandlerState> {
   const { state: toolState, tool, id } = part;
   const actions: Action[] = [];
+
+  if (isQuestionTool(tool)) {
+    return { state, actions: [] };
+  }
 
   if (toolState.status === "running") {
     // Only post running state once per tool

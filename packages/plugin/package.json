@@ -14,8 +14,7 @@
     "@linear/sdk": "^68.1.0",
     "@opencode-ai/plugin": "^1.1.21",
     "@opencode-ai/sdk": "^1.1.21",
-    "better-result": "^2.1.0",
-    "yaml": "^2.7.0"
+    "better-result": "^2.1.0"
   },
   "devDependencies": {},
   "peerDependencies": {

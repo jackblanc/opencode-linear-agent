@@ -28,8 +28,10 @@ export interface HandlerState {
   sentTextParts: Set<string>;
   /** Whether we've posted a final response (for session completion) */
   postedFinalResponse: boolean;
-  /** Last text part per message - used for posting final response when message completes */
-  lastTextParts: Map<string, { partId: string; text: string }>;
+  /** Whether we've posted an error activity (prevents duplicate error posts) */
+  postedError: boolean;
+  /** Latest response text across all messages - posted as response on session.idle */
+  latestResponseText: string | undefined;
 }
 
 /**
@@ -40,6 +42,7 @@ export function createInitialHandlerState(): HandlerState {
     runningTools: new Set(),
     sentTextParts: new Set(),
     postedFinalResponse: false,
-    lastTextParts: new Map(),
+    postedError: false,
+    latestResponseText: undefined,
   };
 }
