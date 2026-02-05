@@ -2,7 +2,7 @@
  * Pure Handler Functions
  *
  * These handlers process specific OpenCode SSE events and return
- * actions to be executed by the ActionExecutor.
+ * actions to be executed by the action execution helpers.
  *
  * They are pure functions:
  * - Take current state as input
@@ -36,5 +36,12 @@ export {
 
 export {
   processQuestionAsked,
+  processQuestionFromTool,
   type QuestionHandlerContext,
 } from "./QuestionHandler";
+
+export {
+  processSessionError,
+  type SessionErrorHandlerContext,
+  type SessionErrorProperties,
+} from "./SessionErrorHandler";

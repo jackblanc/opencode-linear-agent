@@ -17,6 +17,7 @@ const TOOL_ACTION_MAP: Record<string, { action: string; pastTense: string }> = {
   todowrite: { action: "Updating plan", pastTense: "Updated plan" },
   todoread: { action: "Reading plan", pastTense: "Read plan" },
   question: { action: "Asking question", pastTense: "Asked question" },
+  mcp_question: { action: "Asking question", pastTense: "Asked question" },
 };
 
 /**
@@ -33,11 +34,34 @@ export function getToolActionName(
 ): string {
   const mapping = TOOL_ACTION_MAP[toolName.toLowerCase()];
   if (!mapping) {
-    return completed
-      ? toolName.charAt(0).toUpperCase() + toolName.slice(1)
-      : toolName.charAt(0).toUpperCase() + toolName.slice(1) + "ing";
+    const capitalized = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+    return completed ? capitalized : toGerund(capitalized);
   }
   return completed ? mapping.pastTense : mapping.action;
+}
+
+function toGerund(verb: string): string {
+  const lower = verb.toLowerCase();
+  if (lower.endsWith("e") && !lower.endsWith("ee")) {
+    return verb.slice(0, -1) + "ing";
+  }
+  const length = lower.length;
+  if (length >= 3) {
+    const last = lower.charAt(length - 1);
+    const secondLast = lower.charAt(length - 2);
+    const thirdLast = lower.charAt(length - 3);
+    const vowels = "aeiou";
+    const noDouble = "wxy";
+    if (
+      !vowels.includes(last) &&
+      !noDouble.includes(last) &&
+      vowels.includes(secondLast) &&
+      !vowels.includes(thirdLast)
+    ) {
+      return verb + last + "ing";
+    }
+  }
+  return verb + "ing";
 }
 
 /**
@@ -117,7 +141,8 @@ export function extractToolParameter(
       return getString(input, "pattern") ?? "pattern";
     case "task":
       return getString(input, "description") ?? "task";
-    case "question": {
+    case "question":
+    case "mcp_question": {
       // Extract question text from the questions array
       const questions = input["questions"];
       if (Array.isArray(questions) && questions.length > 0) {
@@ -207,6 +232,11 @@ function getToolThought(
   return null;
 }
 
+function isQuestionTool(tool: string): boolean {
+  const toolLower = tool.toLowerCase();
+  return toolLower === "question" || toolLower.endsWith("_question");
+}
+
 /**
  * Context needed for tool handler processing
  */
@@ -228,6 +258,10 @@ export function processToolPart(
 ): HandlerResult<HandlerState> {
   const { state: toolState, tool, id } = part;
   const actions: Action[] = [];
+
+  if (isQuestionTool(tool)) {
+    return { state, actions };
+  }
 
   if (toolState.status === "running") {
     // Only post running state once per tool

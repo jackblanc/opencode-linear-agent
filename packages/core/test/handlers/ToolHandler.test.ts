@@ -52,7 +52,7 @@ describe("getToolActionName", () => {
   });
 
   test("should handle unknown tools", () => {
-    expect(getToolActionName("custom", false)).toBe("Customing");
+    expect(getToolActionName("custom", false)).toBe("Customming");
     expect(getToolActionName("custom", true)).toBe("Custom");
   });
 });

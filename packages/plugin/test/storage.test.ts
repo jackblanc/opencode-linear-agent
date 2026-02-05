@@ -6,9 +6,11 @@ import {
   savePendingQuestion,
   savePendingPermission,
   setStorePath,
-  type PendingQuestion,
-  type PendingPermission,
 } from "../src/storage";
+import type {
+  PendingPermission,
+  PendingQuestion,
+} from "@linear-opencode-agent/core";
 
 const TEST_DIR = join(import.meta.dir, ".test-storage");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");

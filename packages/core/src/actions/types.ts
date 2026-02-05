@@ -110,7 +110,7 @@ export type OpencodeAction = ReplyPermissionAction | ReplyQuestionAction;
  * - Transport layer (webhooks, SSE, plugins) is an implementation detail
  *
  * Pure processing functions return actions, which are then executed
- * by the ActionExecutor that routes to the appropriate service.
+ * by the action execution helpers that route to the appropriate service.
  */
 export type Action = LinearAction | OpencodeAction;
 

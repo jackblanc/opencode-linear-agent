@@ -1,5 +1,26 @@
 import { describe, test, expect } from "bun:test";
-import { processQuestionAsked } from "../../src/handlers/QuestionHandler";
+import type { ToolPart } from "@opencode-ai/sdk/v2";
+import {
+  processQuestionAsked,
+  processQuestionFromTool,
+} from "../../src/handlers/QuestionHandler";
+import { createInitialHandlerState } from "../../src/session/SessionState";
+
+function buildToolPart(input: Record<string, unknown>): ToolPart {
+  return {
+    id: "part-1",
+    sessionID: "opencode-456",
+    messageID: "message-1",
+    type: "tool",
+    callID: "call-1",
+    tool: "mcp_question",
+    state: {
+      status: "running",
+      input,
+      time: { start: Date.now() },
+    },
+  };
+}
 
 describe("processQuestionAsked", () => {
   const ctx = {
@@ -33,7 +54,7 @@ describe("processQuestionAsked", () => {
     expect(result.actions[0]).toEqual({
       type: "postElicitation",
       sessionId: "linear-123",
-      body: "Which option do you prefer?\n\n- **Option A**: First option\n- **Option B**: Second option",
+      body: "**Preference**\n\nWhich option do you prefer?\n\n- **Option A**: First option\n- **Option B**: Second option",
       signal: "select",
       metadata: {
         options: [{ value: "Option A" }, { value: "Option B" }],
@@ -184,8 +205,11 @@ describe("processQuestionAsked", () => {
 
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toMatchObject({
-      body: "What should we do?\n\n",
-      metadata: { options: [] },
+      type: "postActivity",
+      content: {
+        type: "elicitation",
+        body: "**Action**\n\nWhat should we do?",
+      },
     });
     expect(result.pendingQuestion?.questions[0]?.options).toHaveLength(0);
   });
@@ -209,7 +233,7 @@ describe("processQuestionAsked", () => {
     const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions[0]).toMatchObject({
-      body: "Choose deployment target:\n\n- **Production**: Deploy to prod environment\n- **Staging**: Deploy to staging environment",
+      body: "**Deploy**\n\nChoose deployment target:\n\n- **Production**: Deploy to prod environment\n- **Staging**: Deploy to staging environment",
     });
   });
 
@@ -324,7 +348,7 @@ describe("processQuestionAsked", () => {
     const result = processQuestionAsked(properties, ctx);
 
     expect(result.actions[0]).toMatchObject({
-      body: "Use `const` or `let`? What about <T> generics?\n\n- **const**: Immutable binding\n- **let**: Mutable binding",
+      body: "**Code**\n\nUse `const` or `let`? What about <T> generics?\n\n- **const**: Immutable binding\n- **let**: Mutable binding",
     });
   });
 
@@ -389,7 +413,118 @@ describe("processQuestionAsked", () => {
 
     // Should include full description
     expect(result.actions[0]).toMatchObject({
-      body: `Choose?\n\n- **Long**: ${longDescription}`,
+      body: `**Q**\n\nChoose?\n\n- **Long**: ${longDescription}`,
     });
+  });
+});
+
+describe("processQuestionFromTool", () => {
+  const ctx = {
+    linearSessionId: "linear-123",
+    opencodeSessionId: "opencode-456",
+    workdir: "/workdir",
+    issueId: "CODE-123",
+  };
+
+  test("should post elicitation for running question tool", () => {
+    const part = buildToolPart({
+      questions: [
+        {
+          question: "Pick one",
+          header: "Choice",
+          options: [{ label: "A", description: "Option A" }],
+        },
+      ],
+    });
+
+    const result = processQuestionFromTool(
+      part,
+      createInitialHandlerState(),
+      ctx,
+    );
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "postElicitation",
+      body: "**Choice**\n\nPick one",
+      metadata: { options: [{ value: "A" }] },
+    });
+    expect(result.pendingQuestion?.requestId).toBe("call-1");
+    expect(result.state.postedQuestionElicitations.has("call-1")).toBe(true);
+  });
+
+  test("should deduplicate question tool elicitations", () => {
+    const part = buildToolPart({
+      questions: [
+        {
+          question: "Pick one",
+          header: "Choice",
+          options: [{ label: "A", description: "Option A" }],
+        },
+      ],
+    });
+
+    const first = processQuestionFromTool(
+      part,
+      createInitialHandlerState(),
+      ctx,
+    );
+    const second = processQuestionFromTool(part, first.state, ctx);
+
+    expect(first.actions).toHaveLength(1);
+    expect(second.actions).toHaveLength(0);
+    expect(second.pendingQuestion).toBeUndefined();
+  });
+
+  test("should post activity when options are missing", () => {
+    const part = buildToolPart({
+      questions: [
+        {
+          question: "Any thoughts?",
+          header: "Note",
+          options: [],
+        },
+      ],
+    });
+
+    const result = processQuestionFromTool(
+      part,
+      createInitialHandlerState(),
+      ctx,
+    );
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({
+      type: "postActivity",
+      content: {
+        type: "elicitation",
+        body: "**Note**\n\nAny thoughts?",
+      },
+    });
+  });
+
+  test("should ignore non-question tools", () => {
+    const part: ToolPart = {
+      id: "part-2",
+      sessionID: "opencode-456",
+      messageID: "message-2",
+      type: "tool",
+      callID: "call-2",
+      tool: "read",
+      state: {
+        status: "running",
+        input: { filePath: "foo" },
+        time: { start: Date.now() },
+      },
+    };
+
+    const result = processQuestionFromTool(
+      part,
+      createInitialHandlerState(),
+      ctx,
+    );
+
+    expect(result.actions).toHaveLength(0);
+    expect(result.pendingQuestion).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Action types and executor for functional event processing
+ * Action types and execution helpers for functional event processing
  *
  * This module provides the abstraction layer that decouples "what to do"
  * from "how to do it" per AGENTS.md design principles:
@@ -7,7 +7,7 @@
  * - Events come FROM Linear/OpenCode (inputs)
  * - Actions go TO Linear/OpenCode (outputs)
  * - Pure processing functions return action objects
- * - ActionExecutor routes actions to the appropriate service
+ * - executeLinearAction/executeOpencodeAction route actions to services
  * - Transport layer (webhooks, SSE, plugins) is abstracted away
  */
 
@@ -31,5 +31,8 @@ export type {
   HandlerResultWithPermission,
 } from "./types";
 
-export { ActionExecutor } from "./executor";
-export type { ActionExecutionError, ActionResult } from "./executor";
+export {
+  executeLinearAction,
+  executeOpencodeAction,
+  executeLinearActions,
+} from "./execute";

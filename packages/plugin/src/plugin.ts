@@ -7,24 +7,14 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Permission } from "@opencode-ai/sdk";
-import { createLinearService } from "./linear/client";
-import { readAccessToken } from "./storage";
-import { getSessionAsync } from "./state";
-import {
-  handleToolPart,
-  handleTextPart,
-  handleMessageUpdated,
-  handleTodoUpdated,
-  handleSessionIdle,
-  handleSessionError,
-  handlePermissionAsk,
-  handleQuestionElicitation,
-  type Logger,
-} from "./handlers";
+import type { ToolPart, ToolStateRunning } from "@opencode-ai/sdk/v2";
+import { createLinearService } from "./linear";
+import { getSessionAsync, readAccessToken } from "./storage";
+import { handleEvent } from "./orchestrator";
 import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
-  const log: Logger = (message: string) => {
+  const log = (message: string): void => {
     void input.client.app.log({
       body: {
         service: "linear-plugin",
@@ -55,17 +45,9 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      * Fires AFTER state changes occur (e.g., tool enters "running" state).
      */
     event: async ({ event }) => {
-      const props = event.properties as Record<string, unknown>;
-      const sessionId =
-        "sessionID" in props
-          ? // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- sessionID is string when present
-            (props.sessionID as string)
-          : // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- part contains sessionID
-            (props.part as { sessionID?: string } | undefined)?.sessionID;
-
+      const sessionId = extractSessionId(event);
       if (!sessionId) return;
 
-      // Read session from file store
       const session = await getSessionAsync(sessionId);
       if (!session) return;
 
@@ -73,32 +55,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (!token) return;
 
       const linear = createLinearService(token);
-
-      if (event.type === "message.part.updated") {
-        await handleToolPart(event, linear, log);
-        await handleTextPart(event, linear, log);
-        return;
-      }
-
-      if (event.type === "message.updated") {
-        await handleMessageUpdated(event, linear, log);
-        return;
-      }
-
-      if (event.type === "todo.updated") {
-        await handleTodoUpdated(event, linear, log);
-        return;
-      }
-
-      if (event.type === "session.idle") {
-        handleSessionIdle(event);
-        return;
-      }
-
-      if (event.type === "session.error") {
-        await handleSessionError(event, linear, log);
-        return;
-      }
+      await handleEvent(event, linear, info);
     },
 
     /**
@@ -118,7 +75,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         callID: ctx.callID,
       });
 
-      // Read session from file store
       const session = await getSessionAsync(ctx.sessionID);
       if (!session) {
         log(
@@ -140,26 +96,29 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         return;
       }
 
-      info(
-        "tool.execute.before: token found, calling handleQuestionElicitation",
-        {
-          argsType: typeof output.args,
-          argsKeys:
-            output.args && typeof output.args === "object"
-              ? Object.keys(output.args)
-              : [],
-        },
-      );
-
       const linear = createLinearService(token);
+      const input = isRecord(output?.args) ? output.args : {};
 
-      // Post elicitation immediately so it appears in Linear before user answers
-      await handleQuestionElicitation(
-        ctx.sessionID,
-        ctx.callID,
-        output.args,
+      const state: ToolStateRunning = {
+        status: "running",
+        input,
+        time: { start: Date.now() },
+      };
+
+      const part: ToolPart = {
+        id: ctx.callID,
+        sessionID: ctx.sessionID,
+        messageID: ctx.callID,
+        type: "tool",
+        callID: ctx.callID,
+        tool: ctx.tool,
+        state,
+      };
+
+      await handleEvent(
+        { type: "message.part.updated", properties: { part } },
         linear,
-        log,
+        info,
       );
     },
 
@@ -192,15 +151,44 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
           ? [ctx.pattern]
           : [];
 
-      await handlePermissionAsk(
-        ctx.sessionID,
-        ctx.id,
-        ctx.type,
+      const request = {
+        id: ctx.id,
+        sessionID: ctx.sessionID,
+        permission: ctx.type,
         patterns,
-        ctx.metadata,
+        metadata: ctx.metadata,
+        always: [],
+        tool: ctx.callID
+          ? {
+              messageID: ctx.messageID,
+              callID: ctx.callID,
+            }
+          : undefined,
+      };
+
+      await handleEvent(
+        { type: "permission.asked", properties: request },
         linear,
-        log,
+        info,
       );
     },
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractSessionId(event: { properties: unknown }): string | null {
+  if (!isRecord(event.properties)) return null;
+  const sessionID = event.properties["sessionID"];
+  if (typeof sessionID === "string") return sessionID;
+
+  const part = event.properties["part"];
+  if (isRecord(part)) {
+    const partSessionId = part["sessionID"];
+    if (typeof partSessionId === "string") return partSessionId;
+  }
+
+  return null;
 }
