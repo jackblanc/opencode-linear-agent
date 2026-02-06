@@ -16,37 +16,19 @@ export interface QuestionHandlerContext {
 }
 
 /**
- * Type guard for question tool args from ToolPart.state.input (Record<string, unknown>).
- * The actual shape is { questions: SdkQuestionInfo[] } — validated upstream by
- * Zod (native question tool) or MCP protocol (mcp_question tool).
+ * Internal function that processes questions into actions and pending state.
+ * Shared by processQuestionAsked.
  */
-function hasQuestions(
-  args: Record<string, unknown>,
-): args is { questions: SdkQuestionInfo[] } {
-  return Array.isArray(args.questions) && args.questions.length > 0;
-}
-
-/**
- * Process a question tool call from tool.execute.before hook - pure function
- *
- * Handles mcp_question / question tools by posting elicitations to Linear
- * and returning the pending question for storage.
- *
- * Only called from the tool.execute.before hook path — the event handler
- * path (message.part.updated) skips question tools entirely via isQuestionTool.
- *
- * No side effects, no I/O.
- */
-export function processQuestionFromTool(
-  callId: string,
-  args: Record<string, unknown>,
+function processQuestions(
+  requestId: string,
+  questions: SdkQuestionInfo[],
   ctx: QuestionHandlerContext,
 ): HandlerResultWithQuestion {
-  if (!hasQuestions(args)) {
+  if (questions.length === 0) {
     return { actions: [] };
   }
 
-  const questionInfos: QuestionInfo[] = args.questions
+  const questionInfos: QuestionInfo[] = questions
     .filter((q) => q.question)
     .map((q) => ({
       question: q.question,
@@ -81,7 +63,7 @@ export function processQuestionFromTool(
   });
 
   const pendingQuestion: PendingQuestion = {
-    requestId: callId,
+    requestId,
     opencodeSessionId: ctx.opencodeSessionId,
     linearSessionId: ctx.linearSessionId,
     workdir: ctx.workdir ?? "",
@@ -92,4 +74,23 @@ export function processQuestionFromTool(
   };
 
   return { actions, pendingQuestion };
+}
+
+/**
+ * Process a question.asked event - pure function
+ *
+ * Handles question.asked events from OpenCode by posting elicitations to Linear
+ * and returning the pending question for storage.
+ *
+ * Uses the OpenCode question ID (from event.properties.id) as the requestId,
+ * which is required for question.reply to work correctly.
+ *
+ * No side effects, no I/O.
+ */
+export function processQuestionAsked(
+  questionId: string,
+  questions: SdkQuestionInfo[],
+  ctx: QuestionHandlerContext,
+): HandlerResultWithQuestion {
+  return processQuestions(questionId, questions, ctx);
 }

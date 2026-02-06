@@ -7,13 +7,11 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Permission } from "@opencode-ai/sdk";
-import { isQuestionTool } from "@linear-opencode-agent/core";
 import { createLinearService } from "./linear";
 import { readAccessToken, getSessionAsync } from "./storage";
 import {
   handleEvent,
   handlePermissionAskHook,
-  handleQuestionToolHook,
   type Logger,
 } from "./orchestrator";
 import { linearTools } from "./tools/index";
@@ -48,48 +46,10 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     /**
      * Event handler for streaming OpenCode events to Linear.
      * Fires AFTER state changes occur (e.g., tool enters "running" state).
+     * Also handles question.asked events for Linear elicitations.
      */
     event: async ({ event }) => {
       await handleEvent(event, readAccessToken, createLinearService, log);
-    },
-
-    /**
-     * Hook into tool execution to post question elicitations BEFORE the tool runs.
-     * This is a backup for native OpenCode tools - the main path is via the event handler.
-     */
-    "tool.execute.before": async (ctx, output) => {
-      if (!isQuestionTool(ctx.tool)) return;
-
-      info("tool.execute.before: question tool detected", {
-        tool: ctx.tool,
-        sessionID: ctx.sessionID,
-        callID: ctx.callID,
-      });
-
-      const session = await getSessionAsync(ctx.sessionID);
-      if (!session) {
-        log(
-          `tool.execute.before: session not found for sessionID=${ctx.sessionID}`,
-        );
-        return;
-      }
-
-      const token = await readAccessToken(session.linear.organizationId);
-      if (!token) {
-        log(
-          `tool.execute.before: token not found for organizationId=${session.linear.organizationId}`,
-        );
-        return;
-      }
-
-      const linear = createLinearService(token);
-      await handleQuestionToolHook(
-        ctx.sessionID,
-        ctx.callID,
-        output.args,
-        linear,
-        log,
-      );
     },
 
     /**

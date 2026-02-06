@@ -8,20 +8,22 @@
  * event.properties automatically — no unsafe casts needed.
  */
 
+import type { Event } from "@opencode-ai/sdk";
 import type {
-  Event,
   EventMessagePartUpdated,
   EventSessionStatus,
   EventTodoUpdated,
   EventSessionError,
-} from "@opencode-ai/sdk";
-import type { ToolPart, TextPart } from "@opencode-ai/sdk/v2";
+  EventQuestionAsked,
+  ToolPart,
+  TextPart,
+} from "@opencode-ai/sdk/v2";
 import {
   processToolPart,
   processTextPart,
   processSessionIdle,
   processTodoUpdated,
-  processQuestionFromTool,
+  processQuestionAsked,
   processSessionError,
   processPermissionAsked,
   executeActions,
@@ -132,17 +134,34 @@ export async function handleEvent(
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  if (event.type === "message.part.updated") {
-    return handlePartUpdated(event, readToken, createService, log);
+  // Widen the type to string to handle v2 event types not in base SDK's Event union.
+  // Runtime safety is ensured by checking eventType before each cast.
+  const eventType: string = event.type;
+
+  if (eventType === "message.part.updated") {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
+    const typedEvent = event as unknown as EventMessagePartUpdated;
+    return handlePartUpdated(typedEvent, readToken, createService, log);
   }
-  if (event.type === "session.status") {
-    return handleSessionStatus(event, readToken, createService, log);
+  if (eventType === "session.status") {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
+    const typedEvent = event as unknown as EventSessionStatus;
+    return handleSessionStatus(typedEvent, readToken, createService, log);
   }
-  if (event.type === "todo.updated") {
-    return handleTodoUpdated(event, readToken, createService, log);
+  if (eventType === "todo.updated") {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
+    const typedEvent = event as unknown as EventTodoUpdated;
+    return handleTodoUpdated(typedEvent, readToken, createService, log);
   }
-  if (event.type === "session.error") {
-    return handleSessionErrorEvent(event, readToken, createService, log);
+  if (eventType === "session.error") {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
+    const typedEvent = event as unknown as EventSessionError;
+    return handleSessionErrorEvent(typedEvent, readToken, createService, log);
+  }
+  if (eventType === "question.asked") {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
+    const typedEvent = event as unknown as EventQuestionAsked;
+    return handleQuestionAsked(typedEvent, readToken, createService, log);
   }
 }
 
@@ -237,6 +256,22 @@ async function handleSessionErrorEvent(
   await executeActions(result.actions, resolved.linear, log);
 }
 
+async function handleQuestionAsked(
+  event: EventQuestionAsked,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
+  log: Logger,
+): Promise<void> {
+  const { id, sessionID, questions } = event.properties;
+
+  const resolved = await resolveSession(sessionID, readToken, createService);
+  if (!resolved) return;
+
+  const result = processQuestionAsked(id, questions, resolved.ctx);
+  await executeActions(result.actions, resolved.linear, log);
+  await persistPendingQuestion(result.pendingQuestion);
+}
+
 /**
  * Handle permission.ask hook - called from plugin.ts
  */
@@ -267,25 +302,4 @@ export async function handlePermissionAskHook(
   );
   await executeActions(result.actions, linear, log);
   await persistPendingPermission(result.pendingPermission);
-}
-
-/**
- * Handle tool.execute.before hook for question tools - called from plugin.ts
- */
-export async function handleQuestionToolHook(
-  sessionId: string,
-  callId: string,
-  args: Record<string, unknown>,
-  linear: LinearService,
-  log: Logger,
-): Promise<void> {
-  const session = await getSessionAsync(sessionId);
-  if (!session?.linear.sessionId) return;
-
-  const ctx = toSessionContext(sessionId, session.linear);
-  if (!ctx) return;
-
-  const result = processQuestionFromTool(callId, args, ctx);
-  await executeActions(result.actions, linear, log);
-  await persistPendingQuestion(result.pendingQuestion);
 }
