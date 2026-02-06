@@ -11,29 +11,4 @@
  * - Transport layer (webhooks, SSE, plugins) is abstracted away
  */
 
-// Action types - organized by target service
-export type {
-  // Linear actions
-  LinearAction,
-  PostActivityAction,
-  PostElicitationAction,
-  UpdatePlanAction,
-  PostErrorAction,
-  // OpenCode actions
-  OpencodeAction,
-  ReplyPermissionAction,
-  ReplyQuestionAction,
-  // Combined type
-  Action,
-  // Handler result types
-  HandlerResult,
-  HandlerResultWithQuestion,
-  HandlerResultWithPermission,
-} from "./types";
-
-export {
-  executeLinearAction,
-  executeOpencodeAction,
-  executeLinearActions,
-  executeActions,
-} from "./execute";
+export { executeActions } from "./execute";

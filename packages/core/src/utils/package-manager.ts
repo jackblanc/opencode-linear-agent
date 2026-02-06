@@ -4,7 +4,7 @@ import { join } from "node:path";
 /**
  * Supported package managers
  */
-export type PackageManager = "npm" | "yarn" | "pnpm" | "bun";
+type PackageManager = "npm" | "yarn" | "pnpm" | "bun";
 
 /**
  * Lockfile to package manager mapping (order matters - more specific first)

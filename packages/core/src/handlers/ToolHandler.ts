@@ -57,10 +57,7 @@ function toGerund(verb: string): string {
 /**
  * Get friendly tool action name
  */
-export function getToolActionName(
-  toolName: string,
-  completed: boolean,
-): string {
+function getToolActionName(toolName: string, completed: boolean): string {
   const mapping = TOOL_ACTION_MAP[toolName.toLowerCase()];
   if (!mapping) {
     const capitalized = toolName.charAt(0).toUpperCase() + toolName.slice(1);
@@ -125,7 +122,7 @@ function replacePathsInOutput(output: string, workdir: string | null): string {
 /**
  * Extract parameter from tool input for display
  */
-export function extractToolParameter(
+function extractToolParameter(
   toolName: string,
   input: Record<string, unknown>,
   workdir: string | null = null,

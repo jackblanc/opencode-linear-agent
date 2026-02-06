@@ -3,7 +3,7 @@
  *
  * This package contains:
  * - LinearEventProcessor: Processes Linear webhook events
- * - SessionManager: Manages OpenCode session lifecycle
+ * - Pure handler functions for OpenCode event processing
  * - Interfaces for external dependencies (LinearService, SessionRepository)
  *
  * Note: OpenCode event processing is handled by the plugin, not this package.
@@ -11,156 +11,62 @@
  * handles all event streaming to Linear.
  */
 
-// Re-export Result from better-result for convenience
-export { Result } from "better-result";
-
-// Event processors
+// Event processor
 export { LinearEventProcessor } from "./LinearEventProcessor";
-export type { LinearEventProcessorConfig } from "./LinearEventProcessor";
 
-// Backwards compatibility aliases (deprecated - use new names)
-export { LinearEventProcessor as EventProcessor } from "./LinearEventProcessor";
-export type { LinearEventProcessorConfig as EventProcessorConfig } from "./LinearEventProcessor";
-
-// Pure handler functions
+// Pure handler functions (consumed by plugin orchestrator)
 export {
   processToolPart,
   processTextPart,
   processSessionIdle,
   processTodoUpdated,
   processPermissionAsked,
-  processQuestionAsked,
   processQuestionFromTool,
   processSessionError,
-  getToolActionName,
-  extractToolParameter,
   isQuestionTool,
 } from "./handlers";
-export type {
-  ToolHandlerContext,
-  TextHandlerContext,
-  TodoHandlerContext,
-  TodoUpdatedProperties,
-  PermissionHandlerContext,
-  PermissionHandlerInput,
-  QuestionHandlerContext,
-  SessionErrorHandlerContext,
-  SessionErrorProperties,
-} from "./handlers";
+export type { SessionErrorProperties } from "./handlers";
 
-// Actions - outputs from event processing
-export {
-  executeLinearAction,
-  executeOpencodeAction,
-  executeLinearActions,
-  executeActions,
-} from "./actions";
-export type {
-  // Linear actions (→ LinearService)
-  LinearAction,
-  PostActivityAction,
-  PostElicitationAction,
-  UpdatePlanAction,
-  PostErrorAction,
-  // OpenCode actions (→ OpencodeService)
-  OpencodeAction,
-  ReplyPermissionAction,
-  ReplyQuestionAction,
-  // Combined type
-  Action,
-  // Handler result types
-  HandlerResult,
-  HandlerResultWithQuestion,
-  HandlerResultWithPermission,
-} from "./actions";
+// Action execution (consumed by plugin orchestrator)
+export { executeActions } from "./actions";
 
-// Session management
-export { SessionManager } from "./session/SessionManager";
-export { WorktreeManager } from "./session/WorktreeManager";
-export type { WorktreeResolution } from "./session/WorktreeManager";
-export { PromptBuilder } from "./session/PromptBuilder";
-export type { PromptContext } from "./session/PromptBuilder";
-export { determineAgentMode } from "./session/AgentMode";
-export type { AgentMode } from "./session/AgentMode";
-export type { SessionState, HandlerState } from "./session/SessionState";
+// Session state (consumed by plugin orchestrator)
 export { createInitialHandlerState } from "./session/SessionState";
+export type { SessionState, HandlerState } from "./session/SessionState";
 export type {
   SessionRepository,
   WorktreeInfo,
   PendingQuestion,
   PendingPermission,
-  QuestionInfo,
-  QuestionOption,
 } from "./session/SessionRepository";
 
 // Linear service interface and implementation
-export type {
-  LinearService,
-  LinearIssue,
-  LinearLabel,
-  LinearAttachment,
-  ElicitationSignal,
-} from "./linear/LinearService";
+export type { LinearService } from "./linear/LinearService";
 export { LinearServiceImpl } from "./linear/LinearServiceImpl";
-export type {
-  ActivityContent,
-  IssueState,
-  PlanItem,
-  ProcessingStage,
-} from "./linear/types";
-export { STAGE_MESSAGES } from "./linear/types";
 
 // Label parsing
 export { parseRepoLabel } from "./linear/label-parser";
-export type { ParsedRepoLabel, LinearLabelLike } from "./linear/label-parser";
-
-// Shared types
-export type { LinearEventMessage, ExecResult, ExecOptions } from "./types";
 
 // Storage interfaces
 export type { KeyValueStore, TokenStore, RefreshTokenData } from "./storage";
 
-// OAuth handlers
-export type { OAuthConfig, OAuthCallbackResult } from "./oauth";
+// OAuth handlers (consumed by server)
+export type { OAuthConfig } from "./oauth";
 export { handleAuthorize, handleCallback, refreshAccessToken } from "./oauth";
 
-// Webhook handlers
-export type {
-  EventDispatcher,
-  LinearStatusPoster,
-  LinearStatusPosterFactory,
-} from "./webhook";
+// Webhook handlers (consumed by server)
+export type { EventDispatcher } from "./webhook";
 export { handleWebhook } from "./webhook";
 
-// Utilities
-export { base64Encode, base64Decode } from "./utils/encode";
-export {
-  detectInstallCommand,
-  isInstallCommand,
-} from "./utils/package-manager";
-export type { PackageManager } from "./utils/package-manager";
-
 // Logging
-export { Log, createLogger, initLogger, defaultLogger } from "./logger";
-export type { Logger, LogLevel, LogFormat, LogInitOptions } from "./logger";
+export { Log } from "./logger";
 
 // Errors
-export * from "./errors";
+export type { LinearServiceError } from "./errors/linear";
 
 // Zod schemas for runtime validation
-export {
-  StoredValueSchema,
-  StoreDataSchema,
-  TokenResponseSchema,
-  parseStoreData,
-  parseTokenResponse,
-} from "./schemas";
-export type { StoredValue, StoreData, TokenResponse } from "./schemas";
+export { parseStoreData } from "./schemas";
+export type { StoredValue, StoreData } from "./schemas";
 
-// OpenCode service wrapper
+// OpenCode service wrapper (consumed by server)
 export { OpencodeService } from "./opencode";
-export type {
-  WorktreeResult,
-  OpencodeSessionResult,
-  MessageWithParts,
-} from "./opencode";
