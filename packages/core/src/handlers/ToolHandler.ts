@@ -250,7 +250,7 @@ export interface ToolHandlerContext {
 /**
  * Check if a tool is a question tool (handled separately by QuestionHandler)
  */
-export function isQuestionTool(toolName: string): boolean {
+function isQuestionTool(toolName: string): boolean {
   const lower = toolName.toLowerCase();
   return lower === "question" || lower.endsWith("_question");
 }
