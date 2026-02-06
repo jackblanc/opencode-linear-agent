@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { processQuestionFromTool } from "../../src/handlers/QuestionHandler";
+import { processQuestionAsked } from "../../src/handlers/QuestionHandler";
 
-describe("processQuestionFromTool", () => {
+describe("processQuestionAsked", () => {
   const ctx = {
     linearSessionId: "linear-123",
     opencodeSessionId: "opencode-456",
@@ -9,21 +9,19 @@ describe("processQuestionFromTool", () => {
     issueId: "CODE-123",
   };
 
-  test("should post elicitation for question tool with options", () => {
-    const args = {
-      questions: [
-        {
-          question: "Which option?",
-          header: "Choice",
-          options: [
-            { label: "A", description: "Option A" },
-            { label: "B", description: "Option B" },
-          ],
-        },
-      ],
-    };
+  test("should post elicitation for question with options", () => {
+    const questions = [
+      {
+        question: "Which option?",
+        header: "Choice",
+        options: [
+          { label: "A", description: "Option A" },
+          { label: "B", description: "Option B" },
+        ],
+      },
+    ];
 
-    const result = processQuestionFromTool("call-1", args, ctx);
+    const result = processQuestionAsked("qst_abc123", questions, ctx);
 
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toMatchObject({
@@ -35,15 +33,15 @@ describe("processQuestionFromTool", () => {
       },
     });
     expect(result.pendingQuestion).toBeDefined();
-    expect(result.pendingQuestion?.requestId).toBe("call-1");
+    expect(result.pendingQuestion?.requestId).toBe("qst_abc123");
   });
 
-  test("should post activity for question tool without options", () => {
-    const args = {
-      questions: [{ question: "What should we do?" }],
-    };
+  test("should post activity for question without options", () => {
+    const questions = [
+      { question: "What should we do?", header: "", options: [] },
+    ];
 
-    const result = processQuestionFromTool("call-2", args, ctx);
+    const result = processQuestionAsked("qst_def456", questions, ctx);
 
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toMatchObject({
@@ -53,27 +51,23 @@ describe("processQuestionFromTool", () => {
     });
   });
 
-  test("should return empty for args with empty questions array", () => {
-    const result = processQuestionFromTool("call-1", { questions: [] }, ctx);
-
-    expect(result.actions).toHaveLength(0);
-  });
-
-  test("should return empty for args with no questions field", () => {
-    const result = processQuestionFromTool("call-1", {}, ctx);
+  test("should return empty for empty questions array", () => {
+    const result = processQuestionAsked("qst_123", [], ctx);
 
     expect(result.actions).toHaveLength(0);
   });
 
   test("should filter out questions without question text", () => {
-    const args = {
-      questions: [
-        { question: "", options: [{ label: "A" }] },
-        { question: "Valid?", options: [{ label: "B" }] },
-      ],
-    };
+    const questions = [
+      { question: "", header: "", options: [{ label: "A", description: "" }] },
+      {
+        question: "Valid?",
+        header: "",
+        options: [{ label: "B", description: "" }],
+      },
+    ];
 
-    const result = processQuestionFromTool("call-1", args, ctx);
+    const result = processQuestionAsked("qst_123", questions, ctx);
 
     expect(result.actions).toHaveLength(1);
     expect(result.pendingQuestion?.questions).toHaveLength(1);
@@ -81,17 +75,15 @@ describe("processQuestionFromTool", () => {
   });
 
   test("should include header in body when present", () => {
-    const args = {
-      questions: [
-        {
-          question: "Pick one",
-          header: "Selection",
-          options: [{ label: "A" }],
-        },
-      ],
-    };
+    const questions = [
+      {
+        question: "Pick one",
+        header: "Selection",
+        options: [{ label: "A", description: "" }],
+      },
+    ];
 
-    const result = processQuestionFromTool("call-1", args, ctx);
+    const result = processQuestionAsked("qst_123", questions, ctx);
 
     expect(result.actions[0]).toMatchObject({
       body: "**Selection**\n\nPick one",
@@ -100,12 +92,24 @@ describe("processQuestionFromTool", () => {
 
   test("should handle null workdir in context", () => {
     const ctxNoWorkdir = { ...ctx, workdir: null };
-    const args = {
-      questions: [{ question: "Q?", options: [{ label: "A" }] }],
-    };
+    const questions = [
+      {
+        question: "Q?",
+        header: "",
+        options: [{ label: "A", description: "" }],
+      },
+    ];
 
-    const result = processQuestionFromTool("call-1", args, ctxNoWorkdir);
+    const result = processQuestionAsked("qst_123", questions, ctxNoWorkdir);
 
     expect(result.pendingQuestion?.workdir).toBe("");
+  });
+
+  test("should use OpenCode question ID as requestId", () => {
+    const questions = [{ question: "Test?", header: "", options: [] }];
+
+    const result = processQuestionAsked("qst_xyz789", questions, ctx);
+
+    expect(result.pendingQuestion?.requestId).toBe("qst_xyz789");
   });
 });

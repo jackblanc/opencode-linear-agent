@@ -21,9 +21,8 @@ export {
   processSessionIdle,
   processTodoUpdated,
   processPermissionAsked,
-  processQuestionFromTool,
+  processQuestionAsked,
   processSessionError,
-  isQuestionTool,
 } from "./handlers";
 export type { SessionErrorProperties } from "./handlers";
 

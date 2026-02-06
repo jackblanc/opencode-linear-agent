@@ -10,7 +10,7 @@
  * - No side effects, no I/O
  */
 
-export { processToolPart, isQuestionTool } from "./ToolHandler";
+export { processToolPart } from "./ToolHandler";
 
 export { processTextPart, processSessionIdle } from "./TextHandler";
 
@@ -18,7 +18,7 @@ export { processTodoUpdated } from "./TodoHandler";
 
 export { processPermissionAsked } from "./PermissionHandler";
 
-export { processQuestionFromTool } from "./QuestionHandler";
+export { processQuestionAsked } from "./QuestionHandler";
 
 export {
   processSessionError,
