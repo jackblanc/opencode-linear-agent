@@ -71,7 +71,7 @@ export type LinearAction =
 /**
  * Reply to an OpenCode permission request
  */
-export interface ReplyPermissionAction {
+interface ReplyPermissionAction {
   type: "replyPermission";
   requestId: string;
   reply: "always" | "once" | "reject";
@@ -81,7 +81,7 @@ export interface ReplyPermissionAction {
 /**
  * Reply to an OpenCode question request
  */
-export interface ReplyQuestionAction {
+interface ReplyQuestionAction {
   type: "replyQuestion";
   requestId: string;
   answers: Array<Array<string>>;

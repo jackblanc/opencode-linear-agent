@@ -1,6 +1,2 @@
-export type {
-  EventDispatcher,
-  LinearStatusPoster,
-  LinearStatusPosterFactory,
-} from "./types";
+export type { EventDispatcher } from "./types";
 export { handleWebhook } from "./handlers";

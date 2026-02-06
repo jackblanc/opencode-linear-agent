@@ -5,8 +5,8 @@
  * JSON format (prod):  {"level":"INFO","service":"webhook","issue":"CODE-123","issueId":"uuid","message":"Message"}
  */
 
-export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
-export type LogFormat = "pretty" | "json";
+type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
+type LogFormat = "pretty" | "json";
 
 const levelPriority: Record<LogLevel, number> = {
   DEBUG: 0,
@@ -104,7 +104,7 @@ export interface Logger {
 
 const loggers = new Map<string, Logger>();
 
-export function createLogger(tags?: Record<string, unknown>): Logger {
+function createLogger(tags?: Record<string, unknown>): Logger {
   const loggerTags: Record<string, unknown> = { ...tags };
 
   const service = loggerTags["service"];
@@ -187,19 +187,19 @@ function parseLevel(value: string | undefined): LogLevel | undefined {
   return undefined;
 }
 
-export interface LogInitOptions {
+interface LogInitOptions {
   level?: LogLevel;
   format?: LogFormat;
 }
 
-export function initLogger(options: LogInitOptions = {}): void {
+function initLogger(options: LogInitOptions = {}): void {
   currentLevel =
     options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO";
   currentFormat = options.format ?? detectFormat();
 }
 
 // Default logger for simple usage
-export const defaultLogger = createLogger({ service: "default" });
+const defaultLogger = createLogger({ service: "default" });
 
 // Initialize with defaults on module load
 initLogger();

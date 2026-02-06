@@ -1,8 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
+  "includeEntryExports": true,
   "ignore": ["**/test/**", ".opencode/**"],
   "workspaces": {
     "packages/plugin": {
+      "includeEntryExports": false,
       "entry": ["test/**/*.test.ts"]
     }
   }
