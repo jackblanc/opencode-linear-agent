@@ -20,15 +20,42 @@ bun run knip                   # Find unused exports/dependencies
 # All checks (pre-commit)
 bun run check                  # typecheck + lint + format + knip + test
 bun run fix                    # lint:fix + format:fix
-
-# Development
-bun run dev                    # Start webhook server in dev mode
-bun run up                     # Build Docker + plugin, restart containers
 ```
+
+---
+
+## Local Development
+
+### Services (managed by launchd)
+
+Both services are managed via launchd and configured in `~/projects/environment`:
+
+```bash
+# Restart webhook server (receives Linear webhooks)
+launchctl stop com.jackblanc.linear-opencode-agent
+launchctl start com.jackblanc.linear-opencode-agent
+
+# Restart OpenCode server
+launchctl stop com.jackblanc.opencode
+launchctl start com.jackblanc.opencode
+
+# Full rebuild (pulls latest, rebuilds plugin, restarts services)
+cd ~/projects/environment && ./scripts/rebuild-linear-agent.sh
+```
+
+### Key Paths
+
+| Path                                                      | Purpose                                              |
+| --------------------------------------------------------- | ---------------------------------------------------- |
+| `~/.local/share/linear-opencode-agent/store.json`         | Session state, tokens, pending questions/permissions |
+| `~/.local/share/linear-opencode-agent/launchd.log`        | Webhook server stdout                                |
+| `~/.local/share/linear-opencode-agent/launchd.err`        | Webhook server stderr (main logs)                    |
+| `~/.local/share/opencode/worktree/`                       | Git worktrees created by OpenCode                    |
+| `~/projects/environment/config/opencode/plugin/linear.js` | Built plugin (deployed via Nix)                      |
 
 ### Plugin Development
 
-The plugin is built and copied to `~/projects/environment/config/opencode/plugin/` which is managed by Nix home-manager. After updating the plugin:
+The plugin is built and copied to `~/projects/environment/config/opencode/plugin/` which is managed by Nix home-manager:
 
 ```bash
 # Build and copy plugin to environment project
@@ -39,7 +66,11 @@ cp packages/plugin/dist/index.js ~/projects/environment/config/opencode/plugin/l
 cd ~/projects/environment && ./build-and-activate.sh
 ```
 
-The plugin reads tokens from `~/.local/share/linear-opencode-agent/store.json` (XDG standard path). This path is bind-mounted into the Docker container at `/data` so both the container and host plugin share the same store.
+### Triggering Agent Sessions
+
+- **Delegate an issue** to the OpenCode Agent in Linear (requires `repo:X` label)
+- **Tag the agent** in a comment on an existing issue with an active session
+- Re-delegating to the same agent does NOT trigger a new webhook
 
 ### Running Tests
 
@@ -102,9 +133,8 @@ packages/
 │       ├── opencode/   # OpencodeService wrapper around @opencode-ai/sdk
 │       ├── session/    # SessionState type and SessionRepository interface
 │       └── webhook/    # Webhook signature verification and dispatch
-├── server/         # Webhook server (Bun/Docker) - receives Linear webhooks
-├── plugin/         # OpenCode plugin - hooks into OpenCode events, posts to Linear
-└── oauth/          # OAuth utilities for Linear and Claude Max authentication
+├── server/         # Webhook server (Bun) - receives Linear webhooks
+└── plugin/         # OpenCode plugin - hooks into OpenCode events, posts to Linear
 ```
 
 ---
@@ -208,6 +238,46 @@ if (Result.isError(activityResult)) {
 | `packages/core/src/actions/executor.ts`         | Routes actions to correct service       |
 | `packages/server/src/index.ts`                  | HTTP server, webhook routing            |
 | `packages/plugin/src/index.ts`                  | OpenCode plugin entry point             |
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**`WorktreeNotGitError` when creating sessions:**
+
+1. **Missing `repo:` label** - Issues need a label like `repo:linear-opencode-agent` to specify which repo to use. Without it, the server defaults to `~/projects` which isn't a git repo.
+2. **Stale OpenCode server** - Check for multiple `opencode serve` processes: `lsof -i :4096`. Kill old ones if found. The server caches project state, so a stale process may have incorrect state.
+
+**Webhooks not triggering:**
+
+- Re-delegating an issue to the same agent does NOT trigger a new webhook
+- Use `tail -f ~/.local/share/linear-opencode-agent/launchd.err` to watch webhook logs
+- Verify the Cloudflare tunnel is running: `ps aux | grep cloudflared`
+
+**Session not resuming:**
+
+- Check if session exists in store: `cat ~/.local/share/linear-opencode-agent/store.json | grep "CODE-XXX"`
+- Verify OpenCode session is still valid via the OpenCode web UI at `http://localhost:4096`
+
+### Debugging Commands
+
+```bash
+# Watch webhook server logs
+tail -f ~/.local/share/linear-opencode-agent/launchd.err
+
+# Check for stale OpenCode processes
+lsof -i :4096 -P -n
+
+# View pending questions/permissions
+cat ~/.local/share/linear-opencode-agent/store.json | grep -E '"question:|"permission:'
+
+# Test OpenCode API directly
+curl -X POST "http://localhost:4096/experimental/worktree?directory=/path/to/repo" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "test"}'
+```
 
 ---
 
