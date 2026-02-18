@@ -90,9 +90,7 @@ describe("processTodoUpdated", () => {
       processTodoUpdated(
         {
           sessionID: "opencode-456",
-          todos: [
-            { id: "1", content: "T", status: "pending", priority: "low" },
-          ],
+          todos: [{ content: "T", status: "pending", priority: "low" }],
         },
         ctx,
       )[0],
@@ -103,9 +101,7 @@ describe("processTodoUpdated", () => {
       processTodoUpdated(
         {
           sessionID: "opencode-456",
-          todos: [
-            { id: "1", content: "T", status: "in_progress", priority: "low" },
-          ],
+          todos: [{ content: "T", status: "in_progress", priority: "low" }],
         },
         ctx,
       )[0],
@@ -116,9 +112,7 @@ describe("processTodoUpdated", () => {
       processTodoUpdated(
         {
           sessionID: "opencode-456",
-          todos: [
-            { id: "1", content: "T", status: "completed", priority: "low" },
-          ],
+          todos: [{ content: "T", status: "completed", priority: "low" }],
         },
         ctx,
       )[0],
@@ -129,9 +123,7 @@ describe("processTodoUpdated", () => {
       processTodoUpdated(
         {
           sessionID: "opencode-456",
-          todos: [
-            { id: "1", content: "T", status: "cancelled", priority: "low" },
-          ],
+          todos: [{ content: "T", status: "cancelled", priority: "low" }],
         },
         ctx,
       )[0],
