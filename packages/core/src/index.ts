@@ -13,6 +13,7 @@
 
 // Event processor
 export { LinearEventProcessor } from "./LinearEventProcessor";
+export { IssueEventHandler } from "./IssueEventHandler";
 
 // Pure handler functions (consumed by plugin orchestrator)
 export {
@@ -34,10 +35,10 @@ export { createInitialHandlerState } from "./session/SessionState";
 export type { SessionState, HandlerState } from "./session/SessionState";
 export type {
   SessionRepository,
-  WorktreeInfo,
   PendingQuestion,
   PendingPermission,
 } from "./session/SessionRepository";
+export { WorktreeManager } from "./session/WorktreeManager";
 
 // Linear service interface and implementation
 export type { LinearService } from "./linear/LinearService";

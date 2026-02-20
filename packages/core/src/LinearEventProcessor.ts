@@ -80,15 +80,13 @@ export class LinearEventProcessor {
    */
   async process(event: AgentSessionEventWebhookPayload): Promise<void> {
     const linearSessionId = event.agentSession.id;
-    // Use identifier (e.g., "CODE-29") instead of id (UUID)
-    const issue =
-      event.agentSession.issue?.identifier ??
-      event.agentSession.issueId ??
-      "unknown";
+    const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
+    const issueIdentifier =
+      event.agentSession.issue?.identifier ?? issueId ?? "unknown";
 
     // Create a tagged logger for this processing context
     const log = Log.create({ service: "processor" })
-      .tag("issue", issue)
+      .tag("issue", issueIdentifier)
       .tag("sessionId", linearSessionId);
 
     log.info("Processing event", { action: event.action });
@@ -96,7 +94,8 @@ export class LinearEventProcessor {
     // Resolve or create worktree
     const worktreeResult = await this.worktreeManager.resolveWorktree(
       linearSessionId,
-      issue,
+      issueIdentifier,
+      event.action,
       log,
     );
 
@@ -108,7 +107,6 @@ export class LinearEventProcessor {
     const { workdir, branchName } = worktreeResult.value;
 
     // Determine agent mode based on issue state
-    const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
     let mode: AgentMode = "build";
 
     if (issueId) {
@@ -149,7 +147,7 @@ export class LinearEventProcessor {
     // Get or create OpenCode session
     const sessionResult = await this.sessionManager.getOrCreateSession(
       linearSessionId,
-      issue,
+      issueId ?? "unknown",
       branchName,
       workdir,
     );

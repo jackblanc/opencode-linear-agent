@@ -84,12 +84,12 @@ export class SessionManager {
    */
   async getOrCreateSession(
     linearSessionId: string,
-    issue: string,
+    issueId: string,
     branchName: string,
     workdir: string,
   ): Promise<Result<SessionResult, OpencodeServiceError>> {
     const log = Log.create({ service: "session" })
-      .tag("issue", issue)
+      .tag("issue", issueId)
       .tag("sessionId", linearSessionId);
 
     log.info("Looking up existing session state");
@@ -129,7 +129,7 @@ export class SessionManager {
 
       return this.createNewSession(
         linearSessionId,
-        issue,
+        issueId,
         branchName,
         workdir,
         existingState,
@@ -141,7 +141,7 @@ export class SessionManager {
     // No existing state - create fresh session
     return this.createNewSession(
       linearSessionId,
-      issue,
+      issueId,
       branchName,
       workdir,
       null,
@@ -186,7 +186,7 @@ export class SessionManager {
    */
   private async createNewSession(
     linearSessionId: string,
-    issue: string,
+    issueId: string,
     branchName: string,
     workdir: string,
     existingState: SessionState | null,
@@ -217,7 +217,7 @@ export class SessionManager {
     const newState: SessionState = {
       opencodeSessionId: sessionId,
       linearSessionId,
-      issueId: issue,
+      issueId,
       branchName,
       workdir,
       lastActivityTime: Date.now(),

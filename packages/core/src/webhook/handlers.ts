@@ -20,6 +20,12 @@ function isAgentSessionEvent(
   return payload.type === "AgentSessionEvent";
 }
 
+function getOrganizationId(payload: LinearWebhookPayload): string | undefined {
+  const organizationId = (payload as { organizationId?: unknown })
+    .organizationId;
+  return typeof organizationId === "string" ? organizationId : undefined;
+}
+
 /**
  * Handle Linear webhook - verify signature and dispatch for processing
  *
@@ -98,21 +104,24 @@ export async function handleWebhook(
     return new Response("Invalid webhook", { status: 400 });
   }
 
-  // Only handle AgentSessionEvent webhooks
-  if (!isAgentSessionEvent(webhookPayload)) {
+  // Only handle AgentSessionEvent and Issue webhooks
+  if (!isAgentSessionEvent(webhookPayload) && webhookPayload.type !== "Issue") {
     const log = Log.create({ service: "webhook" });
-    log.info("Ignoring non-AgentSessionEvent webhook", {
+    log.info("Ignoring unsupported webhook", {
       webhookType: webhookPayload.type,
     });
     return new Response("OK", { status: 200 });
   }
 
-  const sessionId = webhookPayload.agentSession.id;
-  const organizationId = webhookPayload.organizationId;
-  const issue =
-    webhookPayload.agentSession.issue?.identifier ??
-    webhookPayload.agentSession.issueId ??
-    "unknown";
+  const organizationId = getOrganizationId(webhookPayload) ?? "unknown";
+  const sessionId = isAgentSessionEvent(webhookPayload)
+    ? webhookPayload.agentSession.id
+    : "issue-webhook";
+  const issue = isAgentSessionEvent(webhookPayload)
+    ? (webhookPayload.agentSession.issue?.identifier ??
+      webhookPayload.agentSession.issueId ??
+      "unknown")
+    : "issue";
 
   // Create tagged logger for this webhook
   const log = Log.create({ service: "webhook" })
@@ -128,10 +137,18 @@ export async function handleWebhook(
     return new Response("Unauthorized organization", { status: 403 });
   }
 
-  log.info("Webhook received", { action: webhookPayload.action });
+  const action = (webhookPayload as { action?: unknown }).action;
+  log.info("Webhook received", {
+    action: typeof action === "string" ? action : "unknown",
+    webhookType: webhookPayload.type,
+  });
 
   // Post immediate status activity to Linear
-  if (organizationId && statusPosterFactory) {
+  if (
+    isAgentSessionEvent(webhookPayload) &&
+    organizationId &&
+    statusPosterFactory
+  ) {
     const accessToken = await tokenStore.getAccessToken(organizationId);
     if (accessToken) {
       const statusPoster = statusPosterFactory(accessToken);
@@ -147,14 +164,16 @@ export async function handleWebhook(
   setImmediate(() => {
     dispatcher.dispatch(webhookPayload).catch((error) => {
       log.error("Background dispatch failed", {
-        action: webhookPayload.action,
+        action: typeof action === "string" ? action : "unknown",
+        webhookType: webhookPayload.type,
         error: error instanceof Error ? error.message : String(error),
       });
     });
   });
 
   log.info("Event dispatched for background processing", {
-    action: webhookPayload.action,
+    action: typeof action === "string" ? action : "unknown",
+    webhookType: webhookPayload.type,
   });
 
   return new Response("OK", { status: 200 });

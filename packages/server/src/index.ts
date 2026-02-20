@@ -13,10 +13,15 @@
  */
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
-import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type {
+  AgentSessionEventWebhookPayload,
+  LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
   LinearEventProcessor,
+  IssueEventHandler,
+  WorktreeManager,
   handleAuthorize,
   handleCallback,
   handleWebhook,
@@ -65,6 +70,12 @@ function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
   return allowlist.includes(ip);
 }
 
+function isAgentSessionEvent(
+  event: LinearWebhookPayload,
+): event is AgentSessionEventWebhookPayload {
+  return event.type === "AgentSessionEvent";
+}
+
 /**
  * Create a direct event dispatcher that processes events immediately
  * (no queue, unlike Cloudflare)
@@ -80,8 +91,69 @@ function createDirectDispatcher(
   const opencode = new OpencodeService(opencodeClient);
 
   return {
-    async dispatch(event: AgentSessionEventWebhookPayload): Promise<void> {
+    async dispatch(event: LinearWebhookPayload): Promise<void> {
       const organizationId = event.organizationId;
+
+      if (event.type === "Issue") {
+        const issueRecord = event.data as { id?: string };
+        const issueId = issueRecord.id;
+
+        if (!issueId) {
+          const log = Log.create({ service: "dispatcher" });
+          log.warn("Issue webhook missing issue id");
+          return;
+        }
+
+        // Get or refresh access token
+        let accessToken = await tokenStore.getAccessToken(organizationId);
+        if (!accessToken) {
+          const oauthConfig: OAuthConfig = {
+            clientId: config.linear.clientId,
+            clientSecret: config.linear.clientSecret,
+          };
+          accessToken = await refreshAccessToken(
+            oauthConfig,
+            tokenStore,
+            organizationId,
+          );
+        }
+
+        const linear = new LinearServiceImpl(accessToken);
+        const resolveResult = await resolveRepoPath(
+          linear,
+          issueId,
+          config.projectsPath,
+        );
+
+        if (Result.isError(resolveResult)) {
+          const log = Log.create({ service: "dispatcher" });
+          log.warn("Failed to resolve repo for issue cleanup", {
+            issueId,
+            error: resolveResult.error.message,
+          });
+          return;
+        }
+
+        const worktreeManager = new WorktreeManager(
+          opencode,
+          linear,
+          sessionRepository,
+          resolveResult.value.path,
+        );
+
+        const issueHandler = new IssueEventHandler(
+          opencode,
+          sessionRepository,
+          worktreeManager,
+        );
+        await issueHandler.process(event);
+        return;
+      }
+
+      if (!isAgentSessionEvent(event)) {
+        return;
+      }
+
       const linearSessionId = event.agentSession.id;
       const issueId =
         event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";

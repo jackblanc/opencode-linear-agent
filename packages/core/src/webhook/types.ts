@@ -2,7 +2,7 @@
  * Webhook types for Linear integration
  */
 
-import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import type { ProcessingStage } from "../linear/types";
 
 /**
@@ -16,9 +16,9 @@ export interface EventDispatcher {
   /**
    * Dispatch an event for processing
    *
-   * @param event - The webhook payload from Linear
+   * @param event - The webhook payload from Linear (AgentSessionEvent, Issue, etc.)
    */
-  dispatch(event: AgentSessionEventWebhookPayload): Promise<void>;
+  dispatch(event: LinearWebhookPayload): Promise<void>;
 }
 
 /**
