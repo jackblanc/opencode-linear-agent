@@ -1,14 +1,6 @@
 import type { SessionState } from "./SessionState";
 
 /**
- * Worktree info for reuse across sessions
- */
-export interface WorktreeInfo {
-  workdir: string;
-  branchName: string;
-}
-
-/**
  * A question option from OpenCode's question tool
  */
 export interface QuestionOption {
@@ -92,10 +84,24 @@ export interface SessionRepository {
   delete(linearSessionId: string): Promise<void>;
 
   /**
-   * Find existing worktree info for an issue
-   * Used to share worktrees across multiple agent sessions on the same issue
+   * Register a Linear session ID for an issue (used for cleanup on issue close)
    */
-  findWorktreeByIssue(issueId: string): Promise<WorktreeInfo | null>;
+  addIssueSession(issueId: string, linearSessionId: string): Promise<void>;
+
+  /**
+   * Get all Linear session IDs associated with an issue
+   */
+  getIssueSessions(issueId: string): Promise<string[]>;
+
+  /**
+   * Remove one Linear session ID from an issue index
+   */
+  removeIssueSession(issueId: string, linearSessionId: string): Promise<void>;
+
+  /**
+   * Delete the issue index entry entirely
+   */
+  deleteIssueSessions(issueId: string): Promise<void>;
 
   /**
    * Get pending question for a Linear session

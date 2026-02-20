@@ -1,9 +1,15 @@
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { promisify } from "node:util";
 import { Result } from "better-result";
 import type { OpencodeService } from "../opencode/OpencodeService";
 import type { LinearService } from "../linear/LinearService";
 import type { SessionRepository } from "./SessionRepository";
 import type { Logger } from "../logger";
+import type { SessionState } from "./SessionState";
 import { detectInstallCommand } from "../utils/package-manager";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Result from resolving a worktree
@@ -11,16 +17,11 @@ import { detectInstallCommand } from "../utils/package-manager";
 export interface WorktreeResolution {
   workdir: string;
   branchName: string;
-  source: "existing_session" | "existing_worktree" | "created";
+  source: "existing_session" | "created";
 }
 
 /**
- * Manages worktree creation and reuse logic.
- *
- * Extracted from LinearEventProcessor to isolate worktree-related concerns:
- * - Reusing worktrees from existing sessions
- * - Reusing worktrees from previous sessions on the same issue
- * - Creating new worktrees via OpenCode
+ * Manages worktree creation and cleanup logic.
  */
 export class WorktreeManager {
   constructor(
@@ -31,62 +32,94 @@ export class WorktreeManager {
   ) {}
 
   /**
-   * Resolve or create a worktree for a session
+   * Resolve or create a worktree for a session.
    *
-   * Checks in order:
-   * 1. Existing state for this Linear session (reuse)
-   * 2. Existing worktree for this issue from a previous session
-   * 3. Create a new worktree via OpenCode
-   *
-   * @returns WorktreeResolution with workdir, branchName, and source
+   * - `created`: always create a new worktree/branch.
+   * - `prompted`: reuse only this session's worktree when valid.
    */
   async resolveWorktree(
     linearSessionId: string,
     issue: string,
+    action: string,
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
-    // Get existing state for this specific Linear session
     const existingState = await this.repository.get(linearSessionId);
 
-    if (existingState?.workdir) {
-      // Same Linear session - reuse everything
-      log.info("Reusing existing session worktree", {
+    if (action === "prompted" && existingState) {
+      const validState = await this.validateSessionState(existingState, log);
+      if (validState) {
+        log.info("Reusing existing session worktree", {
+          workdir: existingState.workdir,
+          branchName: existingState.branchName,
+        });
+
+        return Result.ok({
+          workdir: existingState.workdir,
+          branchName: existingState.branchName,
+          source: "existing_session" as const,
+        });
+      }
+
+      log.warn("Stored worktree state is stale, clearing state", {
         workdir: existingState.workdir,
         branchName: existingState.branchName,
       });
-
-      return Result.ok({
-        workdir: existingState.workdir,
-        branchName: existingState.branchName,
-        source: "existing_session" as const,
-      });
+      await this.repository.delete(linearSessionId);
     }
 
-    // New Linear session - check if there's an existing worktree for this issue
-    const existingWorktree = await this.repository.findWorktreeByIssue(issue);
+    return this.createWorktree(linearSessionId, issue, log);
+  }
 
-    if (existingWorktree) {
-      // Reuse worktree from a previous session on the same issue
-      log.info("Reusing worktree from previous session on same issue", {
-        workdir: existingWorktree.workdir,
-        branchName: existingWorktree.branchName,
-      });
+  /**
+   * Remove a worktree and branch for cleanup.
+   */
+  async cleanupSessionResources(
+    state: SessionState,
+    log: Logger,
+  ): Promise<void> {
+    if (existsSync(state.workdir)) {
+      const removeResult = await this.runGit([
+        "worktree",
+        "remove",
+        "--force",
+        state.workdir,
+      ]);
 
-      return Result.ok({
-        workdir: existingWorktree.workdir,
-        branchName: existingWorktree.branchName,
-        source: "existing_worktree" as const,
-      });
+      if (Result.isError(removeResult)) {
+        log.warn("Failed to remove worktree", {
+          workdir: state.workdir,
+          error: removeResult.error.message,
+        });
+      }
     }
 
-    // No existing worktree - create one via OpenCode
+    const hasBranch = await this.branchExists(state.branchName);
+    if (hasBranch) {
+      const deleteResult = await this.runGit([
+        "branch",
+        "-D",
+        state.branchName,
+      ]);
+      if (Result.isError(deleteResult)) {
+        log.warn("Failed to delete branch", {
+          branchName: state.branchName,
+          error: deleteResult.error.message,
+        });
+      }
+    }
+  }
+
+  private async createWorktree(
+    linearSessionId: string,
+    issue: string,
+    log: Logger,
+  ): Promise<Result<WorktreeResolution, Error>> {
     await this.linear.postStageActivity(linearSessionId, "git_setup");
 
     log.info("Creating worktree via OpenCode", {
       repoDirectory: this.repoDirectory,
     });
 
-    // Detect the package manager from lockfile, skip install if none found
     const installCommand = detectInstallCommand(this.repoDirectory);
     if (installCommand) {
       log.info("Detected package manager", { installCommand });
@@ -94,9 +127,10 @@ export class WorktreeManager {
       log.info("No lockfile found, skipping dependency installation");
     }
 
+    const worktreeName = this.buildWorktreeName(issue, linearSessionId);
     const worktreeResult = await this.opencode.createWorktree(
       this.repoDirectory,
-      issue,
+      worktreeName,
       installCommand,
     );
 
@@ -111,6 +145,7 @@ export class WorktreeManager {
     log.info("Worktree created", {
       workdir: worktreeResult.value.directory,
       branchName: worktreeResult.value.branch,
+      worktreeName,
     });
 
     return Result.ok({
@@ -118,5 +153,52 @@ export class WorktreeManager {
       branchName: worktreeResult.value.branch,
       source: "created" as const,
     });
+  }
+
+  private buildWorktreeName(issue: string, linearSessionId: string): string {
+    const safeIssue = issue.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const sessionSuffix = linearSessionId.slice(0, 8).toLowerCase();
+    return `${safeIssue}-${sessionSuffix}`;
+  }
+
+  private async validateSessionState(
+    state: SessionState,
+    log: Logger,
+  ): Promise<boolean> {
+    if (!existsSync(state.workdir)) {
+      log.warn("Stored workdir does not exist", { workdir: state.workdir });
+      return false;
+    }
+
+    const branchExists = await this.branchExists(state.branchName);
+    if (!branchExists) {
+      log.warn("Stored branch does not exist", {
+        branchName: state.branchName,
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  private async branchExists(branchName: string): Promise<boolean> {
+    const checkResult = await this.runGit([
+      "show-ref",
+      "--verify",
+      "--quiet",
+      `refs/heads/${branchName}`,
+    ]);
+    return Result.isOk(checkResult);
+  }
+
+  private async runGit(args: string[]): Promise<Result<void, Error>> {
+    try {
+      await execFileAsync("git", ["-C", this.repoDirectory, ...args]);
+      return Result.ok(undefined);
+    } catch (error) {
+      return Result.err(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 }

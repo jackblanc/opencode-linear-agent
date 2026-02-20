@@ -97,6 +97,7 @@ export class LinearEventProcessor {
     const worktreeResult = await this.worktreeManager.resolveWorktree(
       linearSessionId,
       issue,
+      event.action,
       log,
     );
 

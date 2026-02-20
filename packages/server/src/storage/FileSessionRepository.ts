@@ -8,7 +8,6 @@ import type { KeyValueStore } from "@linear-opencode-agent/core";
 import type {
   SessionRepository,
   SessionState,
-  WorktreeInfo,
   PendingQuestion,
   PendingPermission,
 } from "@linear-opencode-agent/core";
@@ -19,9 +18,9 @@ import type {
 const SESSION_PREFIX = "session:";
 
 /**
- * Key prefix for worktree storage (indexed by issue ID)
+ * Key prefix for issue-session index storage
  */
-const WORKTREE_PREFIX = "worktree:";
+const ISSUE_PREFIX = "issue:";
 
 /**
  * Key prefix for pending question storage
@@ -45,22 +44,56 @@ export class FileSessionRepository implements SessionRepository {
 
   async save(state: SessionState): Promise<void> {
     await this.kv.put(`${SESSION_PREFIX}${state.linearSessionId}`, state);
-
-    // Also save worktree info indexed by issue for cross-session reuse
-    const worktreeInfo: WorktreeInfo = {
-      workdir: state.workdir,
-      branchName: state.branchName,
-    };
-    await this.kv.put(`${WORKTREE_PREFIX}${state.issueId}`, worktreeInfo);
+    await this.addIssueSession(state.issueId, state.linearSessionId);
   }
 
   async delete(linearSessionId: string): Promise<void> {
+    const existing = await this.get(linearSessionId);
     await this.kv.delete(`${SESSION_PREFIX}${linearSessionId}`);
-    // Note: We don't delete worktree info as other sessions may still use it
+
+    if (existing) {
+      await this.removeIssueSession(existing.issueId, linearSessionId);
+    }
   }
 
-  async findWorktreeByIssue(issueId: string): Promise<WorktreeInfo | null> {
-    return this.kv.get<WorktreeInfo>(`${WORKTREE_PREFIX}${issueId}`);
+  async addIssueSession(
+    issueId: string,
+    linearSessionId: string,
+  ): Promise<void> {
+    const key = `${ISSUE_PREFIX}${issueId}`;
+    const existing = await this.kv.get<string[]>(key);
+    const sessions = new Set(existing ?? []);
+    sessions.add(linearSessionId);
+    await this.kv.put(key, Array.from(sessions));
+  }
+
+  async getIssueSessions(issueId: string): Promise<string[]> {
+    return (await this.kv.get<string[]>(`${ISSUE_PREFIX}${issueId}`)) ?? [];
+  }
+
+  async removeIssueSession(
+    issueId: string,
+    linearSessionId: string,
+  ): Promise<void> {
+    const key = `${ISSUE_PREFIX}${issueId}`;
+    const existing = await this.kv.get<string[]>(key);
+
+    if (!existing || existing.length === 0) {
+      return;
+    }
+
+    const filtered = existing.filter((id) => id !== linearSessionId);
+
+    if (filtered.length === 0) {
+      await this.kv.delete(key);
+      return;
+    }
+
+    await this.kv.put(key, filtered);
+  }
+
+  async deleteIssueSessions(issueId: string): Promise<void> {
+    await this.kv.delete(`${ISSUE_PREFIX}${issueId}`);
   }
 
   async getPendingQuestion(
