@@ -69,6 +69,7 @@ describe("IssueEventHandler", () => {
       linearSessionId: "session-1",
       opencodeSessionId: "opencode-1",
       issueId: "issue-1",
+      repoDirectory: "/tmp/repo-1",
       branchName: "feature/code-1",
       workdir: "/tmp/worktree-1",
       lastActivityTime: Date.now(),

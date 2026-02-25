@@ -5,6 +5,7 @@ export interface SessionState {
   opencodeSessionId: string;
   linearSessionId: string;
   issueId: string;
+  repoDirectory: string;
   branchName: string;
   workdir: string;
   lastActivityTime: number;

@@ -85,6 +85,7 @@ export class SessionManager {
   async getOrCreateSession(
     linearSessionId: string,
     issueId: string,
+    repoDirectory: string,
     branchName: string,
     workdir: string,
   ): Promise<Result<SessionResult, OpencodeServiceError>> {
@@ -130,6 +131,7 @@ export class SessionManager {
       return this.createNewSession(
         linearSessionId,
         issueId,
+        repoDirectory,
         branchName,
         workdir,
         existingState,
@@ -142,6 +144,7 @@ export class SessionManager {
     return this.createNewSession(
       linearSessionId,
       issueId,
+      repoDirectory,
       branchName,
       workdir,
       null,
@@ -187,6 +190,7 @@ export class SessionManager {
   private async createNewSession(
     linearSessionId: string,
     issueId: string,
+    repoDirectory: string,
     branchName: string,
     workdir: string,
     existingState: SessionState | null,
@@ -218,6 +222,7 @@ export class SessionManager {
       opencodeSessionId: sessionId,
       linearSessionId,
       issueId,
+      repoDirectory,
       branchName,
       workdir,
       lastActivityTime: Date.now(),

@@ -159,6 +159,7 @@ export class LinearEventProcessor {
     const sessionResult = await this.sessionManager.getOrCreateSession(
       linearSessionId,
       issueId ?? "unknown",
+      this.repoDirectory,
       branchName,
       workdir,
     );

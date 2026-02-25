@@ -86,8 +86,10 @@ export class WorktreeManager {
     state: SessionState,
     log: Logger,
   ): Promise<void> {
+    const repoDirectory = state.repoDirectory || this.repoDirectory;
+
     if (existsSync(state.workdir)) {
-      const removeResult = await this.runGit([
+      const removeResult = await this.runGit(repoDirectory, [
         "worktree",
         "remove",
         "--force",
@@ -102,9 +104,9 @@ export class WorktreeManager {
       }
     }
 
-    const hasBranch = await this.branchExists(state.branchName);
+    const hasBranch = await this.branchExists(state.branchName, repoDirectory);
     if (hasBranch) {
-      const deleteResult = await this.runGit([
+      const deleteResult = await this.runGit(repoDirectory, [
         "branch",
         "-D",
         state.branchName,
@@ -179,7 +181,11 @@ export class WorktreeManager {
       return false;
     }
 
-    const branchExists = await this.branchExists(state.branchName);
+    const repoDirectory = state.repoDirectory || this.repoDirectory;
+    const branchExists = await this.branchExists(
+      state.branchName,
+      repoDirectory,
+    );
     if (!branchExists) {
       log.warn("Stored branch does not exist", {
         branchName: state.branchName,
@@ -190,8 +196,11 @@ export class WorktreeManager {
     return true;
   }
 
-  private async branchExists(branchName: string): Promise<boolean> {
-    const checkResult = await this.runGit([
+  private async branchExists(
+    branchName: string,
+    repoDirectory: string,
+  ): Promise<boolean> {
+    const checkResult = await this.runGit(repoDirectory, [
       "show-ref",
       "--verify",
       "--quiet",
@@ -200,9 +209,12 @@ export class WorktreeManager {
     return Result.isOk(checkResult);
   }
 
-  private async runGit(args: string[]): Promise<Result<void, Error>> {
+  private async runGit(
+    repoDirectory: string,
+    args: string[],
+  ): Promise<Result<void, Error>> {
     try {
-      await execFileAsync("git", ["-C", this.repoDirectory, ...args]);
+      await execFileAsync("git", ["-C", repoDirectory, ...args]);
       return Result.ok(undefined);
     } catch (error) {
       return Result.err(

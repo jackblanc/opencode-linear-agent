@@ -93,8 +93,6 @@ function createDirectDispatcher(
       const organizationId = event.organizationId;
 
       if (event.type === "Issue") {
-        const issueId = event.data.id;
-
         // Get or refresh access token
         let accessToken = await tokenStore.getAccessToken(organizationId);
         if (!accessToken) {
@@ -110,26 +108,11 @@ function createDirectDispatcher(
         }
 
         const linear = new LinearServiceImpl(accessToken);
-        const resolveResult = await resolveRepoPath(
-          linear,
-          issueId,
-          config.projectsPath,
-        );
-
-        if (Result.isError(resolveResult)) {
-          const log = Log.create({ service: "dispatcher" });
-          log.warn("Failed to resolve repo for issue cleanup", {
-            issueId,
-            error: resolveResult.error.message,
-          });
-          return;
-        }
-
         const worktreeManager = new WorktreeManager(
           opencode,
           linear,
           sessionRepository,
-          resolveResult.value.path,
+          config.projectsPath,
         );
 
         const issueHandler = new IssueEventHandler(
