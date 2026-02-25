@@ -3,28 +3,11 @@
  */
 
 import { LinearWebhookClient } from "@linear/sdk/webhooks";
-import type {
-  AgentSessionEventWebhookPayload,
-  LinearWebhookPayload,
-} from "@linear/sdk/webhooks";
+import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import type { TokenStore } from "../storage";
 import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
+import { isAgentSessionEventWebhook, isSupportedWebhook } from "./types";
 import { Log } from "../logger";
-
-/**
- * Type guard for AgentSessionEvent
- */
-function isAgentSessionEvent(
-  payload: LinearWebhookPayload,
-): payload is AgentSessionEventWebhookPayload {
-  return payload.type === "AgentSessionEvent";
-}
-
-function getOrganizationId(payload: LinearWebhookPayload): string | undefined {
-  const organizationId = (payload as { organizationId?: unknown })
-    .organizationId;
-  return typeof organizationId === "string" ? organizationId : undefined;
-}
 
 /**
  * Handle Linear webhook - verify signature and dispatch for processing
@@ -61,15 +44,7 @@ export async function handleWebhook(
   }
 
   const arrayBuffer = await request.arrayBuffer();
-  // The Linear SDK's parseData method expects a Buffer for signature verification.
-  // Buffer is available globally in both Cloudflare Workers and Bun runtimes,
-  // but TypeScript doesn't know about it at compile time since we don't have
-  // Node.js types. We access it via globalThis and cast to the minimal interface
-  // we need. The Linear SDK internally uses crypto.createHmac with this Buffer.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion
-  const rawBody = (globalThis as any).Buffer.from(arrayBuffer) as {
-    toString(): string;
-  };
+  const rawBody = Buffer.from(arrayBuffer);
   const bodyText = rawBody.toString();
 
   // Parse and verify the webhook payload
@@ -84,9 +59,7 @@ export async function handleWebhook(
     });
 
     webhookPayload = webhookClient.parseData(
-      // Linear SDK expects Buffer type for HMAC signature verification
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-type-assertion
-      rawBody as any,
+      rawBody,
       signature,
       parsed.webhookTimestamp,
     );
@@ -105,7 +78,7 @@ export async function handleWebhook(
   }
 
   // Only handle AgentSessionEvent and Issue webhooks
-  if (!isAgentSessionEvent(webhookPayload) && webhookPayload.type !== "Issue") {
+  if (!isSupportedWebhook(webhookPayload)) {
     const log = Log.create({ service: "webhook" });
     log.info("Ignoring unsupported webhook", {
       webhookType: webhookPayload.type,
@@ -113,11 +86,11 @@ export async function handleWebhook(
     return new Response("OK", { status: 200 });
   }
 
-  const organizationId = getOrganizationId(webhookPayload) ?? "unknown";
-  const sessionId = isAgentSessionEvent(webhookPayload)
+  const organizationId = webhookPayload.organizationId;
+  const sessionId = isAgentSessionEventWebhook(webhookPayload)
     ? webhookPayload.agentSession.id
     : "issue-webhook";
-  const issue = isAgentSessionEvent(webhookPayload)
+  const issue = isAgentSessionEventWebhook(webhookPayload)
     ? (webhookPayload.agentSession.issue?.identifier ??
       webhookPayload.agentSession.issueId ??
       "unknown")
@@ -132,23 +105,20 @@ export async function handleWebhook(
   // Check organization ID allowlist if configured
   if (allowedOrganizationId && organizationId !== allowedOrganizationId) {
     log.warn("Webhook from unauthorized organization", {
+      organizationId,
       allowedOrganizationId,
     });
     return new Response("Unauthorized organization", { status: 403 });
   }
 
-  const action = (webhookPayload as { action?: unknown }).action;
+  const action = webhookPayload.action;
   log.info("Webhook received", {
-    action: typeof action === "string" ? action : "unknown",
+    action,
     webhookType: webhookPayload.type,
   });
 
   // Post immediate status activity to Linear
-  if (
-    isAgentSessionEvent(webhookPayload) &&
-    organizationId &&
-    statusPosterFactory
-  ) {
+  if (isAgentSessionEventWebhook(webhookPayload) && statusPosterFactory) {
     const accessToken = await tokenStore.getAccessToken(organizationId);
     if (accessToken) {
       const statusPoster = statusPosterFactory(accessToken);
@@ -164,7 +134,7 @@ export async function handleWebhook(
   setImmediate(() => {
     dispatcher.dispatch(webhookPayload).catch((error) => {
       log.error("Background dispatch failed", {
-        action: typeof action === "string" ? action : "unknown",
+        action,
         webhookType: webhookPayload.type,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -172,7 +142,7 @@ export async function handleWebhook(
   });
 
   log.info("Event dispatched for background processing", {
-    action: typeof action === "string" ? action : "unknown",
+    action,
     webhookType: webhookPayload.type,
   });
 

@@ -84,26 +84,6 @@ export interface SessionRepository {
   delete(linearSessionId: string): Promise<void>;
 
   /**
-   * Register a Linear session ID for an issue (used for cleanup on issue close)
-   */
-  addIssueSession(issueId: string, linearSessionId: string): Promise<void>;
-
-  /**
-   * Get all Linear session IDs associated with an issue
-   */
-  getIssueSessions(issueId: string): Promise<string[]>;
-
-  /**
-   * Remove one Linear session ID from an issue index
-   */
-  removeIssueSession(issueId: string, linearSessionId: string): Promise<void>;
-
-  /**
-   * Delete the issue index entry entirely
-   */
-  deleteIssueSessions(issueId: string): Promise<void>;
-
-  /**
    * Get pending question for a Linear session
    */
   getPendingQuestion(linearSessionId: string): Promise<PendingQuestion | null>;

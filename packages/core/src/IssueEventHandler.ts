@@ -1,18 +1,22 @@
 import { Result } from "better-result";
-import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import { Log } from "./logger";
-import type { OpencodeService } from "./opencode/OpencodeService";
+import type { LinearService } from "./linear/LinearService";
 import type { SessionRepository } from "./session/SessionRepository";
+import type { OpencodeService } from "./opencode/OpencodeService";
 import type { WorktreeManager } from "./session/WorktreeManager";
 
-interface CleanupIssueEvent {
-  issueId: string;
-  issueIdentifier: string;
-  issueStateType: string;
-}
+type CleanupIssueStateType = "completed" | "canceled";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+export interface IssueCleanupWebhookPayload {
+  type: "Issue";
+  action: string;
+  data: {
+    id: string;
+    identifier: string;
+    state: {
+      type: string;
+    };
+  };
 }
 
 /**
@@ -20,36 +24,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export class IssueEventHandler {
   constructor(
-    private readonly opencode: OpencodeService,
+    private readonly linear: LinearService,
+    private readonly opencode: Pick<OpencodeService, "abortSession">,
     private readonly repository: SessionRepository,
-    private readonly worktreeManager: WorktreeManager,
+    private readonly worktreeManager: Pick<
+      WorktreeManager,
+      "cleanupSessionResources"
+    >,
   ) {}
 
-  async process(event: LinearWebhookPayload): Promise<void> {
-    const cleanupEvent = this.toCleanupIssueEvent(event);
-    if (!cleanupEvent) {
+  async process(event: IssueCleanupWebhookPayload): Promise<void> {
+    if (event.action !== "update") {
+      return;
+    }
+
+    const issueStateType = this.toCleanupIssueStateType(event.data.state.type);
+    if (!issueStateType) {
       return;
     }
 
     const log = Log.create({ service: "issue-cleanup" })
-      .tag("issue", cleanupEvent.issueIdentifier)
-      .tag("issueId", cleanupEvent.issueId)
-      .tag("stateType", cleanupEvent.issueStateType);
+      .tag("issue", event.data.identifier)
+      .tag("issueId", event.data.id)
+      .tag("stateType", issueStateType);
 
-    if (
-      cleanupEvent.issueStateType !== "completed" &&
-      cleanupEvent.issueStateType !== "canceled"
-    ) {
-      log.info("Issue state does not require cleanup");
+    const sessionIdsResult = await this.linear.getIssueAgentSessionIds(
+      event.data.id,
+    );
+    if (Result.isError(sessionIdsResult)) {
+      log.warn("Failed to load issue sessions from Linear", {
+        error: sessionIdsResult.error.message,
+        errorType: sessionIdsResult.error._tag,
+      });
       return;
     }
 
-    const sessionIds = await this.repository.getIssueSessions(
-      cleanupEvent.issueId,
-    );
+    const sessionIds = sessionIdsResult.value;
     if (sessionIds.length === 0) {
       log.info("No sessions found for issue cleanup");
-      await this.repository.deleteIssueSessions(cleanupEvent.issueId);
       return;
     }
 
@@ -87,62 +99,16 @@ export class IssueEventHandler {
       });
     }
 
-    await this.repository.deleteIssueSessions(cleanupEvent.issueId);
     log.info("Issue cleanup complete");
   }
 
-  private toCleanupIssueEvent(
-    event: LinearWebhookPayload,
-  ): CleanupIssueEvent | null {
-    if (event.type !== "Issue") {
-      return null;
+  private toCleanupIssueStateType(value: string): CleanupIssueStateType | null {
+    switch (value) {
+      case "completed":
+      case "canceled":
+        return value;
+      default:
+        return null;
     }
-
-    const action = this.getString(event, "action");
-    if (action !== "update") {
-      return null;
-    }
-
-    const data = this.getRecord(event, "data");
-    const issueId = this.getString(data, "id");
-    const state = this.getRecord(data, "state");
-    const issueStateType = this.getString(state, "type");
-
-    if (!issueId || !issueStateType) {
-      return null;
-    }
-
-    const issueIdentifier = this.getString(data, "identifier") ?? issueId;
-
-    return {
-      issueId,
-      issueIdentifier,
-      issueStateType,
-    };
-  }
-
-  private getRecord(
-    value: unknown,
-    key: string,
-  ): Record<string, unknown> | undefined {
-    if (!isRecord(value)) {
-      return undefined;
-    }
-
-    const field = value[key];
-    if (!isRecord(field)) {
-      return undefined;
-    }
-
-    return field;
-  }
-
-  private getString(value: unknown, key: string): string | undefined {
-    if (!isRecord(value)) {
-      return undefined;
-    }
-
-    const field = value[key];
-    return typeof field === "string" ? field : undefined;
   }
 }

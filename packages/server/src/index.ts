@@ -15,7 +15,7 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import type {
   AgentSessionEventWebhookPayload,
-  LinearWebhookPayload,
+  EntityWebhookPayloadWithIssueData,
 } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
@@ -70,12 +70,6 @@ function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
   return allowlist.includes(ip);
 }
 
-function isAgentSessionEvent(
-  event: LinearWebhookPayload,
-): event is AgentSessionEventWebhookPayload {
-  return event.type === "AgentSessionEvent";
-}
-
 /**
  * Create a direct event dispatcher that processes events immediately
  * (no queue, unlike Cloudflare)
@@ -91,18 +85,15 @@ function createDirectDispatcher(
   const opencode = new OpencodeService(opencodeClient);
 
   return {
-    async dispatch(event: LinearWebhookPayload): Promise<void> {
+    async dispatch(
+      event:
+        | AgentSessionEventWebhookPayload
+        | EntityWebhookPayloadWithIssueData,
+    ): Promise<void> {
       const organizationId = event.organizationId;
 
       if (event.type === "Issue") {
-        const issueRecord = event.data as { id?: string };
-        const issueId = issueRecord.id;
-
-        if (!issueId) {
-          const log = Log.create({ service: "dispatcher" });
-          log.warn("Issue webhook missing issue id");
-          return;
-        }
+        const issueId = event.data.id;
 
         // Get or refresh access token
         let accessToken = await tokenStore.getAccessToken(organizationId);
@@ -142,15 +133,12 @@ function createDirectDispatcher(
         );
 
         const issueHandler = new IssueEventHandler(
+          linear,
           opencode,
           sessionRepository,
           worktreeManager,
         );
         await issueHandler.process(event);
-        return;
-      }
-
-      if (!isAgentSessionEvent(event)) {
         return;
       }
 

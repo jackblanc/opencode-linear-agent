@@ -19,6 +19,39 @@ import { Log, type Logger } from "../logger";
 import type { LinearServiceError } from "../errors";
 import { mapLinearError } from "../errors";
 
+interface IssueCommentPage {
+  nodes: Array<{ agentSessionId?: string | null }>;
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor?: string | null;
+  };
+}
+
+async function collectIssueAgentSessionIds(
+  fetchPage: (after?: string) => Promise<IssueCommentPage>,
+): Promise<string[]> {
+  const ids = new Set<string>();
+  let after: string | undefined;
+
+  for (;;) {
+    const comments = await fetchPage(after);
+
+    for (const comment of comments.nodes) {
+      if (comment.agentSessionId) {
+        ids.add(comment.agentSessionId);
+      }
+    }
+
+    if (!comments.pageInfo.hasNextPage || !comments.pageInfo.endCursor) {
+      break;
+    }
+
+    after = comments.pageInfo.endCursor;
+  }
+
+  return Array.from(ids);
+}
+
 /**
  * Map Linear's WorkflowState.type (typed as string in SDK) to our narrower union type.
  *
@@ -333,6 +366,34 @@ export class LinearServiceImpl implements LinearService {
 
     if (Result.isError(result)) {
       this.log.error("Failed to get issue attachments", {
+        issueId,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+    }
+
+    return result;
+  }
+
+  async getIssueAgentSessionIds(
+    issueId: string,
+  ): Promise<Result<string[], LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        return collectIssueAgentSessionIds(async (after) =>
+          issue.comments({
+            after,
+            first: 250,
+            includeArchived: true,
+          }),
+        );
+      },
+      catch: mapLinearError,
+    });
+
+    if (Result.isError(result)) {
+      this.log.error("Failed to get issue agent sessions", {
         issueId,
         error: result.error.message,
         errorType: result.error._tag,

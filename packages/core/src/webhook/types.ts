@@ -2,8 +2,28 @@
  * Webhook types for Linear integration
  */
 
-import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
+import type {
+  AgentSessionEventWebhookPayload,
+  EntityWebhookPayloadWithIssueData,
+  LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
 import type { ProcessingStage } from "../linear/types";
+
+export type SupportedWebhookPayload =
+  | AgentSessionEventWebhookPayload
+  | EntityWebhookPayloadWithIssueData;
+
+export function isAgentSessionEventWebhook(
+  payload: LinearWebhookPayload,
+): payload is AgentSessionEventWebhookPayload {
+  return payload.type === "AgentSessionEvent";
+}
+
+export function isSupportedWebhook(
+  payload: LinearWebhookPayload,
+): payload is SupportedWebhookPayload {
+  return payload.type === "AgentSessionEvent" || payload.type === "Issue";
+}
 
 /**
  * Interface for dispatching webhook events to be processed
@@ -18,7 +38,7 @@ export interface EventDispatcher {
    *
    * @param event - The webhook payload from Linear (AgentSessionEvent, Issue, etc.)
    */
-  dispatch(event: LinearWebhookPayload): Promise<void>;
+  dispatch(event: SupportedWebhookPayload): Promise<void>;
 }
 
 /**

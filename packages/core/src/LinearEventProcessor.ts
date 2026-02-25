@@ -7,7 +7,10 @@ import type {
   PendingPermission,
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
-import { WorktreeManager } from "./session/WorktreeManager";
+import {
+  WorktreeManager,
+  type SessionWorktreeAction,
+} from "./session/WorktreeManager";
 import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
 import { type AgentMode, determineAgentMode } from "./session/AgentMode";
 import type { OpencodeService } from "./opencode/OpencodeService";
@@ -91,11 +94,19 @@ export class LinearEventProcessor {
 
     log.info("Processing event", { action: event.action });
 
+    const action = this.toSessionWorktreeAction(event.action);
+    if (!action) {
+      log.info("Ignoring unsupported agent session action", {
+        action: event.action,
+      });
+      return;
+    }
+
     // Resolve or create worktree
     const worktreeResult = await this.worktreeManager.resolveWorktree(
       linearSessionId,
       issueIdentifier,
-      event.action,
+      action,
       log,
     );
 
@@ -182,26 +193,39 @@ export class LinearEventProcessor {
     const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
     await this.linear.setExternalLink(linearSessionId, externalLink);
 
-    if (event.action === "created") {
-      await this.handleCreated(
-        event,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        session.previousContext,
-        log,
-      );
-    } else if (event.action === "prompted") {
-      await this.handlePrompted(
-        event,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        session.previousContext,
-        log,
-      );
+    switch (action) {
+      case "created":
+        await this.handleCreated(
+          event,
+          opencodeSessionId,
+          linearSessionId,
+          workdir,
+          mode,
+          session.previousContext,
+          log,
+        );
+        return;
+      case "prompted":
+        await this.handlePrompted(
+          event,
+          opencodeSessionId,
+          linearSessionId,
+          workdir,
+          mode,
+          session.previousContext,
+          log,
+        );
+        return;
+    }
+  }
+
+  private toSessionWorktreeAction(value: string): SessionWorktreeAction | null {
+    switch (value) {
+      case "created":
+      case "prompted":
+        return value;
+      default:
+        return null;
     }
   }
 

@@ -20,6 +20,8 @@ export interface WorktreeResolution {
   source: "existing_session" | "created";
 }
 
+export type SessionWorktreeAction = "created" | "prompted";
+
 /**
  * Manages worktree creation and cleanup logic.
  */
@@ -40,34 +42,41 @@ export class WorktreeManager {
   async resolveWorktree(
     linearSessionId: string,
     issue: string,
-    action: string,
+    action: SessionWorktreeAction,
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
     const existingState = await this.repository.get(linearSessionId);
 
-    if (action === "prompted" && existingState) {
-      const validState = await this.validateSessionState(existingState, log);
-      if (validState) {
-        log.info("Reusing existing session worktree", {
-          workdir: existingState.workdir,
-          branchName: existingState.branchName,
-        });
+    switch (action) {
+      case "prompted":
+        if (existingState) {
+          const validState = await this.validateSessionState(
+            existingState,
+            log,
+          );
+          if (validState) {
+            log.info("Reusing existing session worktree", {
+              workdir: existingState.workdir,
+              branchName: existingState.branchName,
+            });
 
-        return Result.ok({
-          workdir: existingState.workdir,
-          branchName: existingState.branchName,
-          source: "existing_session" as const,
-        });
-      }
+            return Result.ok({
+              workdir: existingState.workdir,
+              branchName: existingState.branchName,
+              source: "existing_session" as const,
+            });
+          }
 
-      log.warn("Stored worktree state is stale, clearing state", {
-        workdir: existingState.workdir,
-        branchName: existingState.branchName,
-      });
-      await this.repository.delete(linearSessionId);
+          log.warn("Stored worktree state is stale, clearing state", {
+            workdir: existingState.workdir,
+            branchName: existingState.branchName,
+          });
+          await this.repository.delete(linearSessionId);
+        }
+        return this.createWorktree(linearSessionId, issue, log);
+      case "created":
+        return this.createWorktree(linearSessionId, issue, log);
     }
-
-    return this.createWorktree(linearSessionId, issue, log);
   }
 
   /**

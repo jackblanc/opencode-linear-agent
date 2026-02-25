@@ -18,11 +18,6 @@ import type {
 const SESSION_PREFIX = "session:";
 
 /**
- * Key prefix for issue-session index storage
- */
-const ISSUE_PREFIX = "issue:";
-
-/**
  * Key prefix for pending question storage
  */
 const QUESTION_PREFIX = "question:";
@@ -44,56 +39,10 @@ export class FileSessionRepository implements SessionRepository {
 
   async save(state: SessionState): Promise<void> {
     await this.kv.put(`${SESSION_PREFIX}${state.linearSessionId}`, state);
-    await this.addIssueSession(state.issueId, state.linearSessionId);
   }
 
   async delete(linearSessionId: string): Promise<void> {
-    const existing = await this.get(linearSessionId);
     await this.kv.delete(`${SESSION_PREFIX}${linearSessionId}`);
-
-    if (existing) {
-      await this.removeIssueSession(existing.issueId, linearSessionId);
-    }
-  }
-
-  async addIssueSession(
-    issueId: string,
-    linearSessionId: string,
-  ): Promise<void> {
-    const key = `${ISSUE_PREFIX}${issueId}`;
-    const existing = await this.kv.get<string[]>(key);
-    const sessions = new Set(existing ?? []);
-    sessions.add(linearSessionId);
-    await this.kv.put(key, Array.from(sessions));
-  }
-
-  async getIssueSessions(issueId: string): Promise<string[]> {
-    return (await this.kv.get<string[]>(`${ISSUE_PREFIX}${issueId}`)) ?? [];
-  }
-
-  async removeIssueSession(
-    issueId: string,
-    linearSessionId: string,
-  ): Promise<void> {
-    const key = `${ISSUE_PREFIX}${issueId}`;
-    const existing = await this.kv.get<string[]>(key);
-
-    if (!existing || existing.length === 0) {
-      return;
-    }
-
-    const filtered = existing.filter((id) => id !== linearSessionId);
-
-    if (filtered.length === 0) {
-      await this.kv.delete(key);
-      return;
-    }
-
-    await this.kv.put(key, filtered);
-  }
-
-  async deleteIssueSessions(issueId: string): Promise<void> {
-    await this.kv.delete(`${ISSUE_PREFIX}${issueId}`);
   }
 
   async getPendingQuestion(
