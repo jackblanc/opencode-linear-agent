@@ -28,6 +28,11 @@ export interface SessionCleanupResult {
   fullyCleaned: boolean;
 }
 
+type SessionStateValidationResult =
+  | { status: "valid" }
+  | { status: "stale" }
+  | { status: "inconclusive"; reason: string };
+
 class GitCommandError extends Error {
   readonly exitCode: number | undefined;
 
@@ -67,11 +72,11 @@ export class WorktreeManager {
     switch (action) {
       case "prompted":
         if (existingState) {
-          const validState = await this.validateSessionState(
+          const stateResult = await this.validateSessionState(
             existingState,
             log,
           );
-          if (validState) {
+          if (stateResult.status === "valid") {
             log.info("Reusing existing session worktree", {
               workdir: existingState.workdir,
               branchName: existingState.branchName,
@@ -82,6 +87,18 @@ export class WorktreeManager {
               branchName: existingState.branchName,
               source: "existing_session" as const,
             });
+          }
+
+          if (stateResult.status === "inconclusive") {
+            log.warn(
+              "Stored worktree validation inconclusive, preserving session state",
+              {
+                workdir: existingState.workdir,
+                branchName: existingState.branchName,
+                reason: stateResult.reason,
+              },
+            );
+            return Result.err(new Error(stateResult.reason));
           }
 
           log.warn("Stored worktree state is stale, clearing state", {
@@ -223,10 +240,10 @@ export class WorktreeManager {
   private async validateSessionState(
     state: SessionState,
     log: Logger,
-  ): Promise<boolean> {
+  ): Promise<SessionStateValidationResult> {
     if (!existsSync(state.workdir)) {
       log.warn("Stored workdir does not exist", { workdir: state.workdir });
-      return false;
+      return { status: "stale" };
     }
 
     if (!state.repoDirectory) {
@@ -234,7 +251,10 @@ export class WorktreeManager {
         branchName: state.branchName,
         workdir: state.workdir,
       });
-      return false;
+      return {
+        status: "inconclusive",
+        reason: "Stored session missing repoDirectory",
+      };
     }
 
     const branchStateResult = await this.getBranchState(
@@ -246,17 +266,20 @@ export class WorktreeManager {
         branchName: state.branchName,
         error: branchStateResult.error.message,
       });
-      return false;
+      return {
+        status: "inconclusive",
+        reason: `Failed to verify branch ${state.branchName}`,
+      };
     }
 
     if (branchStateResult.value !== "exists") {
       log.warn("Stored branch does not exist", {
         branchName: state.branchName,
       });
-      return false;
+      return { status: "stale" };
     }
 
-    return true;
+    return { status: "valid" };
   }
 
   private async getBranchState(

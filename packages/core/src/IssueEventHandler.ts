@@ -6,6 +6,8 @@ import type { OpencodeService } from "./opencode/OpencodeService";
 import type { WorktreeManager } from "./session/WorktreeManager";
 
 type CleanupIssueStateType = "completed" | "canceled";
+const ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS = 3;
+const ISSUE_SESSION_LOOKUP_DELAY_MS = 1000;
 
 export interface IssueCleanupWebhookPayload {
   type: "Issue";
@@ -48,8 +50,9 @@ export class IssueEventHandler {
       .tag("issueId", event.data.id)
       .tag("stateType", issueStateType);
 
-    const sessionIdsResult = await this.linear.getIssueAgentSessionIds(
+    const sessionIdsResult = await this.getIssueSessionIdsWithRetry(
       event.data.id,
+      log,
     );
     if (Result.isError(sessionIdsResult)) {
       log.warn("Failed to load issue sessions from Linear", {
@@ -127,5 +130,42 @@ export class IssueEventHandler {
       default:
         return null;
     }
+  }
+
+  private async getIssueSessionIdsWithRetry(
+    issueId: string,
+    log: ReturnType<typeof Log.create>,
+  ): Promise<ReturnType<LinearService["getIssueAgentSessionIds"]>> {
+    let attempt = 1;
+
+    for (;;) {
+      const result = await this.linear.getIssueAgentSessionIds(issueId);
+      if (Result.isOk(result)) {
+        if (attempt > 1) {
+          log.info("Issue session lookup recovered after retry", { attempt });
+        }
+        return result;
+      }
+
+      if (attempt >= ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS) {
+        return result;
+      }
+
+      log.warn("Issue session lookup failed, retrying", {
+        attempt,
+        maxAttempts: ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+
+      attempt += 1;
+      await this.wait(ISSUE_SESSION_LOOKUP_DELAY_MS);
+    }
+  }
+
+  private async wait(ms: number): Promise<void> {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
   }
 }

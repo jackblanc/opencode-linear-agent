@@ -119,7 +119,7 @@ describe("WorktreeManager.cleanupSessionResources", () => {
       opencodeSessionId: "opencode-1",
       issueId: "issue-1",
       branchName: "feature/code-1",
-      workdir: "/tmp/worktree-1",
+      workdir: "/tmp",
       lastActivityTime: Date.now(),
     };
 
@@ -129,5 +129,65 @@ describe("WorktreeManager.cleanupSessionResources", () => {
     expect(result.worktreeRemoved).toBe(false);
     expect(result.branchRemoved).toBe(false);
     expect(result.fullyCleaned).toBe(false);
+  });
+});
+
+describe("WorktreeManager.resolveWorktree", () => {
+  test("preserves state and errors when validation is inconclusive", async () => {
+    const state: SessionState = {
+      linearSessionId: "linear-1",
+      opencodeSessionId: "opencode-1",
+      issueId: "issue-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp",
+      lastActivityTime: Date.now(),
+    };
+
+    const deletes: string[] = [];
+    const repository: SessionRepository = {
+      get: async (): Promise<SessionState | null> => state,
+      save: async (): Promise<void> => undefined,
+      delete: async (linearSessionId: string): Promise<void> => {
+        deletes.push(linearSessionId);
+      },
+      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
+      savePendingQuestion: async (): Promise<void> => undefined,
+      deletePendingQuestion: async (): Promise<void> => undefined,
+      getPendingPermission: async (): Promise<PendingPermission | null> => null,
+      savePendingPermission: async (): Promise<void> => undefined,
+      deletePendingPermission: async (): Promise<void> => undefined,
+    };
+
+    const createCalls: string[] = [];
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+    Object.defineProperty(opencode, "createWorktree", {
+      value: async () => {
+        createCalls.push("called");
+        return Result.ok({
+          directory: "/tmp/new-worktree",
+          branch: "feature/new",
+        });
+      },
+    });
+
+    const manager = new WorktreeManager(
+      opencode,
+      createLinearService(),
+      repository,
+      "/tmp/default",
+    );
+
+    const result = await manager.resolveWorktree(
+      "linear-1",
+      "CODE-1",
+      "prompted",
+      createLogger(),
+    );
+
+    expect(Result.isError(result)).toBe(true);
+    expect(deletes).toHaveLength(0);
+    expect(createCalls).toHaveLength(0);
   });
 });

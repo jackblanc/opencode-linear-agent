@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
+import { LinearUnknownError } from "../src/errors";
 import {
   IssueEventHandler,
   type IssueCleanupWebhookPayload,
@@ -211,5 +212,64 @@ describe("IssueEventHandler", () => {
 
     await handler.process(event);
     expect(aborts).toHaveLength(0);
+  });
+
+  test("retries issue session lookup before cleanup", async () => {
+    const state: SessionState = {
+      linearSessionId: "session-1",
+      opencodeSessionId: "opencode-1",
+      issueId: "issue-1",
+      repoDirectory: "/tmp/repo-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/worktree-1",
+      lastActivityTime: Date.now(),
+    };
+
+    const lookups: string[] = [];
+    const cleanups: string[] = [];
+
+    const linear: LinearService = {
+      ...createLinear(["session-1"]),
+      getIssueAgentSessionIds: async () => {
+        lookups.push("call");
+        if (lookups.length < 2) {
+          return Result.err(new LinearUnknownError({ reason: "transient" }));
+        }
+        return Result.ok(["session-1"]);
+      },
+    };
+
+    const handler = new IssueEventHandler(
+      linear,
+      {
+        abortSession: async (): Promise<Result<void, never>> =>
+          Result.ok(undefined),
+      },
+      {
+        ...createRepo(state),
+        delete: async (): Promise<void> => undefined,
+      },
+      {
+        cleanupSessionResources: async (
+          session: SessionState,
+        ): Promise<SessionCleanupResult> => {
+          cleanups.push(session.linearSessionId);
+          return {
+            worktreeRemoved: true,
+            branchRemoved: true,
+            fullyCleaned: true,
+          };
+        },
+      },
+    );
+
+    Object.defineProperty(handler, "wait", {
+      value: async (): Promise<void> => undefined,
+    });
+
+    await handler.process(buildIssueEvent("completed"));
+
+    expect(lookups).toHaveLength(2);
+    expect(cleanups).toEqual(["session-1"]);
   });
 });
