@@ -7,6 +7,7 @@ import {
 import type { LinearService } from "../src/linear/LinearService";
 import type { SessionRepository } from "../src/session/SessionRepository";
 import type { SessionState } from "../src/session/SessionState";
+import type { SessionCleanupResult } from "../src/session/WorktreeManager";
 
 function createLinear(ids: string[]): LinearService {
   return {
@@ -90,8 +91,15 @@ describe("IssueEventHandler", () => {
       },
     };
     const worktree = {
-      cleanupSessionResources: async (session: SessionState): Promise<void> => {
+      cleanupSessionResources: async (
+        session: SessionState,
+      ): Promise<SessionCleanupResult> => {
         cleanups.push(session);
+        return {
+          worktreeRemoved: true,
+          branchRemoved: true,
+          fullyCleaned: true,
+        };
       },
     };
     const handler = new IssueEventHandler(
@@ -115,6 +123,45 @@ describe("IssueEventHandler", () => {
     expect(deletions).toEqual(["session-1"]);
   });
 
+  test("preserves session state when cleanup is incomplete", async () => {
+    const state: SessionState = {
+      linearSessionId: "session-1",
+      opencodeSessionId: "opencode-1",
+      issueId: "issue-1",
+      repoDirectory: "/tmp/repo-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/worktree-1",
+      lastActivityTime: Date.now(),
+    };
+
+    const deletions: string[] = [];
+
+    const handler = new IssueEventHandler(
+      createLinear(["session-1"]),
+      {
+        abortSession: async (): Promise<Result<void, never>> =>
+          Result.ok(undefined),
+      },
+      {
+        ...createRepo(state),
+        delete: async (linearSessionId: string): Promise<void> => {
+          deletions.push(linearSessionId);
+        },
+      },
+      {
+        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+          worktreeRemoved: true,
+          branchRemoved: false,
+          fullyCleaned: false,
+        }),
+      },
+    );
+
+    await handler.process(buildIssueEvent("completed"));
+
+    expect(deletions).toEqual([]);
+  });
+
   test("ignores issue updates outside completed/canceled", async () => {
     const aborts: string[] = [];
     const handler = new IssueEventHandler(
@@ -127,7 +174,11 @@ describe("IssueEventHandler", () => {
       },
       createRepo(null),
       {
-        cleanupSessionResources: async (): Promise<void> => undefined,
+        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+          worktreeRemoved: true,
+          branchRemoved: true,
+          fullyCleaned: true,
+        }),
       },
     );
 
@@ -147,7 +198,11 @@ describe("IssueEventHandler", () => {
       },
       createRepo(null),
       {
-        cleanupSessionResources: async (): Promise<void> => undefined,
+        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+          worktreeRemoved: true,
+          branchRemoved: true,
+          fullyCleaned: true,
+        }),
       },
     );
 

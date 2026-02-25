@@ -22,6 +22,12 @@ export interface WorktreeResolution {
 
 export type SessionWorktreeAction = "created" | "prompted";
 
+export interface SessionCleanupResult {
+  worktreeRemoved: boolean;
+  branchRemoved: boolean;
+  fullyCleaned: boolean;
+}
+
 /**
  * Manages worktree creation and cleanup logic.
  */
@@ -85,8 +91,10 @@ export class WorktreeManager {
   async cleanupSessionResources(
     state: SessionState,
     log: Logger,
-  ): Promise<void> {
+  ): Promise<SessionCleanupResult> {
     const repoDirectory = state.repoDirectory || this.repoDirectory;
+    let worktreeRemoved = true;
+    let branchRemoved = true;
 
     if (existsSync(state.workdir)) {
       const removeResult = await this.runGit(repoDirectory, [
@@ -97,6 +105,7 @@ export class WorktreeManager {
       ]);
 
       if (Result.isError(removeResult)) {
+        worktreeRemoved = false;
         log.warn("Failed to remove worktree", {
           workdir: state.workdir,
           error: removeResult.error.message,
@@ -112,12 +121,19 @@ export class WorktreeManager {
         state.branchName,
       ]);
       if (Result.isError(deleteResult)) {
+        branchRemoved = false;
         log.warn("Failed to delete branch", {
           branchName: state.branchName,
           error: deleteResult.error.message,
         });
       }
     }
+
+    return {
+      worktreeRemoved,
+      branchRemoved,
+      fullyCleaned: worktreeRemoved && branchRemoved,
+    };
   }
 
   private async createWorktree(

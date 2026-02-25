@@ -90,7 +90,24 @@ export class IssueEventHandler {
         });
       }
 
-      await this.worktreeManager.cleanupSessionResources(state, sessionLog);
+      const cleanupResult = await this.worktreeManager.cleanupSessionResources(
+        state,
+        sessionLog,
+      );
+
+      if (!cleanupResult.fullyCleaned) {
+        sessionLog.warn(
+          "Session cleanup incomplete; preserving session state",
+          {
+            branchName: state.branchName,
+            workdir: state.workdir,
+            worktreeRemoved: cleanupResult.worktreeRemoved,
+            branchRemoved: cleanupResult.branchRemoved,
+          },
+        );
+        continue;
+      }
+
       await this.repository.delete(linearSessionId);
 
       sessionLog.info("Session cleanup complete", {
