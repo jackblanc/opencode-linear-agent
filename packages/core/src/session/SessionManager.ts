@@ -128,10 +128,19 @@ export class SessionManager {
         log,
       );
 
+      const sessionRepoDirectory = existingState.repoDirectory ?? repoDirectory;
+      if (!existingState.repoDirectory) {
+        log.warn("Existing session state missing repo directory", {
+          fallbackRepoDirectory: repoDirectory,
+          workdir,
+          branchName,
+        });
+      }
+
       return this.createNewSession(
         linearSessionId,
         issueId,
-        repoDirectory,
+        sessionRepoDirectory,
         branchName,
         workdir,
         existingState,

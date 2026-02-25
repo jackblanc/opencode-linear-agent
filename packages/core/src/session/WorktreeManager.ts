@@ -28,6 +28,17 @@ export interface SessionCleanupResult {
   fullyCleaned: boolean;
 }
 
+class GitCommandError extends Error {
+  readonly exitCode: number | undefined;
+
+  constructor(message: string, exitCode: number | undefined) {
+    super(message);
+    this.exitCode = exitCode;
+  }
+}
+
+type BranchState = "exists" | "missing";
+
 /**
  * Manages worktree creation and cleanup logic.
  */
@@ -92,7 +103,19 @@ export class WorktreeManager {
     state: SessionState,
     log: Logger,
   ): Promise<SessionCleanupResult> {
-    const repoDirectory = state.repoDirectory || this.repoDirectory;
+    if (!state.repoDirectory) {
+      log.warn("Session state missing repo directory; skipping cleanup", {
+        branchName: state.branchName,
+        workdir: state.workdir,
+      });
+      return {
+        worktreeRemoved: false,
+        branchRemoved: false,
+        fullyCleaned: false,
+      };
+    }
+
+    const repoDirectory = state.repoDirectory;
     let worktreeRemoved = true;
     let branchRemoved = true;
 
@@ -113,8 +136,17 @@ export class WorktreeManager {
       }
     }
 
-    const hasBranch = await this.branchExists(state.branchName, repoDirectory);
-    if (hasBranch) {
+    const branchStateResult = await this.getBranchState(
+      state.branchName,
+      repoDirectory,
+    );
+    if (Result.isError(branchStateResult)) {
+      branchRemoved = false;
+      log.warn("Failed to verify branch before cleanup", {
+        branchName: state.branchName,
+        error: branchStateResult.error.message,
+      });
+    } else if (branchStateResult.value === "exists") {
       const deleteResult = await this.runGit(repoDirectory, [
         "branch",
         "-D",
@@ -197,12 +229,27 @@ export class WorktreeManager {
       return false;
     }
 
-    const repoDirectory = state.repoDirectory || this.repoDirectory;
-    const branchExists = await this.branchExists(
+    if (!state.repoDirectory) {
+      log.warn("Stored state missing repo directory", {
+        branchName: state.branchName,
+        workdir: state.workdir,
+      });
+      return false;
+    }
+
+    const branchStateResult = await this.getBranchState(
       state.branchName,
-      repoDirectory,
+      state.repoDirectory,
     );
-    if (!branchExists) {
+    if (Result.isError(branchStateResult)) {
+      log.warn("Failed to verify stored branch", {
+        branchName: state.branchName,
+        error: branchStateResult.error.message,
+      });
+      return false;
+    }
+
+    if (branchStateResult.value !== "exists") {
       log.warn("Stored branch does not exist", {
         branchName: state.branchName,
       });
@@ -212,17 +259,28 @@ export class WorktreeManager {
     return true;
   }
 
-  private async branchExists(
+  private async getBranchState(
     branchName: string,
     repoDirectory: string,
-  ): Promise<boolean> {
+  ): Promise<Result<BranchState, Error>> {
     const checkResult = await this.runGit(repoDirectory, [
       "show-ref",
       "--verify",
       "--quiet",
       `refs/heads/${branchName}`,
     ]);
-    return Result.isOk(checkResult);
+
+    if (Result.isOk(checkResult)) {
+      return Result.ok("exists");
+    }
+
+    if (checkResult.error instanceof GitCommandError) {
+      if (checkResult.error.exitCode === 1) {
+        return Result.ok("missing");
+      }
+    }
+
+    return Result.err(checkResult.error);
   }
 
   private async runGit(
@@ -233,9 +291,19 @@ export class WorktreeManager {
       await execFileAsync("git", ["-C", repoDirectory, ...args]);
       return Result.ok(undefined);
     } catch (error) {
-      return Result.err(
-        error instanceof Error ? error : new Error(String(error)),
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      let exitCode: number | undefined;
+
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "number"
+      ) {
+        exitCode = error.code;
+      }
+
+      return Result.err(new GitCommandError(message, exitCode));
     }
   }
 }
