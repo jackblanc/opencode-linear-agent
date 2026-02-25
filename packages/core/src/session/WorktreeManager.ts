@@ -120,6 +120,53 @@ export class WorktreeManager {
         }
         return this.createWorktree(linearSessionId, issue, log);
       case "created":
+        if (existingState) {
+          const stateResult = await this.validateSessionState(
+            existingState,
+            log,
+          );
+          if (stateResult.status === "valid") {
+            if (existingState.repoDirectory !== stateResult.repoDirectory) {
+              await this.repository.save({
+                ...existingState,
+                repoDirectory: stateResult.repoDirectory,
+              });
+              log.info("Migrated stored session repo directory", {
+                workdir: existingState.workdir,
+                repoDirectory: stateResult.repoDirectory,
+              });
+            }
+
+            log.info("Reusing existing session worktree for created replay", {
+              workdir: existingState.workdir,
+              branchName: existingState.branchName,
+            });
+
+            return Result.ok({
+              workdir: existingState.workdir,
+              branchName: existingState.branchName,
+              source: "existing_session" as const,
+            });
+          }
+
+          if (stateResult.status === "stale") {
+            log.warn("Stored worktree state is stale on created replay", {
+              workdir: existingState.workdir,
+              branchName: existingState.branchName,
+            });
+            await this.repository.delete(linearSessionId);
+          } else {
+            log.warn(
+              "Stored worktree validation inconclusive on created replay",
+              {
+                workdir: existingState.workdir,
+                branchName: existingState.branchName,
+                reason: stateResult.reason,
+              },
+            );
+            return Result.err(new Error(stateResult.reason));
+          }
+        }
         return this.createWorktree(linearSessionId, issue, log);
     }
   }

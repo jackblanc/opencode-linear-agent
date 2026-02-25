@@ -206,4 +206,70 @@ describe("WorktreeManager.resolveWorktree", () => {
     expect(saves[0]?.repoDirectory).toBe("/tmp/default");
     expect(createCalls).toHaveLength(0);
   });
+
+  test("reuses existing state for retried created events", async () => {
+    const state: SessionState = {
+      linearSessionId: "linear-2",
+      opencodeSessionId: "opencode-2",
+      issueId: "issue-2",
+      repoDirectory: "/tmp/default",
+      branchName: "feature/code-2",
+      workdir: "/tmp",
+      lastActivityTime: Date.now(),
+    };
+
+    const creates: string[] = [];
+    const repository: SessionRepository = {
+      get: async (): Promise<SessionState | null> => state,
+      save: async (): Promise<void> => undefined,
+      delete: async (): Promise<void> => undefined,
+      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
+      savePendingQuestion: async (): Promise<void> => undefined,
+      deletePendingQuestion: async (): Promise<void> => undefined,
+      getPendingPermission: async (): Promise<PendingPermission | null> => null,
+      savePendingPermission: async (): Promise<void> => undefined,
+      deletePendingPermission: async (): Promise<void> => undefined,
+    };
+
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+    Object.defineProperty(opencode, "createWorktree", {
+      value: async () => {
+        creates.push("called");
+        return Result.ok({
+          directory: "/tmp/new-worktree",
+          branch: "feature/new",
+        });
+      },
+    });
+
+    const manager = new WorktreeManager(
+      opencode,
+      createLinearService(),
+      repository,
+      "/tmp/default",
+    );
+    Object.defineProperty(manager, "runGit", {
+      value: async () => Result.ok(undefined),
+    });
+
+    const result = await manager.resolveWorktree(
+      "linear-2",
+      "CODE-2",
+      "created",
+      createLogger(),
+    );
+
+    expect(Result.isOk(result)).toBe(true);
+    if (Result.isError(result)) {
+      throw result.error;
+    }
+    expect(result.value).toEqual({
+      workdir: "/tmp",
+      branchName: "feature/code-2",
+      source: "existing_session",
+    });
+    expect(creates).toHaveLength(0);
+  });
 });
