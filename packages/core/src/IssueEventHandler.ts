@@ -85,8 +85,9 @@ export class IssueEventHandler {
         state.opencodeSessionId,
         state.workdir,
       );
+      const abortSucceeded = Result.isOk(abortResult);
 
-      if (Result.isError(abortResult)) {
+      if (!abortSucceeded) {
         sessionLog.warn("Failed to abort OpenCode session", {
           error: abortResult.error.message,
           errorType: abortResult.error._tag,
@@ -106,6 +107,17 @@ export class IssueEventHandler {
             workdir: state.workdir,
             worktreeRemoved: cleanupResult.worktreeRemoved,
             branchRemoved: cleanupResult.branchRemoved,
+          },
+        );
+        continue;
+      }
+
+      if (!abortSucceeded) {
+        sessionLog.warn(
+          "OpenCode abort failed; preserving session state for retry",
+          {
+            branchName: state.branchName,
+            workdir: state.workdir,
           },
         );
         continue;

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
-import { LinearUnknownError } from "../src/errors";
+import { LinearUnknownError, OpencodeUnknownError } from "../src/errors";
 import {
   IssueEventHandler,
   type IssueCleanupWebhookPayload,
@@ -271,5 +271,43 @@ describe("IssueEventHandler", () => {
 
     expect(lookups).toHaveLength(2);
     expect(cleanups).toEqual(["session-1"]);
+  });
+
+  test("preserves session state when abort fails", async () => {
+    const state: SessionState = {
+      linearSessionId: "session-1",
+      opencodeSessionId: "opencode-1",
+      issueId: "issue-1",
+      repoDirectory: "/tmp/repo-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/worktree-1",
+      lastActivityTime: Date.now(),
+    };
+
+    const deletions: string[] = [];
+    const handler = new IssueEventHandler(
+      createLinear(["session-1"]),
+      {
+        abortSession: async (): Promise<Result<void, OpencodeUnknownError>> =>
+          Result.err(new OpencodeUnknownError({ reason: "timeout" })),
+      },
+      {
+        ...createRepo(state),
+        delete: async (linearSessionId: string): Promise<void> => {
+          deletions.push(linearSessionId);
+        },
+      },
+      {
+        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+          worktreeRemoved: true,
+          branchRemoved: true,
+          fullyCleaned: true,
+        }),
+      },
+    );
+
+    await handler.process(buildIssueEvent("completed"));
+
+    expect(deletions).toEqual([]);
   });
 });

@@ -133,7 +133,7 @@ describe("WorktreeManager.cleanupSessionResources", () => {
 });
 
 describe("WorktreeManager.resolveWorktree", () => {
-  test("preserves state and errors when validation is inconclusive", async () => {
+  test("migrates legacy sessions without repoDirectory", async () => {
     const state: SessionState = {
       linearSessionId: "linear-1",
       opencodeSessionId: "opencode-1",
@@ -144,9 +144,12 @@ describe("WorktreeManager.resolveWorktree", () => {
     };
 
     const deletes: string[] = [];
+    const saves: SessionState[] = [];
     const repository: SessionRepository = {
       get: async (): Promise<SessionState | null> => state,
-      save: async (): Promise<void> => undefined,
+      save: async (next: SessionState): Promise<void> => {
+        saves.push(next);
+      },
       delete: async (linearSessionId: string): Promise<void> => {
         deletes.push(linearSessionId);
       },
@@ -178,6 +181,9 @@ describe("WorktreeManager.resolveWorktree", () => {
       repository,
       "/tmp/default",
     );
+    Object.defineProperty(manager, "runGit", {
+      value: async () => Result.ok(undefined),
+    });
 
     const result = await manager.resolveWorktree(
       "linear-1",
@@ -186,8 +192,18 @@ describe("WorktreeManager.resolveWorktree", () => {
       createLogger(),
     );
 
-    expect(Result.isError(result)).toBe(true);
+    expect(Result.isOk(result)).toBe(true);
+    if (Result.isError(result)) {
+      throw result.error;
+    }
+    expect(result.value).toEqual({
+      workdir: "/tmp",
+      branchName: "feature/code-1",
+      source: "existing_session",
+    });
     expect(deletes).toHaveLength(0);
+    expect(saves).toHaveLength(1);
+    expect(saves[0]?.repoDirectory).toBe("/tmp/default");
     expect(createCalls).toHaveLength(0);
   });
 });

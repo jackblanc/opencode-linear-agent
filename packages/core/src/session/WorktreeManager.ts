@@ -29,7 +29,7 @@ export interface SessionCleanupResult {
 }
 
 type SessionStateValidationResult =
-  | { status: "valid" }
+  | { status: "valid"; repoDirectory: string }
   | { status: "stale" }
   | { status: "inconclusive"; reason: string };
 
@@ -77,6 +77,17 @@ export class WorktreeManager {
             log,
           );
           if (stateResult.status === "valid") {
+            if (existingState.repoDirectory !== stateResult.repoDirectory) {
+              await this.repository.save({
+                ...existingState,
+                repoDirectory: stateResult.repoDirectory,
+              });
+              log.info("Migrated stored session repo directory", {
+                workdir: existingState.workdir,
+                repoDirectory: stateResult.repoDirectory,
+              });
+            }
+
             log.info("Reusing existing session worktree", {
               workdir: existingState.workdir,
               branchName: existingState.branchName,
@@ -247,39 +258,55 @@ export class WorktreeManager {
     }
 
     if (!state.repoDirectory) {
-      log.warn("Stored state missing repo directory", {
+      const migratedRepoDirectory = this.repoDirectory;
+      log.info("Migrating legacy session to current repo directory", {
         branchName: state.branchName,
         workdir: state.workdir,
+        repoDirectory: migratedRepoDirectory,
       });
-      return {
-        status: "inconclusive",
-        reason: "Stored session missing repoDirectory",
-      };
+
+      return this.validateBranchForRepo(
+        state.branchName,
+        migratedRepoDirectory,
+        log,
+      );
     }
 
-    const branchStateResult = await this.getBranchState(
+    return this.validateBranchForRepo(
       state.branchName,
       state.repoDirectory,
+      log,
+    );
+  }
+
+  private async validateBranchForRepo(
+    branchName: string,
+    repoDirectory: string,
+    log: Logger,
+  ): Promise<SessionStateValidationResult> {
+    const branchStateResult = await this.getBranchState(
+      branchName,
+      repoDirectory,
     );
     if (Result.isError(branchStateResult)) {
       log.warn("Failed to verify stored branch", {
-        branchName: state.branchName,
+        branchName,
         error: branchStateResult.error.message,
       });
       return {
         status: "inconclusive",
-        reason: `Failed to verify branch ${state.branchName}`,
+        reason: `Failed to verify branch ${branchName}`,
       };
     }
 
     if (branchStateResult.value !== "exists") {
       log.warn("Stored branch does not exist", {
-        branchName: state.branchName,
+        branchName,
       });
       return { status: "stale" };
     }
 
-    return { status: "valid" };
+    return { status: "valid", repoDirectory };
   }
 
   private async getBranchState(
