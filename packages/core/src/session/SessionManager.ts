@@ -84,12 +84,13 @@ export class SessionManager {
    */
   async getOrCreateSession(
     linearSessionId: string,
-    issue: string,
+    issueId: string,
+    repoDirectory: string,
     branchName: string,
     workdir: string,
   ): Promise<Result<SessionResult, OpencodeServiceError>> {
     const log = Log.create({ service: "session" })
-      .tag("issue", issue)
+      .tag("issue", issueId)
       .tag("sessionId", linearSessionId);
 
     log.info("Looking up existing session state");
@@ -127,9 +128,19 @@ export class SessionManager {
         log,
       );
 
+      const sessionRepoDirectory = existingState.repoDirectory ?? repoDirectory;
+      if (!existingState.repoDirectory) {
+        log.warn("Existing session state missing repo directory", {
+          fallbackRepoDirectory: repoDirectory,
+          workdir,
+          branchName,
+        });
+      }
+
       return this.createNewSession(
         linearSessionId,
-        issue,
+        issueId,
+        sessionRepoDirectory,
         branchName,
         workdir,
         existingState,
@@ -141,7 +152,8 @@ export class SessionManager {
     // No existing state - create fresh session
     return this.createNewSession(
       linearSessionId,
-      issue,
+      issueId,
+      repoDirectory,
       branchName,
       workdir,
       null,
@@ -186,7 +198,8 @@ export class SessionManager {
    */
   private async createNewSession(
     linearSessionId: string,
-    issue: string,
+    issueId: string,
+    repoDirectory: string,
     branchName: string,
     workdir: string,
     existingState: SessionState | null,
@@ -217,7 +230,8 @@ export class SessionManager {
     const newState: SessionState = {
       opencodeSessionId: sessionId,
       linearSessionId,
-      issueId: issue,
+      issueId,
+      repoDirectory,
       branchName,
       workdir,
       lastActivityTime: Date.now(),
