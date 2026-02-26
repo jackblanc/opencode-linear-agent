@@ -9,6 +9,7 @@ import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Permission } from "@opencode-ai/sdk";
 import { createLinearService } from "./linear";
 import { readAccessToken, getSessionAsync } from "./storage";
+import { handleUserMessage } from "./handlers";
 import {
   handleEvent,
   handlePermissionAskHook,
@@ -50,6 +51,17 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      */
     event: async ({ event }) => {
       await handleEvent(event, readAccessToken, createLinearService, log);
+    },
+
+    "chat.message": async (ctx, output) => {
+      await handleUserMessage(
+        ctx.sessionID,
+        ctx.messageID,
+        output.parts,
+        readAccessToken,
+        createLinearService,
+        log,
+      );
     },
 
     /**
