@@ -14,9 +14,17 @@ import {
   handlePermissionAskHook,
   type Logger,
 } from "./orchestrator";
+import {
+  getChatMessageId,
+  getChatMessageSessionId,
+  getChatMessageText,
+  handleUserMessage,
+} from "./handlers";
 import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
+  const seenUserMessages = new Map<string, string>();
+
   const log: Logger = (message: string) => {
     void input.client.app.log({
       body: {
@@ -88,6 +96,32 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         linear,
         log,
       );
+    },
+
+    "chat.message": async (ctx) => {
+      const sessionId = getChatMessageSessionId(ctx);
+      if (!sessionId) return;
+
+      const session = await getSessionAsync(sessionId);
+      if (!session?.linear.sessionId) return;
+
+      const messageId = getChatMessageId(ctx);
+      if (messageId && seenUserMessages.get(sessionId) === messageId) {
+        return;
+      }
+
+      const message = getChatMessageText(ctx);
+      if (!message) return;
+
+      const token = await readAccessToken(session.linear.organizationId);
+      if (!token) return;
+
+      const linear = createLinearService(token);
+      await handleUserMessage(session.linear.sessionId, message, linear, log);
+
+      if (messageId) {
+        seenUserMessages.set(sessionId, messageId);
+      }
     },
   };
 }
