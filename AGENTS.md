@@ -26,51 +26,41 @@ bun run fix                    # lint:fix + format:fix
 
 ## Local Development
 
-### Services (managed by launchd)
+### Services
 
-Both services are managed via launchd and configured in `~/projects/environment`:
+You need two always-on services:
 
-```bash
-# Restart webhook server (receives Linear webhooks)
-launchctl stop com.jackblanc.linear-opencode-agent
-launchctl start com.jackblanc.linear-opencode-agent
-
-# Restart OpenCode server
-launchctl stop com.jackblanc.opencode
-launchctl start com.jackblanc.opencode
-
-# Full rebuild (pulls latest, rebuilds plugin, restarts services)
-cd ~/projects/environment && ./scripts/rebuild-linear-agent.sh
-```
+- webhook server (`bun run start`)
+- OpenCode server (`opencode serve --port 4096 --hostname 127.0.0.1`)
 
 ### Key Paths
 
-| Path                                                      | Purpose                                              |
-| --------------------------------------------------------- | ---------------------------------------------------- |
-| `~/.local/share/linear-opencode-agent/store.json`         | Session state, tokens, pending questions/permissions |
-| `~/.local/share/linear-opencode-agent/launchd.log`        | Webhook server stdout                                |
-| `~/.local/share/linear-opencode-agent/launchd.err`        | Webhook server stderr (main logs)                    |
-| `~/.local/share/opencode/worktree/`                       | Git worktrees created by OpenCode                    |
-| `~/projects/environment/config/opencode/plugin/linear.js` | Built plugin (deployed via Nix)                      |
+| Path                                               | Purpose                                              |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| `~/.local/share/linear-opencode-agent/store.json`  | Session state, tokens, pending questions/permissions |
+| `~/.local/share/linear-opencode-agent/launchd.log` | Webhook server stdout                                |
+| `~/.local/share/linear-opencode-agent/launchd.err` | Webhook server stderr                                |
+| `~/.local/share/opencode/worktree/`                | Git worktrees created by OpenCode                    |
+| `~/.config/opencode/plugin/linear.js`              | Optional built plugin file                           |
 
 ### Plugin Development
 
-The plugin is built and copied to `~/projects/environment/config/opencode/plugin/` which is managed by Nix home-manager:
-
 ```bash
-# Build and copy plugin to environment project
+# Build plugin bundle
 bun run --filter @linear-opencode-agent/plugin build
-cp packages/plugin/dist/index.js ~/projects/environment/config/opencode/plugin/linear.js
 
-# Rebuild Nix to deploy the plugin
-cd ~/projects/environment && ./build-and-activate.sh
+# Install plugin for local OpenCode
+mkdir -p ~/.config/opencode/plugin
+cp packages/plugin/dist/index.js ~/.config/opencode/plugin/linear.js
 ```
+
+Restart OpenCode after plugin changes.
 
 ### Triggering Agent Sessions
 
-- **Delegate an issue** to the OpenCode Agent in Linear (requires `repo:X` label)
-- **Tag the agent** in a comment on an existing issue with an active session
-- Re-delegating to the same agent does NOT trigger a new webhook
+- Delegate issue to OpenCode Agent in Linear (needs `repo:X` label)
+- Or mention the agent in a comment on an issue with active session
+- Re-delegating to same agent does not emit a new webhook
 
 ### Running Tests
 
@@ -247,19 +237,19 @@ if (Result.isError(activityResult)) {
 
 **`WorktreeNotGitError` when creating sessions:**
 
-1. **Missing `repo:` label** - Issues need a label like `repo:linear-opencode-agent` to specify which repo to use. Without it, the server defaults to `~/projects` which isn't a git repo.
-2. **Stale OpenCode server** - Check for multiple `opencode serve` processes: `lsof -i :4096`. Kill old ones if found. The server caches project state, so a stale process may have incorrect state.
+1. **Missing `repo:` label** - issue needs a label like `repo:linear-opencode-agent`; default repo path may not be a git repo.
+2. **Stale OpenCode server** - check for multiple `opencode serve` processes with `lsof -i :4096`.
 
 **Webhooks not triggering:**
 
-- Re-delegating an issue to the same agent does NOT trigger a new webhook
-- Use `tail -f ~/.local/share/linear-opencode-agent/launchd.err` to watch webhook logs
-- Verify the Cloudflare tunnel is running: `ps aux | grep cloudflared`
+- Re-delegating to same agent does not emit a new webhook
+- Check webhook logs in `~/.local/share/linear-opencode-agent/launchd.err`
+- Verify tunnel process is running
 
 **Session not resuming:**
 
-- Check if session exists in store: `cat ~/.local/share/linear-opencode-agent/store.json | grep "CODE-XXX"`
-- Verify OpenCode session is still valid via the OpenCode web UI at `http://localhost:4096`
+- Check if session exists in `~/.local/share/linear-opencode-agent/store.json`
+- Verify OpenCode web UI is reachable at `http://localhost:4096`
 
 ### Debugging Commands
 
@@ -289,7 +279,7 @@ Append `.md` to Linear docs URLs for markdown:
 - `https://linear.app/developers/webhooks.md`
 - `https://linear.app/developers/agent-signals.md`
 
-Source repos for SDK types (never read node_modules):
+Optional local clones for SDK source/type lookup:
 
-- `@linear/sdk` → `~/projects/linear`
-- `@opencode-ai/sdk` → `~/projects/opencode`
+- `@linear/sdk` -> local clone path of linear repo
+- `@opencode-ai/sdk` -> local clone path of opencode repo

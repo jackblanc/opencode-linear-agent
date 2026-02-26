@@ -1,5 +1,7 @@
 # Migration Plan: Plugin to SSE Approach
 
+> **Note:** Historical planning doc. Migration completed; keep only for project history.
+
 ## Goal
 
 Migrate from the current plugin-based architecture to a pure SSE/SDK approach, simplifying the codebase and aligning with OpenCode's `packages/slack` pattern. This positions the Linear agent for eventual inclusion in the OpenCode monorepo as `packages/linear`.
