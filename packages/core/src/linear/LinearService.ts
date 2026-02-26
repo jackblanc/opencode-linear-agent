@@ -133,6 +133,14 @@ export interface LinearService {
     issueId: string,
   ): Promise<Result<LinearAttachment[], LinearServiceError>>;
 
+  /**
+   * Get all agent session IDs referenced by comments on an issue.
+   * Includes archived comments.
+   */
+  getIssueAgentSessionIds(
+    issueId: string,
+  ): Promise<Result<string[], LinearServiceError>>;
+
   // ─────────────────────────────────────────────────────────────
   // Issue Update Methods
   // ─────────────────────────────────────────────────────────────

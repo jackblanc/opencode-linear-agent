@@ -13,10 +13,15 @@
  */
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
-import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type {
+  AgentSessionEventWebhookPayload,
+  EntityWebhookPayloadWithIssueData,
+} from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
   LinearEventProcessor,
+  IssueEventHandler,
+  WorktreeManager,
   handleAuthorize,
   handleCallback,
   handleWebhook,
@@ -80,8 +85,46 @@ function createDirectDispatcher(
   const opencode = new OpencodeService(opencodeClient);
 
   return {
-    async dispatch(event: AgentSessionEventWebhookPayload): Promise<void> {
+    async dispatch(
+      event:
+        | AgentSessionEventWebhookPayload
+        | EntityWebhookPayloadWithIssueData,
+    ): Promise<void> {
       const organizationId = event.organizationId;
+
+      if (event.type === "Issue") {
+        // Get or refresh access token
+        let accessToken = await tokenStore.getAccessToken(organizationId);
+        if (!accessToken) {
+          const oauthConfig: OAuthConfig = {
+            clientId: config.linear.clientId,
+            clientSecret: config.linear.clientSecret,
+          };
+          accessToken = await refreshAccessToken(
+            oauthConfig,
+            tokenStore,
+            organizationId,
+          );
+        }
+
+        const linear = new LinearServiceImpl(accessToken);
+        const worktreeManager = new WorktreeManager(
+          opencode,
+          linear,
+          sessionRepository,
+          config.projectsPath,
+        );
+
+        const issueHandler = new IssueEventHandler(
+          linear,
+          opencode,
+          sessionRepository,
+          worktreeManager,
+        );
+        await issueHandler.process(event);
+        return;
+      }
+
       const linearSessionId = event.agentSession.id;
       const issueId =
         event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
