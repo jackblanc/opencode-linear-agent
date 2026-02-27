@@ -104,6 +104,16 @@ function getInstructionsForMode(mode: AgentMode): string {
 }
 
 /**
+ * Remove previous session threads from Linear promptContext.
+ */
+function stripOtherThreads(promptContext: string): string {
+  return promptContext.replace(
+    /<other-thread[^>]*>[\s\S]*?<\/other-thread>/g,
+    "",
+  );
+}
+
+/**
  * Builds prompts for OpenCode sessions.
  *
  * Extracted from LinearEventProcessor to isolate prompt construction logic:
@@ -155,7 +165,9 @@ export class PromptBuilder {
     const frontmatter = buildFrontmatter(issueId, ctx);
     const instructions = getInstructionsForMode(mode);
     const issueContext = this.buildIssueContext(event);
-    const basePrompt = event.promptContext ?? "Please help with this issue.";
+    const rawPrompt = event.promptContext ?? "Please help with this issue.";
+    const filteredPrompt = stripOtherThreads(rawPrompt).trim();
+    const basePrompt = filteredPrompt || "Please help with this issue.";
     return `${frontmatter}${instructions}${issueContext}${previousContext ?? ""}${basePrompt}`;
   }
 
