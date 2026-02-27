@@ -205,6 +205,3 @@ packages/*/.wrangler/
 ### Local package config ###
 packages/local/config.json
 packages/server/config.json
-
-### Docker config with secrets ###
-config.docker.json
