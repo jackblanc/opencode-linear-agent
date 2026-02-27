@@ -1,5 +1,7 @@
 # Architecture Requirements
 
+> **Note:** Historical planning doc. Decisions here predate current Bun + tunnel setup.
+
 ## Goal
 
 Achieve **parity** between the local TUI development experience and the remote experience (Linear agent, web UI, mobile access).

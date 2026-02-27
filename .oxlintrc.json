@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import"],
-  "ignorePatterns": ["docker/**"],
+  "ignorePatterns": [],
   "categories": {
     "correctness": "deny",
     "suspicious": "deny",
