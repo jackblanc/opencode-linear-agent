@@ -29,6 +29,7 @@ import {
   LinearServiceImpl,
   OpencodeService,
   Log,
+  parseStoreData,
   type EventDispatcher,
   type KeyValueStore,
   type OAuthConfig,
@@ -307,6 +308,33 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
   setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
 }
 
+async function validateStoreFile(
+  filePath: string,
+  log: ReturnType<typeof Log.create>,
+): Promise<void> {
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    return;
+  }
+
+  const result = await Result.tryPromise({
+    try: async () => {
+      const json: unknown = await file.json();
+      parseStoreData(json);
+    },
+    catch: (e) => (e instanceof Error ? e.message : String(e)),
+  });
+
+  if (Result.isError(result)) {
+    log.warn("Invalid shared store file detected", {
+      dataPath: filePath,
+      error: result.error,
+      recovery:
+        "Fix/restore store.json, restart server, then re-auth Linear if token data was lost.",
+    });
+  }
+}
+
 /**
  * Main entry point
  */
@@ -333,6 +361,8 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const sessionRepository = new FileSessionRepository(kv);
 
   log.info("Storage initialized", { dataPath });
+
+  await validateStoreFile(dataPath, log);
 
   // Start proactive token refresh so the plugin always has a valid token
   startTokenRefreshTimer(config, tokenStore);

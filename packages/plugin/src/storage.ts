@@ -11,6 +11,7 @@
 import { open, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { Result } from "better-result";
 import {
   parseStoreData,
   type StoreData,
@@ -36,6 +37,14 @@ let storePath = join(
 
 export function setStorePath(path: string): void {
   storePath = path;
+}
+
+type StoreReadErrorKind = "parse_error" | "schema_error" | "io_error";
+
+export interface StoreReadError {
+  kind: StoreReadErrorKind;
+  path: string;
+  message: string;
 }
 
 /**
@@ -117,6 +126,60 @@ async function readStore(filePath: string): Promise<StoreData> {
   return parseStoreData(json);
 }
 
+function toStoreReadError(error: unknown, filePath: string): StoreReadError {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("Invalid store data:")) {
+    return {
+      kind: "schema_error",
+      path: filePath,
+      message,
+    };
+  }
+  if (error instanceof SyntaxError || message.includes("parse JSON")) {
+    return {
+      kind: "parse_error",
+      path: filePath,
+      message,
+    };
+  }
+  return {
+    kind: "io_error",
+    path: filePath,
+    message,
+  };
+}
+
+export function formatStoreReadError(error: StoreReadError): string {
+  const reason =
+    error.kind === "parse_error"
+      ? "invalid JSON"
+      : error.kind === "schema_error"
+        ? "invalid store schema"
+        : "store read failure";
+  return [
+    `Linear store read failed (${reason}) at ${error.path}.`,
+    `Cause: ${error.message}`,
+    "Recovery: 1) Fix or restore store.json, 2) restart agent server, 3) re-run Linear auth if token data was lost.",
+  ].join(" ");
+}
+
+async function readStoreSafe(
+  filePath: string,
+): Promise<Result<StoreData, StoreReadError>> {
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    return Result.ok({});
+  }
+
+  return Result.tryPromise({
+    try: async () => {
+      const json: unknown = await file.json();
+      return parseStoreData(json);
+    },
+    catch: (e) => toStoreReadError(e, filePath),
+  });
+}
+
 /**
  * Write JSON data to the shared store file (assumes lock is held)
  */
@@ -160,23 +223,42 @@ function getValue<T>(data: StoreData, key: string): T | null {
 export async function readAccessToken(
   organizationId: string,
 ): Promise<string | null> {
-  const data = await readStore(storePath);
-  return getValue<string>(data, `${ACCESS_TOKEN_PREFIX}${organizationId}`);
+  const result = await readAccessTokenSafe(organizationId);
+  if (Result.isError(result)) {
+    return null;
+  }
+  return result.value;
 }
 
-/**
- * Read the first available OAuth access token from the store.
- * Scans all token:access:* keys and returns the first non-expired token.
- */
-export async function readAnyAccessToken(): Promise<string | null> {
-  const data = await readStore(storePath);
-  for (const key of Object.keys(data)) {
+export async function readAccessTokenSafe(
+  organizationId: string,
+): Promise<Result<string | null, StoreReadError>> {
+  const dataResult = await readStoreSafe(storePath);
+  if (Result.isError(dataResult)) {
+    return Result.err(dataResult.error);
+  }
+  return Result.ok(
+    getValue<string>(
+      dataResult.value,
+      `${ACCESS_TOKEN_PREFIX}${organizationId}`,
+    ),
+  );
+}
+
+export async function readAnyAccessTokenSafe(): Promise<
+  Result<string | null, StoreReadError>
+> {
+  const dataResult = await readStoreSafe(storePath);
+  if (Result.isError(dataResult)) {
+    return Result.err(dataResult.error);
+  }
+  for (const key of Object.keys(dataResult.value)) {
     if (key.startsWith(ACCESS_TOKEN_PREFIX)) {
-      const token = getValue<string>(data, key);
-      if (token) return token;
+      const token = getValue<string>(dataResult.value, key);
+      if (token) return Result.ok(token);
     }
   }
-  return null;
+  return Result.ok(null);
 }
 
 /**
@@ -279,4 +361,13 @@ export async function getSessionAsync(
       workdir: stored.workdir,
     },
   };
+}
+
+export async function getSessionAsyncSafe(
+  opencodeSessionId: string,
+): Promise<Result<{ linear: LinearContext } | null, StoreReadError>> {
+  return Result.tryPromise({
+    try: async () => getSessionAsync(opencodeSessionId),
+    catch: (e) => toStoreReadError(e, storePath),
+  });
 }
