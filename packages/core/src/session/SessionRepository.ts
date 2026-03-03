@@ -4,8 +4,14 @@ import type { SessionState } from "./SessionState";
  * A question option from OpenCode's question tool
  */
 export interface QuestionOption {
+  /** Canonical OpenCode option label used for replies */
   label: string;
+  /** Optional option subtitle/description from OpenCode */
   description: string;
+  /** Linear select `value` sent in signal metadata */
+  value: string;
+  /** Candidate texts accepted when matching user replies */
+  aliases: string[];
 }
 
 /**

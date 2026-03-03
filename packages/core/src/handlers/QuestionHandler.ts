@@ -5,6 +5,33 @@ import type {
 } from "../session/SessionRepository";
 import type { Action, HandlerResultWithQuestion } from "../actions/types";
 
+function toUnique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+function formatOptionLine(label: string, description: string): string {
+  if (description.length === 0) {
+    return `- ${label}`;
+  }
+  return `- ${label} - ${description}`;
+}
+
 /**
  * Context needed for question handler processing
  */
@@ -33,18 +60,34 @@ function processQuestions(
     .map((q) => ({
       question: q.question,
       header: q.header ?? "",
-      options: (q.options ?? []).map((o) => ({
-        label: o.label,
-        description: o.description ?? "",
-      })),
+      options: (q.options ?? []).map((o) => {
+        const description = (o.description ?? "").trim();
+        const value = description.length > 0 ? description : o.label;
+        const aliases = toUnique([o.label, description, value]);
+        return {
+          label: o.label,
+          description,
+          value,
+          aliases,
+        };
+      }),
     }));
 
   const actions: Action[] = questionInfos.map((q) => {
     const header = q.header ? `**${q.header}**\n\n` : "";
-    const body = `${header}${q.question}`;
+    const optionContext =
+      q.options.length > 0
+        ? `\n\nOptions:\n${q.options
+            .map((opt) => formatOptionLine(opt.label, opt.description))
+            .join("\n")}`
+        : "";
+    const body = `${header}${q.question}${optionContext}`;
 
     if (q.options.length > 0) {
-      const options = q.options.map((opt) => ({ value: opt.label }));
+      const options = q.options.map((opt) => ({
+        label: opt.label,
+        value: opt.value,
+      }));
       return {
         type: "postElicitation" as const,
         sessionId: ctx.linearSessionId,

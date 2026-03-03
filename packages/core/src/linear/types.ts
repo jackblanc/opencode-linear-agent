@@ -14,7 +14,7 @@ interface AuthSignalMetadata {
  * If options are GitHub URLs, Linear automatically enriches them with icons.
  */
 interface SelectSignalMetadata {
-  options: Array<{ value: string }>;
+  options: Array<{ value: string; label?: string }>;
 }
 
 /**
