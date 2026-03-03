@@ -1,12 +1,13 @@
 {
   "name": "@linear-opencode-agent/server",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "main": "src/index.ts",
   "scripts": {
     "start": "bun run src/index.ts",
-    "dev": "bun --watch run src/index.ts"
+    "dev": "bun --watch run src/index.ts",
+    "build:bin": "mkdir -p dist && bun build ./src/index.ts --compile --outfile=dist/linear-opencode-agent-server"
   },
   "dependencies": {
     "@linear-opencode-agent/core": "workspace:*",

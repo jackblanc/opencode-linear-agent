@@ -1,22 +1,31 @@
 {
   "name": "@linear-opencode-agent/plugin",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
-  "private": true,
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify",
-    "dev": "bun build ./src/index.ts --outfile=$HOME/.config/opencode/plugin/linear.js --target=bun"
+    "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify --packages=bundle",
+    "dev": "bun build ./src/index.ts --outfile=$HOME/.config/opencode/plugin/linear.js --target=bun --packages=bundle",
+    "prepublishOnly": "bun run build && test -f dist/index.js"
   },
   "dependencies": {
-    "@linear-opencode-agent/core": "workspace:*",
     "@linear/sdk": "catalog:",
     "@opencode-ai/plugin": "catalog:",
     "@opencode-ai/sdk": "catalog:",
     "better-result": "catalog:"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@linear-opencode-agent/core": "workspace:*"
+  },
   "peerDependencies": {
     "typescript": "^5"
   }

@@ -5,7 +5,7 @@
   "workspaces": {
     "packages/plugin": {
       "includeEntryExports": false,
-      "entry": ["test/**/*.test.ts"]
+      "entry": ["src/index.ts", "test/**/*.test.ts"]
     }
   }
 }

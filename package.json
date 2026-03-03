@@ -1,6 +1,6 @@
 {
   "name": "linear-opencode-agent",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "description": "Self-hosted Linear agent powered by OpenCode",

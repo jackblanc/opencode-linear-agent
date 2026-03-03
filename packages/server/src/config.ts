@@ -19,7 +19,7 @@ const ConfigSchema = z.object({
     clientId: z.string(),
     clientSecret: z.string(),
     webhookSecret: z.string(),
-    organizationId: z.string(),
+    organizationId: z.string().optional(),
     webhookIps: z.array(z.string()).min(1),
   }),
   projectsPath: z.string(),
@@ -52,7 +52,7 @@ export function loadConfig(): Config {
     : DEFAULT_WEBHOOK_IPS;
 
   const raw = {
-    port: process.env["PORT"] ?? "3000",
+    port: process.env["PORT"] ?? "3210",
     publicHostname: requiredEnv("PUBLIC_HOSTNAME"),
     opencode: {
       url: process.env["OPENCODE_URL"] ?? "http://localhost:4096",
@@ -61,7 +61,7 @@ export function loadConfig(): Config {
       clientId: requiredEnv("LINEAR_CLIENT_ID"),
       clientSecret: requiredEnv("LINEAR_CLIENT_SECRET"),
       webhookSecret: requiredEnv("LINEAR_WEBHOOK_SECRET"),
-      organizationId: requiredEnv("LINEAR_ORGANIZATION_ID"),
+      organizationId: process.env["LINEAR_ORGANIZATION_ID"],
       webhookIps,
     },
     projectsPath: requiredEnv("PROJECTS_PATH"),

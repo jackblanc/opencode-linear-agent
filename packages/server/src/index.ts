@@ -240,6 +240,10 @@ function createServer(
         return respond(await handleAuthorize(request, oauthConfig, kv));
       }
 
+      if (pathname === "/health") {
+        return respond(new Response("OK", { status: 200 }));
+      }
+
       // OAuth callback - handle the redirect from Linear
       if (pathname === "/api/oauth/callback") {
         return respond(
@@ -286,6 +290,12 @@ function createServer(
 function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
   const log = Log.create({ service: "token-refresh" });
   const organizationId = config.linear.organizationId;
+  if (!organizationId) {
+    log.info(
+      "Skipping proactive token refresh (LINEAR_ORGANIZATION_ID not set)",
+    );
+    return;
+  }
   const oauthConfig: OAuthConfig = {
     clientId: config.linear.clientId,
     clientSecret: config.linear.clientSecret,

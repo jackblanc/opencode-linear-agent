@@ -1,6 +1,6 @@
 # Cloudflare Tunnel Setup
 
-Use this guide to expose your local webhook server (`http://localhost:3000`) as a public HTTPS endpoint for Linear webhooks.
+Use this guide to expose your local webhook server (`http://localhost:3210`) as a public HTTPS endpoint for Linear webhooks.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ credentials-file: ~/.cloudflared/<TUNNEL_ID>.json
 
 ingress:
   - hostname: linear-webhook.yourdomain.com
-    service: http://localhost:3000
+    service: http://localhost:3210
   - service: http_status:404
 ```
 
@@ -77,7 +77,7 @@ Update Linear webhook URL to:
 
 ```bash
 # Local health
-curl http://localhost:3000/health
+curl http://localhost:3210/health
 
 # Public health
 curl https://linear-webhook.yourdomain.com/health

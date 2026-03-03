@@ -2,6 +2,10 @@
 
 Self-hosted Linear coding agent powered by OpenCode.
 
+> [!WARNING]
+> Alpha software. Self-hosted only. Breaking changes may ship without migration support.
+> Not recommended for production workloads.
+
 ## Features
 
 - Linear delegation + @mention support
@@ -11,7 +15,54 @@ Self-hosted Linear coding agent powered by OpenCode.
 - OAuth-based auth for Linear and OpenCode
 - Plan sync from OpenCode todos to Linear agent plans
 
-## Quick Start
+## Install Modes
+
+- Runtime (recommended): use GitHub release server binary + npm plugin.
+- Development: clone repo, run Bun scripts, local plugin build.
+
+## Installation
+
+```bash
+# One command interactive setup (recommended)
+curl -fsSL https://raw.githubusercontent.com/jackblanc/linear-opencode-agent/master/install | bash
+
+# Optional: pin server release
+curl -fsSL https://raw.githubusercontent.com/jackblanc/linear-opencode-agent/master/install | bash -s -- --version v0.1.0
+```
+
+Installer binary path priority:
+
+1. `XDG_BIN_DIR`
+2. `~/.local/bin` (default)
+
+## Quick Start (Runtime)
+
+1. Install latest server binary and bootstrap config:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/jackblanc/linear-opencode-agent/master/install | bash
+   ```
+
+2. Follow prompts for required values:
+   - `PUBLIC_HOSTNAME`, `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, `LINEAR_WEBHOOK_SECRET`, `PROJECTS_PATH`
+
+3. Run OpenCode server:
+
+   ```bash
+   opencode serve --port 4096 --hostname 127.0.0.1
+   ```
+
+4. Start webhook server binary:
+
+   ```bash
+   # Usually auto-started by installer service setup.
+   # Manual fallback:
+   ${XDG_BIN_DIR:-$HOME/.local/bin}/linear-opencode-agent-server
+   ```
+
+5. Expose local port `3210` (or your configured `PORT`) using one ingress option from [Ingress Options](#ingress-options).
+
+## Quick Start (Development)
 
 1. Install deps:
 
@@ -19,27 +70,17 @@ Self-hosted Linear coding agent powered by OpenCode.
    bun install
    ```
 
-2. Create env file:
+2. Copy env and fill required vars:
 
    ```bash
    cp .env.example .env
    ```
 
-3. Fill required vars in `.env`:
-   - `PUBLIC_HOSTNAME`
-   - `LINEAR_CLIENT_ID`
-   - `LINEAR_CLIENT_SECRET`
-   - `LINEAR_WEBHOOK_SECRET`
-   - `LINEAR_ORGANIZATION_ID`
-   - `PROJECTS_PATH`
-
-4. Start server:
+3. Start server:
 
    ```bash
    bun run start
    ```
-
-5. Expose local port `3000` using one ingress option from [Ingress Options](#ingress-options).
 
 ## Setup Guide
 
@@ -49,15 +90,14 @@ Self-hosted Linear coding agent powered by OpenCode.
 2. Set redirect URI:
    - `https://<public-hostname>/api/oauth/callback`
 3. Enable scopes:
-   - `read`
    - `write`
-   - `issues:create`
-   - `comments:create`
+   - `app:mentionable`
+   - `app:assignable`
 4. Save values:
    - Client ID -> `LINEAR_CLIENT_ID`
    - Client Secret -> `LINEAR_CLIENT_SECRET`
 
-Get org ID:
+Optional org allowlist ID:
 
 ```bash
 curl -X POST https://api.linear.app/graphql \
@@ -72,8 +112,8 @@ Use `organization.id` as `LINEAR_ORGANIZATION_ID`.
 
 1. Open **Linear Settings -> API -> Webhooks -> New webhook**
 2. Set:
-   - URL: `https://<public-hostname>/webhook/linear`
-   - Events: `Issues` (all issue events)
+   - URL: `https://<public-hostname>/api/webhook/linear`
+   - Events: `AgentSessionEvent` and `Issue`
 3. Copy webhook secret to `LINEAR_WEBHOOK_SECRET`
 
 ### 3) OpenCode server
@@ -86,9 +126,18 @@ opencode serve --port 4096 --hostname 127.0.0.1
 
 Set `OPENCODE_URL=http://localhost:4096` in `.env`.
 
-### 4) Plugin installation (optional)
+### 4) Plugin installation (required)
 
-Build and install plugin:
+Add plugin to your OpenCode config (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@linear-opencode-agent/plugin"]
+}
+```
+
+Or use a local build while developing plugin changes:
 
 ```bash
 bun run --filter @linear-opencode-agent/plugin build
@@ -98,18 +147,30 @@ cp packages/plugin/dist/index.js ~/.config/opencode/plugin/linear.js
 
 Restart `opencode serve` after plugin updates.
 
+Without the plugin, session activity sync and Linear tool integration do not work.
+
+## Behavior Notes
+
+- Plugin and webhook server are separate artifacts and separate release channels.
+- Runtime users do not need to clone this repo.
+- `install` script is interactive: downloads server binary, adds plugin to OpenCode config, prompts for required Linear env values.
+- `install` script initializes background service with stable name (`com.linear-opencode-agent.server` on macOS, `linear-opencode-agent.service` on Linux).
+- If existing service config with that name differs, installer warns and skips overwrite.
+- Current architecture expects plugin + server to share local state file when running on one machine.
+- Split-host/cloud deployments need extra work to replace shared file-state with a network API.
+
 ## Ingress Options
 
-Use one option to expose local `:3000` publicly for Linear webhooks:
+Use one option to expose local `:3210` (or your configured `PORT`) publicly for Linear webhooks:
 
 - Cloudflare Tunnel: see `docs/cloudflare-tunnel-setup.md`
 - ngrok:
   ```bash
-  ngrok http 3000
+  ngrok http 3210
   ```
 - Tailscale Funnel:
   ```bash
-  tailscale funnel 3000
+  tailscale funnel 3210
   ```
 
 Set `PUBLIC_HOSTNAME` to the hostname from your selected ingress.
@@ -123,7 +184,7 @@ Linear Webhooks
 Ingress Tunnel (Cloudflare Tunnel / ngrok / Tailscale Funnel)
       |
       v
-Bun HTTP Server (@linear-opencode-agent/server, :3000)
+Bun HTTP Server (@linear-opencode-agent/server, :3210)
       |                              |
       v                              v
 Linear API                    OpenCode Server (:4096)
@@ -131,13 +192,15 @@ Linear API                    OpenCode Server (:4096)
 
 ### Service Architecture
 
-| Service         | Type   | Purpose                                  | Port |
-| --------------- | ------ | ---------------------------------------- | ---- |
-| webhook server  | Bun    | Handles webhooks + session orchestration | 3000 |
-| ingress tunnel  | Native | Exposes local webhook endpoint           | -    |
-| opencode server | Native | Agent execution backend                  | 4096 |
+| Service         | Type   | Purpose                                  | Port           |
+| --------------- | ------ | ---------------------------------------- | -------------- |
+| webhook server  | Bun    | Handles webhooks + session orchestration | 3210 (default) |
+| ingress tunnel  | Native | Exposes local webhook endpoint           | -              |
+| opencode server | Native | Agent execution backend                  | 4096           |
 
 ## Running as a Background Service
+
+`install` already configures this automatically. Use this section only for manual/custom setup.
 
 ### Option A: launchd (macOS)
 
@@ -152,12 +215,10 @@ Create `~/Library/LaunchAgents/com.linear-opencode-agent.server.plist`:
   <string>com.linear-opencode-agent.server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/path/to/bun</string>
-    <string>run</string>
-    <string>start</string>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/linear-opencode-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/linear-opencode-agent-server"</string>
   </array>
-  <key>WorkingDirectory</key>
-  <string>/path/to/linear-opencode-agent</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -188,11 +249,9 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/linear-opencode-agent
-ExecStart=/path/to/bun run start
+ExecStart=/bin/bash -lc 'set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/linear-opencode-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/linear-opencode-agent-server"'
 Restart=always
 RestartSec=5
-EnvironmentFile=/path/to/linear-opencode-agent/.env
 
 [Install]
 WantedBy=default.target
@@ -220,7 +279,7 @@ linear-opencode-agent/
 ├── packages/
 │   ├── core/      # Pure processing logic, handlers, action executor
 │   ├── server/    # Bun HTTP webhook server
-│   ├── plugin/    # Optional OpenCode plugin
+│   ├── plugin/    # Required OpenCode plugin
 │   └── oauth/     # OAuth helpers
 ├── docs/
 ├── plans/         # Internal historical planning docs (excluded from publish cleanup in CODE-168)
@@ -238,6 +297,12 @@ bun run lint:check
 bun run format:check
 bun run check
 ```
+
+## Releases
+
+- Plugin is published to npm as `@linear-opencode-agent/plugin` on `latest`.
+- Server is distributed as standalone binaries via GitHub Releases.
+- Release automation lives in `.github/workflows/release.yml` and runs on `v*` tags.
 
 ## References
 
