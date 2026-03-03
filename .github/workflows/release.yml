@@ -44,12 +44,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Build standalone server binary
-        run: mkdir -p dist && bun build ./packages/server/src/index.ts --compile --target=${{ matrix.target }} --outfile=dist/linear-opencode-agent-server-${{ matrix.suffix }}
+        run: mkdir -p dist && bun build ./packages/server/src/index.ts --compile --target=${{ matrix.target }} --outfile=dist/opencode-linear-agent-server-${{ matrix.suffix }}
       - name: Upload server binary
         uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.suffix }}
-          path: dist/linear-opencode-agent-server-${{ matrix.suffix }}
+          path: dist/opencode-linear-agent-server-${{ matrix.suffix }}
 
   publish-plugin:
     name: Publish plugin to npm
@@ -82,10 +82,10 @@ jobs:
           pattern: server-*
           merge-multiple: true
       - name: Generate checksums
-        run: cd dist && sha256sum linear-opencode-agent-server-* > SHA256SUMS
+        run: cd dist && sha256sum opencode-linear-agent-server-* > SHA256SUMS
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/linear-opencode-agent-server-*
+            dist/opencode-linear-agent-server-*
             dist/SHA256SUMS

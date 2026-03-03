@@ -42,9 +42,9 @@
 
 ### Branch Naming
 
-Format: `linear-opencode-agent/{issue-id}/{session-id}`
+Format: `opencode-linear-agent/{issue-id}/{session-id}`
 
-Example: `linear-opencode-agent/abc123-def456/xyz789-uvw012`
+Example: `opencode-linear-agent/abc123-def456/xyz789-uvw012`
 
 ---
 
@@ -339,7 +339,7 @@ Do not stop until changes are pushed and a PR is created.
 ## Testing Checklist
 
 - [ ] New session creates worktree with correct branch name
-- [ ] Branch name format: `linear-opencode-agent/{issue-id}/{session-id}`
+- [ ] Branch name format: `opencode-linear-agent/{issue-id}/{session-id}`
 - [ ] Resumed session reuses existing worktree
 - [ ] Container restart + resume recreates worktree from remote
 - [ ] OpenCode UI link appears in Linear session (externalUrl)

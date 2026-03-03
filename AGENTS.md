@@ -37,9 +37,9 @@ You need two always-on services:
 
 | Path                                               | Purpose                                              |
 | -------------------------------------------------- | ---------------------------------------------------- |
-| `~/.local/share/linear-opencode-agent/store.json`  | Session state, tokens, pending questions/permissions |
-| `~/.local/share/linear-opencode-agent/launchd.log` | Webhook server stdout                                |
-| `~/.local/share/linear-opencode-agent/launchd.err` | Webhook server stderr                                |
+| `~/.local/share/opencode-linear-agent/store.json`  | Session state, tokens, pending questions/permissions |
+| `~/.local/share/opencode-linear-agent/launchd.log` | Webhook server stdout                                |
+| `~/.local/share/opencode-linear-agent/launchd.err` | Webhook server stderr                                |
 | `~/.local/share/opencode/worktree/`                | Git worktrees created by OpenCode                    |
 | `~/.config/opencode/plugin/linear.js`              | Optional built plugin file                           |
 
@@ -47,7 +47,7 @@ You need two always-on services:
 
 ```bash
 # Build plugin bundle
-bun run --filter @linear-opencode-agent/plugin build
+bun run --filter @opencode-linear-agent/plugin build
 
 # Install plugin for local OpenCode
 mkdir -p ~/.config/opencode/plugin
@@ -96,7 +96,7 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { join } from "node:path";
 
 // Workspace packages
-import { LinearEventProcessor } from "@linear-opencode-agent/core";
+import { LinearEventProcessor } from "@opencode-linear-agent/core";
 ```
 
 ### TypeScript Rules (enforced by oxlint)
@@ -237,31 +237,31 @@ if (Result.isError(activityResult)) {
 
 **`WorktreeNotGitError` when creating sessions:**
 
-1. **Missing `repo:` label** - issue needs a label like `repo:linear-opencode-agent`; default repo path may not be a git repo.
+1. **Missing `repo:` label** - issue needs a label like `repo:opencode-linear-agent`; default repo path may not be a git repo.
 2. **Stale OpenCode server** - check for multiple `opencode serve` processes with `lsof -i :4096`.
 
 **Webhooks not triggering:**
 
 - Re-delegating to same agent does not emit a new webhook
-- Check webhook logs in `~/.local/share/linear-opencode-agent/launchd.err`
+- Check webhook logs in `~/.local/share/opencode-linear-agent/launchd.err`
 - Verify tunnel process is running
 
 **Session not resuming:**
 
-- Check if session exists in `~/.local/share/linear-opencode-agent/store.json`
+- Check if session exists in `~/.local/share/opencode-linear-agent/store.json`
 - Verify OpenCode web UI is reachable at `http://localhost:4096`
 
 ### Debugging Commands
 
 ```bash
 # Watch webhook server logs
-tail -f ~/.local/share/linear-opencode-agent/launchd.err
+tail -f ~/.local/share/opencode-linear-agent/launchd.err
 
 # Check for stale OpenCode processes
 lsof -i :4096 -P -n
 
 # View pending questions/permissions
-cat ~/.local/share/linear-opencode-agent/store.json | grep -E '"question:|"permission:'
+cat ~/.local/share/opencode-linear-agent/store.json | grep -E '"question:|"permission:'
 
 # Test OpenCode API directly
 curl -X POST "http://localhost:4096/experimental/worktree?directory=/path/to/repo" \

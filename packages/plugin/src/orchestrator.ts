@@ -23,7 +23,7 @@ import {
   type PendingQuestion,
   type PendingPermission,
   type SessionErrorProperties,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 import {
   getSessionAsync,
   savePendingQuestion,

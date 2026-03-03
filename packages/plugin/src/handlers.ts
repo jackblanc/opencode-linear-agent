@@ -1,5 +1,5 @@
 import type { Part } from "@opencode-ai/sdk";
-import type { LinearService } from "@linear-opencode-agent/core";
+import type { LinearService } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { getSessionAsync } from "./storage";
 

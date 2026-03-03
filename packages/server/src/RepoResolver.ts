@@ -5,7 +5,7 @@ import {
   Log,
   type LinearService,
   type LinearServiceError,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 
 export interface ResolvedRepo {
   path: string;

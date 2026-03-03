@@ -5,14 +5,14 @@ describe("parseRepoLabel", () => {
   test("should parse simple repo label", () => {
     const labels = [
       {
-        name: "repo:linear-opencode-agent",
+        name: "repo:opencode-linear-agent",
       },
     ];
 
     const result = parseRepoLabel(labels);
 
     expect(result).toEqual({
-      repositoryName: "linear-opencode-agent",
+      repositoryName: "opencode-linear-agent",
     });
   });
 
@@ -76,7 +76,7 @@ describe("parseRepoLabel", () => {
         name: "bug",
       },
       {
-        name: "repo:linear-opencode-agent",
+        name: "repo:opencode-linear-agent",
       },
       {
         name: "priority:high",
@@ -86,7 +86,7 @@ describe("parseRepoLabel", () => {
     const result = parseRepoLabel(labels);
 
     expect(result).toEqual({
-      repositoryName: "linear-opencode-agent",
+      repositoryName: "opencode-linear-agent",
     });
   });
 

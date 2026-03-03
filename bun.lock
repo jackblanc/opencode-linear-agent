@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "linear-opencode-agent",
+      "name": "opencode-linear-agent",
       "devDependencies": {
         "bun-types": "^1.3.8",
         "knip": "^5.83.0",
@@ -15,7 +15,7 @@
       },
     },
     "packages/core": {
-      "name": "@linear-opencode-agent/core",
+      "name": "@opencode-linear-agent/core",
       "version": "1.0.0",
       "dependencies": {
         "@linear/sdk": "catalog:",
@@ -25,26 +25,28 @@
       },
     },
     "packages/plugin": {
-      "name": "@linear-opencode-agent/plugin",
-      "version": "1.0.0",
+      "name": "@opencode-linear-agent/plugin",
+      "version": "0.1.0",
       "dependencies": {
-        "@linear-opencode-agent/core": "workspace:*",
         "@linear/sdk": "catalog:",
         "@opencode-ai/plugin": "catalog:",
         "@opencode-ai/sdk": "catalog:",
         "better-result": "catalog:",
+      },
+      "devDependencies": {
+        "@opencode-linear-agent/core": "workspace:*",
       },
       "peerDependencies": {
         "typescript": "^5",
       },
     },
     "packages/server": {
-      "name": "@linear-opencode-agent/server",
-      "version": "1.0.0",
+      "name": "@opencode-linear-agent/server",
+      "version": "0.1.0",
       "dependencies": {
-        "@linear-opencode-agent/core": "workspace:*",
         "@linear/sdk": "catalog:",
         "@opencode-ai/sdk": "catalog:",
+        "@opencode-linear-agent/core": "workspace:*",
         "better-result": "catalog:",
         "zod": "catalog:",
       },
@@ -70,12 +72,6 @@
 
     "@graphql-typed-document-node/core": ["@graphql-typed-document-node/core@3.2.0", "", { "peerDependencies": { "graphql": "^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0" } }, "sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ=="],
 
-    "@linear-opencode-agent/core": ["@linear-opencode-agent/core@workspace:packages/core"],
-
-    "@linear-opencode-agent/plugin": ["@linear-opencode-agent/plugin@workspace:packages/plugin"],
-
-    "@linear-opencode-agent/server": ["@linear-opencode-agent/server@workspace:packages/server"],
-
     "@linear/sdk": ["@linear/sdk@73.0.0", "", { "dependencies": { "@graphql-typed-document-node/core": "^3.2.0" } }, "sha512-+7bMcDsDafS+468dd0JE0a0tbiBJtL253wKdKUIjGqkG6zm6Mr+WW+cvjo2Bl7T8Lldldq2cIA2tUT9ZjzJDkQ=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.1", "", { "dependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1", "@tybys/wasm-util": "^0.10.1" } }, "sha512-p64ah1M1ld8xjWv3qbvFwHiFVWrq1yFvV4f7w+mzaqiR4IlSgkqhcRdHwsGgomwzBH51sRY4NEowLxnaBjcW/A=="],
@@ -89,6 +85,12 @@
     "@opencode-ai/plugin": ["@opencode-ai/plugin@1.2.15", "", { "dependencies": { "@opencode-ai/sdk": "1.2.15", "zod": "4.1.8" } }, "sha512-mh9S05W+CZZmo6q3uIEBubS66QVgiev7fRafX7vemrCfz+3pEIkSwipLjU/sxIewC9yLiDWLqS73DH/iEQzVDw=="],
 
     "@opencode-ai/sdk": ["@opencode-ai/sdk@1.2.15", "", {}, "sha512-NUJNlyBCdZ4R0EBLjJziEQOp2XbRPJosaMcTcWSWO5XJPKGUpz0u8ql+5cR8K+v2RJ+hp2NobtNwpjEYfe6BRQ=="],
+
+    "@opencode-linear-agent/core": ["@opencode-linear-agent/core@workspace:packages/core"],
+
+    "@opencode-linear-agent/plugin": ["@opencode-linear-agent/plugin@workspace:packages/plugin"],
+
+    "@opencode-linear-agent/server": ["@opencode-linear-agent/server@workspace:packages/server"],
 
     "@oxc-resolver/binding-android-arm-eabi": ["@oxc-resolver/binding-android-arm-eabi@11.16.2", "", { "os": "android", "cpu": "arm" }, "sha512-lVJbvydLQIDZHKUb6Zs9Rq80QVTQ9xdCQE30eC9/cjg4wsMoEOg65QZPymUAIVJotpUAWJD0XYcwE7ugfxx5kQ=="],
 

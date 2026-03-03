@@ -34,7 +34,7 @@ import {
   parseRepoLabel,
   Log,
   type LinearService,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 
 export interface ResolvedRepo {
   path: string;

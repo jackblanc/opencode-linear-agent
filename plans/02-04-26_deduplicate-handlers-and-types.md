@@ -135,7 +135,7 @@ Create `packages/plugin/src/linear.ts`:
 import {
   LinearServiceImpl,
   type LinearService,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 
 export function createLinearService(accessToken: string): LinearService {
   return new LinearServiceImpl(accessToken);
@@ -304,7 +304,7 @@ import {
   type HandlerState,
   type LinearService,
   type Action,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 import { getSessionAsync } from "./storage";
 import { savePendingQuestion, savePendingPermission } from "./storage";
 

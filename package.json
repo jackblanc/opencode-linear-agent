@@ -1,5 +1,5 @@
 {
-  "name": "linear-opencode-agent",
+  "name": "opencode-linear-agent",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -18,8 +18,8 @@
   },
   "scripts": {
     "prepare": "lefthook install || true",
-    "start": "bun run --filter @linear-opencode-agent/server start",
-    "dev": "bun run --filter @linear-opencode-agent/server dev",
+    "start": "bun run --filter @opencode-linear-agent/server start",
+    "dev": "bun run --filter @opencode-linear-agent/server dev",
     "typecheck": "tsc --noEmit",
     "lint:check": "oxlint --report-unused-disable-directives --deny-warnings --type-aware --type-check",
     "lint:fix": "oxlint --fix",

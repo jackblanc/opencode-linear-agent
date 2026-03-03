@@ -34,7 +34,7 @@ import {
   type KeyValueStore,
   type OAuthConfig,
   type TokenStore,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 import { loadConfig, getWorkerUrl, getDataDir, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { resolveRepoPath } from "./RepoResolver";

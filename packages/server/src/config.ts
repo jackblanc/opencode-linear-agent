@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { z } from "zod";
-import { Log } from "@linear-opencode-agent/core";
+import { Log } from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -86,5 +86,5 @@ export function getWorkerUrl(config: Config): string {
 }
 
 export function getDataDir(): string {
-  return join(homedir(), ".local/share/linear-opencode-agent");
+  return join(homedir(), ".local/share/opencode-linear-agent");
 }

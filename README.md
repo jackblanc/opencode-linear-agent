@@ -24,10 +24,10 @@ Self-hosted Linear coding agent powered by OpenCode.
 
 ```bash
 # One command interactive setup (recommended)
-curl -fsSL https://raw.githubusercontent.com/jackblanc/linear-opencode-agent/master/install | bash
+curl -fsSL https://raw.githubusercontent.com/jackblanc/opencode-linear-agent/master/install | bash
 
 # Optional: pin server release
-curl -fsSL https://raw.githubusercontent.com/jackblanc/linear-opencode-agent/master/install | bash -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/jackblanc/opencode-linear-agent/master/install | bash -s -- --version v0.1.0
 ```
 
 Installer binary path priority:
@@ -40,7 +40,7 @@ Installer binary path priority:
 1. Install latest server binary and bootstrap config:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/jackblanc/linear-opencode-agent/master/install | bash
+   curl -fsSL https://raw.githubusercontent.com/jackblanc/opencode-linear-agent/master/install | bash
    ```
 
 2. Follow prompts for required values:
@@ -57,7 +57,7 @@ Installer binary path priority:
    ```bash
    # Usually auto-started by installer service setup.
    # Manual fallback:
-   ${XDG_BIN_DIR:-$HOME/.local/bin}/linear-opencode-agent-server
+   ${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server
    ```
 
 5. Expose local port `3210` (or your configured `PORT`) using one ingress option from [Ingress Options](#ingress-options).
@@ -133,14 +133,14 @@ Add plugin to your OpenCode config (`~/.config/opencode/opencode.json`):
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@linear-opencode-agent/plugin"]
+  "plugin": ["@opencode-linear-agent/plugin"]
 }
 ```
 
 Or use a local build while developing plugin changes:
 
 ```bash
-bun run --filter @linear-opencode-agent/plugin build
+bun run --filter @opencode-linear-agent/plugin build
 mkdir -p ~/.config/opencode/plugin
 cp packages/plugin/dist/index.js ~/.config/opencode/plugin/linear.js
 ```
@@ -154,7 +154,7 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 - Plugin and webhook server are separate artifacts and separate release channels.
 - Runtime users do not need to clone this repo.
 - `install` script is interactive: downloads server binary, adds plugin to OpenCode config, prompts for required Linear env values.
-- `install` script initializes background service with stable name (`com.linear-opencode-agent.server` on macOS, `linear-opencode-agent.service` on Linux).
+- `install` script initializes background service with stable name (`com.opencode-linear-agent.server` on macOS, `opencode-linear-agent.service` on Linux).
 - If existing service config with that name differs, installer warns and skips overwrite.
 - Current architecture expects plugin + server to share local state file when running on one machine.
 - Split-host/cloud deployments need extra work to replace shared file-state with a network API.
@@ -184,7 +184,7 @@ Linear Webhooks
 Ingress Tunnel (Cloudflare Tunnel / ngrok / Tailscale Funnel)
       |
       v
-Bun HTTP Server (@linear-opencode-agent/server, :3210)
+Bun HTTP Server (@opencode-linear-agent/server, :3210)
       |                              |
       v                              v
 Linear API                    OpenCode Server (:4096)
@@ -204,7 +204,7 @@ Linear API                    OpenCode Server (:4096)
 
 ### Option A: launchd (macOS)
 
-Create `~/Library/LaunchAgents/com.linear-opencode-agent.server.plist`:
+Create `~/Library/LaunchAgents/com.opencode-linear-agent.server.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -212,21 +212,21 @@ Create `~/Library/LaunchAgents/com.linear-opencode-agent.server.plist`:
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.linear-opencode-agent.server</string>
+  <string>com.opencode-linear-agent.server</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/linear-opencode-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/linear-opencode-agent-server"</string>
+    <string>set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server"</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/tmp/linear-opencode-agent.log</string>
+  <string>/tmp/opencode-linear-agent.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/linear-opencode-agent.log</string>
+  <string>/tmp/opencode-linear-agent.log</string>
 </dict>
 </plist>
 ```
@@ -234,13 +234,13 @@ Create `~/Library/LaunchAgents/com.linear-opencode-agent.server.plist`:
 Load and start:
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.linear-opencode-agent.server.plist
-launchctl start com.linear-opencode-agent.server
+launchctl load ~/Library/LaunchAgents/com.opencode-linear-agent.server.plist
+launchctl start com.opencode-linear-agent.server
 ```
 
 ### Option B: systemd (Linux)
 
-Create `~/.config/systemd/user/linear-opencode-agent.service`:
+Create `~/.config/systemd/user/opencode-linear-agent.service`:
 
 ```ini
 [Unit]
@@ -249,7 +249,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/linear-opencode-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/linear-opencode-agent-server"'
+ExecStart=/bin/bash -lc 'set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server"'
 Restart=always
 RestartSec=5
 
@@ -261,8 +261,8 @@ Enable service:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now linear-opencode-agent
-journalctl --user -u linear-opencode-agent -f
+systemctl --user enable --now opencode-linear-agent
+journalctl --user -u opencode-linear-agent -f
 ```
 
 ## Usage
@@ -275,7 +275,7 @@ journalctl --user -u linear-opencode-agent -f
 ## Project Structure
 
 ```
-linear-opencode-agent/
+opencode-linear-agent/
 ├── packages/
 │   ├── core/      # Pure processing logic, handlers, action executor
 │   ├── server/    # Bun HTTP webhook server
@@ -300,7 +300,7 @@ bun run check
 
 ## Releases
 
-- Plugin is published to npm as `@linear-opencode-agent/plugin` on `latest`.
+- Plugin is published to npm as `@opencode-linear-agent/plugin` on `latest`.
 - Server is distributed as standalone binaries via GitHub Releases.
 - Release automation lives in `.github/workflows/release.yml` and runs on `v*` tags.
 

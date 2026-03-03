@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="jackblanc/linear-opencode-agent"
-PLUGIN_PACKAGE="@linear-opencode-agent/plugin"
-BIN_NAME="linear-opencode-agent-server"
+REPO="jackblanc/opencode-linear-agent"
+PLUGIN_PACKAGE="@opencode-linear-agent/plugin"
+BIN_NAME="opencode-linear-agent-server"
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 XDG_BIN_DIR="${XDG_BIN_DIR:-${HOME}/.local/bin}"
-DATA_DIR="${XDG_DATA_HOME}/linear-opencode-agent"
+DATA_DIR="${XDG_DATA_HOME}/opencode-linear-agent"
 ENV_PATH="${DATA_DIR}/.env"
 OPENCODE_CONFIG="${XDG_CONFIG_HOME}/opencode/opencode.json"
 INSTALL_DIR="${XDG_BIN_DIR}"
 BIN_PATH="${INSTALL_DIR}/${BIN_NAME}"
 
-LAUNCHD_LABEL="com.linear-opencode-agent.server"
+LAUNCHD_LABEL="com.opencode-linear-agent.server"
 LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
-SYSTEMD_UNIT_NAME="linear-opencode-agent.service"
+SYSTEMD_UNIT_NAME="opencode-linear-agent.service"
 SYSTEMD_UNIT_PATH="${XDG_CONFIG_HOME}/systemd/user/${SYSTEMD_UNIT_NAME}"
 
 VERSION=""

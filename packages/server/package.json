@@ -1,5 +1,5 @@
 {
-  "name": "@linear-opencode-agent/server",
+  "name": "@opencode-linear-agent/server",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -7,10 +7,10 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "build:bin": "mkdir -p dist && bun build ./src/index.ts --compile --outfile=dist/linear-opencode-agent-server"
+    "build:bin": "mkdir -p dist && bun build ./src/index.ts --compile --outfile=dist/opencode-linear-agent-server"
   },
   "dependencies": {
-    "@linear-opencode-agent/core": "workspace:*",
+    "@opencode-linear-agent/core": "workspace:*",
     "@linear/sdk": "catalog:",
     "@opencode-ai/sdk": "catalog:",
     "better-result": "catalog:",

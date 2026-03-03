@@ -30,7 +30,7 @@ This plan addresses the brittleness of the current codebase by:
 ## Target Architecture
 
 ```
-linear-opencode-agent/
+opencode-linear-agent/
 ├── packages/
 │   ├── linear/                    # Linear Worker: webhooks + OAuth
 │   │   ├── src/
@@ -180,19 +180,19 @@ import {
   CloudflareSandbox,
   CloudflareKV,
   CloudflareQueue,
-} from "@linear-opencode-agent/infrastructure/cloudflare";
+} from "@opencode-linear-agent/infrastructure/cloudflare";
 
 // Local development / testing
 import {
   LocalSandbox,
   InMemoryKV,
   LocalQueue,
-} from "@linear-opencode-agent/infrastructure/local";
+} from "@opencode-linear-agent/infrastructure/local";
 ```
 
 ## Package Responsibilities
 
-### `@linear-opencode-agent/linear`
+### `@opencode-linear-agent/linear`
 
 - **Role**: Cloudflare Worker for Linear integration
 - **Responsibilities**:
@@ -201,7 +201,7 @@ import {
   - Handle OAuth flow
 - **Dependencies**: `infrastructure` (for queue, KV)
 
-### `@linear-opencode-agent/agent`
+### `@opencode-linear-agent/agent`
 
 - **Role**: Cloudflare Worker for processing queued events
 - **Responsibilities**:
@@ -211,7 +211,7 @@ import {
   - Report all errors to Linear
 - **Dependencies**: `core`, `infrastructure`
 
-### `@linear-opencode-agent/ui-proxy`
+### `@opencode-linear-agent/ui-proxy`
 
 - **Role**: Cloudflare Worker for OpenCode UI access
 - **Responsibilities**:
@@ -219,7 +219,7 @@ import {
   - Proxy requests to Sandbox's OpenCode UI via `SandboxProvider`
 - **Dependencies**: `infrastructure`
 
-### `@linear-opencode-agent/core`
+### `@opencode-linear-agent/core`
 
 - **Role**: Platform-agnostic domain logic
 - **Responsibilities**:
@@ -230,7 +230,7 @@ import {
 - **Dependencies**: `@opencode-ai/sdk` (types only), `@linear/sdk` (types only)
 - **No imports from**: `@cloudflare/*`, infrastructure implementations
 
-### `@linear-opencode-agent/infrastructure`
+### `@opencode-linear-agent/infrastructure`
 
 - **Role**: All platform-specific implementations
 - **Responsibilities**:
@@ -239,7 +239,7 @@ import {
   - Linear API adapter
 - **The ONLY package that imports**: `@cloudflare/sandbox`, `@cloudflare/workers-types`
 
-### `@linear-opencode-agent/plugin`
+### `@opencode-linear-agent/plugin`
 
 - **Role**: Activity streaming inside OpenCode process
 - **Responsibilities**:

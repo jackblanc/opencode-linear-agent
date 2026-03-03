@@ -5,7 +5,7 @@
  * Implements file locking to prevent race conditions during concurrent writes.
  *
  * The store path follows XDG Base Directory specification:
- * ~/.local/share/linear-opencode-agent/store.json
+ * ~/.local/share/opencode-linear-agent/store.json
  */
 
 import { open, mkdir } from "node:fs/promises";
@@ -17,7 +17,7 @@ import {
   type StoreData,
   type PendingQuestion,
   type PendingPermission,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 export interface LinearContext {
   sessionId: string | null;
   issueId: string;
@@ -32,7 +32,7 @@ export interface LinearContext {
  */
 let storePath = join(
   homedir(),
-  ".local/share/linear-opencode-agent/store.json",
+  ".local/share/opencode-linear-agent/store.json",
 );
 
 export function setStorePath(path: string): void {

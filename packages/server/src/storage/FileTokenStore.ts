@@ -8,7 +8,7 @@ import type {
   KeyValueStore,
   TokenStore,
   RefreshTokenData,
-} from "@linear-opencode-agent/core";
+} from "@opencode-linear-agent/core";
 
 /**
  * Key prefixes for token storage

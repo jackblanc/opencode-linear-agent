@@ -1,10 +1,10 @@
 # OpenCode Integration Strategy
 
-> This document captures the strategic direction for linear-opencode-agent based on analysis of OpenCode's architecture and capabilities.
+> This document captures the strategic direction for opencode-linear-agent based on analysis of OpenCode's architecture and capabilities.
 
 ## Executive Summary
 
-The linear-opencode-agent project should continue as a **sidecar service** that connects to OpenCode via its public SDK/API. This approach:
+The opencode-linear-agent project should continue as a **sidecar service** that connects to OpenCode via its public SDK/API. This approach:
 
 1. Requires no changes to OpenCode core
 2. Can be developed and released independently

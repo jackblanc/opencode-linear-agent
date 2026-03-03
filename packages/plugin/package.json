@@ -1,5 +1,5 @@
 {
-  "name": "@linear-opencode-agent/plugin",
+  "name": "@opencode-linear-agent/plugin",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -24,7 +24,7 @@
     "better-result": "catalog:"
   },
   "devDependencies": {
-    "@linear-opencode-agent/core": "workspace:*"
+    "@opencode-linear-agent/core": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"

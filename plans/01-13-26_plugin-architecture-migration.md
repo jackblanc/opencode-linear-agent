@@ -4,7 +4,7 @@
 
 ## Project Summary
 
-**What:** Refactor linear-opencode-agent to use OpenCode's plugin system instead of SSE streaming for posting activities to Linear.
+**What:** Refactor opencode-linear-agent to use OpenCode's plugin system instead of SSE streaming for posting activities to Linear.
 
 **Why:**
 
@@ -237,7 +237,7 @@ Plugin parses this on first message and stores for subsequent events. The plugin
 ## Package Structure (Target)
 
 ```
-linear-opencode-agent/
+opencode-linear-agent/
 ├── packages/
 │   ├── core/                    # Shared types, utilities, error handling
 │   │   └── src/
@@ -317,7 +317,7 @@ class_name = "SessionStore"
    - **Blocker:** Need to implement this in OpenCode before plugin can authenticate
 
 2. **Plugin distribution:**
-   - Ship as npm package (`@linear-opencode-agent/plugin`)?
+   - Ship as npm package (`@opencode-linear-agent/plugin`)?
    - Or users copy into `.opencode/plugin/`?
    - Or both (npm for prod, local for dev)?
 

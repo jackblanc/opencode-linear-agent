@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Part } from "@opencode-ai/sdk";
-import type { LinearService } from "@linear-opencode-agent/core";
+import type { LinearService } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { handleUserMessage } from "../src/handlers";
 import { setStorePath } from "../src/storage";
