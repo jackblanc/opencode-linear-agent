@@ -27,9 +27,13 @@ describe("processQuestionAsked", () => {
     expect(result.actions[0]).toMatchObject({
       type: "postElicitation",
       sessionId: "linear-123",
+      body: "**Choice**\n\nWhich option?\n\nOptions:\n- A - Option A\n- B - Option B",
       signal: "select",
       metadata: {
-        options: [{ value: "A" }, { value: "B" }],
+        options: [
+          { label: "A", value: "Option A" },
+          { label: "B", value: "Option B" },
+        ],
       },
     });
     expect(result.pendingQuestion).toBeDefined();
@@ -86,8 +90,47 @@ describe("processQuestionAsked", () => {
     const result = processQuestionAsked("qst_123", questions, ctx);
 
     expect(result.actions[0]).toMatchObject({
-      body: "**Selection**\n\nPick one",
+      body: "**Selection**\n\nPick one\n\nOptions:\n- A",
     });
+  });
+
+  test("should trim description and keep clean option context", () => {
+    const questions = [
+      {
+        question: "Pick one",
+        header: "",
+        options: [
+          { label: "A", description: "  Option A  " },
+          { label: "B", description: "   " },
+        ],
+      },
+    ];
+
+    const result = processQuestionAsked("qst_123", questions, ctx);
+
+    expect(result.actions[0]).toMatchObject({
+      body: "Pick one\n\nOptions:\n- A - Option A\n- B",
+      metadata: {
+        options: [
+          { label: "A", value: "Option A" },
+          { label: "B", value: "B" },
+        ],
+      },
+    });
+    expect(result.pendingQuestion?.questions[0]?.options).toEqual([
+      {
+        label: "A",
+        description: "Option A",
+        value: "Option A",
+        aliases: ["A", "Option A"],
+      },
+      {
+        label: "B",
+        description: "",
+        value: "B",
+        aliases: ["B"],
+      },
+    ]);
   });
 
   test("should handle null workdir in context", () => {

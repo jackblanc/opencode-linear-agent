@@ -5,6 +5,7 @@ import type {
   SessionRepository,
   PendingQuestion,
   PendingPermission,
+  QuestionOption,
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import {
@@ -36,6 +37,136 @@ const DEFAULT_CONFIG: Omit<LinearEventProcessorConfig, "organizationId"> = {
  */
 function hasStopSignal(activity: { signal?: string | null }): boolean {
   return activity.signal === "stop";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readStringField(value: unknown, field: string): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const candidate = value[field];
+  if (typeof candidate !== "string") {
+    return null;
+  }
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? candidate : null;
+}
+
+function readPromptContextText(promptContext: unknown): string | null {
+  if (typeof promptContext === "string") {
+    const trimmed = promptContext.trim();
+    return trimmed.length > 0 ? promptContext : null;
+  }
+
+  const body = readStringField(promptContext, "body");
+  if (body) {
+    return body;
+  }
+
+  if (isRecord(promptContext)) {
+    const contentBody = readStringField(promptContext.content, "body");
+    if (contentBody) {
+      return contentBody;
+    }
+  }
+
+  return null;
+}
+
+function extractPromptedUserResponse(event: {
+  agentActivity?: unknown;
+  promptContext?: unknown;
+}): string {
+  const agentBody = readStringField(event.agentActivity, "body");
+  if (agentBody) {
+    return agentBody;
+  }
+
+  if (isRecord(event.agentActivity)) {
+    const contentBody = readStringField(event.agentActivity.content, "body");
+    if (contentBody) {
+      return contentBody;
+    }
+  }
+
+  const promptContextBody = readPromptContextText(event.promptContext);
+  if (promptContextBody) {
+    return promptContextBody;
+  }
+
+  return "Please continue.";
+}
+
+function normalizeMatchInput(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function hasWordBoundaryMatch(haystack: string, needle: string): boolean {
+  const regex = new RegExp(`\\b${escapeRegex(needle)}\\b`, "i");
+  return regex.test(haystack);
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchQuestionOptionLabel(
+  userResponse: string,
+  options: QuestionOption[],
+): string | null {
+  const normalizedResponse = normalizeMatchInput(userResponse);
+  if (normalizedResponse.length === 0) {
+    return null;
+  }
+
+  for (const opt of options) {
+    if (normalizeMatchInput(opt.label) === normalizedResponse) {
+      return opt.label;
+    }
+  }
+
+  for (const opt of options) {
+    for (const alias of opt.aliases) {
+      if (normalizeMatchInput(alias) === normalizedResponse) {
+        return opt.label;
+      }
+    }
+  }
+
+  for (const opt of options) {
+    if (normalizedResponse.startsWith(normalizeMatchInput(opt.label))) {
+      return opt.label;
+    }
+  }
+
+  for (const opt of options) {
+    for (const alias of opt.aliases) {
+      const normalizedAlias = normalizeMatchInput(alias);
+      if (normalizedResponse.startsWith(normalizedAlias)) {
+        return opt.label;
+      }
+    }
+  }
+
+  for (const opt of options) {
+    if (hasWordBoundaryMatch(userResponse, normalizeMatchInput(opt.label))) {
+      return opt.label;
+    }
+  }
+
+  for (const opt of options) {
+    for (const alias of opt.aliases) {
+      const normalizedAlias = normalizeMatchInput(alias);
+      if (hasWordBoundaryMatch(userResponse, normalizedAlias)) {
+        return opt.label;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -375,10 +506,7 @@ export class LinearEventProcessor {
       return;
     }
 
-    const userResponse =
-      event.agentActivity?.content?.body ??
-      event.promptContext ??
-      "Please continue.";
+    const userResponse = extractPromptedUserResponse(event);
 
     // Check if there's a pending permission for this session
     const pendingPermission =
@@ -510,7 +638,7 @@ export class LinearEventProcessor {
       return;
     }
 
-    const matchedLabel = this.matchOptionLabel(
+    const matchedLabel = matchQuestionOptionLabel(
       userResponse,
       currentQuestion.options,
     );
@@ -724,50 +852,10 @@ export class LinearEventProcessor {
   }
 
   /**
-   * Try to match user response to an option label
-   *
-   * Returns the matched label if found, null otherwise.
-   * Uses case-insensitive matching and also checks if response
-   * contains the label (for partial matches).
-   */
-  private matchOptionLabel(
-    userResponse: string,
-    options: Array<{ label: string; description: string }>,
-  ): string | null {
-    const normalized = userResponse.trim().toLowerCase();
-
-    // First try exact match (case-insensitive)
-    for (const opt of options) {
-      if (opt.label.toLowerCase() === normalized) {
-        return opt.label;
-      }
-    }
-
-    // Then try if response starts with option label
-    for (const opt of options) {
-      if (normalized.startsWith(opt.label.toLowerCase())) {
-        return opt.label;
-      }
-    }
-
-    // Finally try if response contains option label as a whole word
-    for (const opt of options) {
-      const labelLower = opt.label.toLowerCase();
-      // Check if label appears as a word boundary match
-      const regex = new RegExp(`\\b${this.escapeRegex(labelLower)}\\b`, "i");
-      if (regex.test(userResponse)) {
-        return opt.label;
-      }
-    }
-
-    return null;
-  }
-
-  /**
    * Escape special regex characters in a string
    */
   private escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return escapeRegex(str);
   }
 
   /**
