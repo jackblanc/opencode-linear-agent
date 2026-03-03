@@ -7,8 +7,13 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Permission } from "@opencode-ai/sdk";
+import { Result } from "better-result";
 import { createLinearService } from "./linear";
-import { readAccessToken, getSessionAsync } from "./storage";
+import {
+  readAccessTokenSafe,
+  getSessionAsyncSafe,
+  formatStoreReadError,
+} from "./storage";
 import { handleUserMessage } from "./handlers";
 import {
   handleEvent,
@@ -41,6 +46,18 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
   info("Linear plugin initialized (reads session state from file store)");
 
+  const readTokenForHook = async (
+    organizationId: string,
+    hook: string,
+  ): Promise<string | null> => {
+    const tokenResult = await readAccessTokenSafe(organizationId);
+    if (Result.isError(tokenResult)) {
+      log(`${hook}: ${formatStoreReadError(tokenResult.error)}`);
+      return null;
+    }
+    return tokenResult.value;
+  };
+
   return {
     tool: linearTools,
 
@@ -50,18 +67,44 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      * Also handles question.asked events for Linear elicitations.
      */
     event: async ({ event }) => {
-      await handleEvent(event, readAccessToken, createLinearService, log);
+      const result = await Result.tryPromise({
+        try: async () => {
+          await handleEvent(
+            event,
+            async (organizationId) =>
+              readTokenForHook(organizationId, "event token read failed"),
+            createLinearService,
+            log,
+          );
+        },
+        catch: (e) => (e instanceof Error ? e.message : String(e)),
+      });
+      if (Result.isError(result)) {
+        log(`event hook failed: ${result.error}`);
+      }
     },
 
     "chat.message": async (ctx, output) => {
-      await handleUserMessage(
-        ctx.sessionID,
-        ctx.messageID,
-        output.parts,
-        readAccessToken,
-        createLinearService,
-        log,
-      );
+      const result = await Result.tryPromise({
+        try: async () => {
+          await handleUserMessage(
+            ctx.sessionID,
+            ctx.messageID,
+            output.parts,
+            async (organizationId) =>
+              readTokenForHook(
+                organizationId,
+                "chat.message token read failed",
+              ),
+            createLinearService,
+            log,
+          );
+        },
+        catch: (e) => (e instanceof Error ? e.message : String(e)),
+      });
+      if (Result.isError(result)) {
+        log(`chat.message hook failed: ${result.error}`);
+      }
     },
 
     /**
@@ -75,13 +118,24 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         id: ctx.id,
       });
 
-      const session = await getSessionAsync(ctx.sessionID);
+      const sessionResult = await getSessionAsyncSafe(ctx.sessionID);
+      if (Result.isError(sessionResult)) {
+        log(
+          `permission.ask session read failed: ${formatStoreReadError(sessionResult.error)}`,
+        );
+        return;
+      }
+
+      const session = sessionResult.value;
       if (!session) {
         info("permission.ask: session not found", { sessionID: ctx.sessionID });
         return;
       }
 
-      const token = await readAccessToken(session.linear.organizationId);
+      const token = await readTokenForHook(
+        session.linear.organizationId,
+        "permission.ask token read failed",
+      );
       if (!token) return;
 
       const linear = createLinearService(token);

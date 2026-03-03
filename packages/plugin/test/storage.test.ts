@@ -1,8 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdir, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { Result } from "better-result";
 import {
   readAccessToken,
+  readAccessTokenSafe,
+  readAnyAccessTokenSafe,
   savePendingQuestion,
   savePendingPermission,
   setStorePath,
@@ -94,6 +97,30 @@ describe("storage", () => {
       expect(token123).toBe("token-org123");
       expect(token456).toBe("token-org456");
       expect(tokenOther).toBeNull();
+    });
+
+    test("readAccessTokenSafe should return parse_error for invalid JSON", async () => {
+      await Bun.write(TEST_STORE_PATH, "{ invalid");
+
+      const result = await readAccessTokenSafe("org123");
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error.kind).toBe("parse_error");
+        expect(result.error.path).toBe(TEST_STORE_PATH);
+      }
+    });
+
+    test("readAnyAccessTokenSafe should return schema_error for invalid shape", async () => {
+      await Bun.write(TEST_STORE_PATH, JSON.stringify(["not-an-object"]));
+
+      const result = await readAnyAccessTokenSafe();
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error.kind).toBe("schema_error");
+        expect(result.error.path).toBe(TEST_STORE_PATH);
+      }
     });
   });
 
