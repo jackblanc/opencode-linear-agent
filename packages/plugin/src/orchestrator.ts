@@ -1,21 +1,12 @@
-/**
- * Orchestrator for routing OpenCode events to core's pure handler functions.
- *
- * Manages in-memory HandlerState per OpenCode session and executes
- * resulting actions against the LinearService.
- *
- * Uses the SDK's discriminated union on Event.type to narrow
- * event.properties automatically — no unsafe casts needed.
- */
-
 import type { Event } from "@opencode-ai/sdk";
 import type {
   EventMessagePartUpdated,
-  EventSessionStatus,
+  EventSessionIdle,
   EventTodoUpdated,
   EventSessionError,
   EventQuestionAsked,
   ToolPart,
+  Part,
   TextPart,
 } from "@opencode-ai/sdk/v2";
 import {
@@ -28,7 +19,6 @@ import {
   processPermissionAsked,
   executeActions,
   createInitialHandlerState,
-  type HandlerState,
   type LinearService,
   type PendingQuestion,
   type PendingPermission,
@@ -47,20 +37,9 @@ export type TokenReader = (organizationId: string) => Promise<string | null>;
 
 export type LinearServiceFactory = (accessToken: string) => LinearService;
 
-const handlerStates = new Map<string, HandlerState>();
-
-function getHandlerState(sessionId: string): HandlerState {
-  let state = handlerStates.get(sessionId);
-  if (!state) {
-    state = createInitialHandlerState();
-    handlerStates.set(sessionId, state);
-  }
-  return state;
-}
-
-function updateHandlerState(sessionId: string, state: HandlerState): void {
-  handlerStates.set(sessionId, state);
-}
+export type SessionMessagesReader = (
+  sessionId: string,
+) => Promise<Array<{ info: { role: string; error?: unknown }; parts: Part[] }>>;
 
 interface SessionContext {
   linearSessionId: string;
@@ -112,61 +91,119 @@ interface ResolvedSession {
 }
 
 async function resolveSession(
+  workdir: string,
   opencodeSessionId: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
 ): Promise<ResolvedSession | null> {
-  const session = await getSessionAsync(opencodeSessionId);
-  if (!session?.linear.sessionId) return null;
+  const session = await getSessionAsync(workdir);
+  if (!session?.sessionId) return null;
 
-  const ctx = toSessionContext(opencodeSessionId, session.linear);
+  const ctx = toSessionContext(opencodeSessionId, session);
   if (!ctx) return null;
 
-  const token = await readToken(session.linear.organizationId);
+  const token = await readToken(session.organizationId);
   if (!token) return null;
 
   return { ctx, linear: createService(token) };
 }
 
+function extractLatestAssistantText(
+  messages: Array<{ info: { role: string; error?: unknown }; parts: Part[] }>,
+): string | null {
+  const m = messages[messages.length - 1];
+  if (!m || m.info.role !== "assistant" || m.info.error) {
+    return null;
+  }
+
+  const chunks: string[] = [];
+  for (const p of m.parts) {
+    if (p.type === "text" && p.text.trim()) {
+      chunks.push(p.text.trim());
+    }
+  }
+
+  if (chunks.length === 0) {
+    return null;
+  }
+  return chunks.join("\n\n");
+}
+
 export async function handleEvent(
   event: Event,
+  workdir: string,
+  readSessionMessages: SessionMessagesReader,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  // Widen the type to string to handle v2 event types not in base SDK's Event union.
-  // Runtime safety is ensured by checking eventType before each cast.
   const eventType: string = event.type;
 
   if (eventType === "message.part.updated") {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
     const typedEvent = event as unknown as EventMessagePartUpdated;
-    return handlePartUpdated(typedEvent, readToken, createService, log);
+    return handlePartUpdated(
+      typedEvent,
+      workdir,
+      readToken,
+      createService,
+      log,
+    );
   }
-  if (eventType === "session.status") {
+
+  if (eventType === "session.idle") {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
-    const typedEvent = event as unknown as EventSessionStatus;
-    return handleSessionStatus(typedEvent, readToken, createService, log);
+    const typedEvent = event as unknown as EventSessionIdle;
+    return handleSessionIdle(
+      typedEvent,
+      workdir,
+      readSessionMessages,
+      readToken,
+      createService,
+      log,
+    );
   }
+
   if (eventType === "todo.updated") {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
     const typedEvent = event as unknown as EventTodoUpdated;
-    return handleTodoUpdated(typedEvent, readToken, createService, log);
+    return handleTodoUpdated(
+      typedEvent,
+      workdir,
+      readToken,
+      createService,
+      log,
+    );
   }
+
   if (eventType === "session.error") {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
     const typedEvent = event as unknown as EventSessionError;
-    return handleSessionErrorEvent(typedEvent, readToken, createService, log);
+    return handleSessionErrorEvent(
+      typedEvent,
+      workdir,
+      readToken,
+      createService,
+      log,
+    );
   }
+
   if (eventType === "question.asked") {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
     const typedEvent = event as unknown as EventQuestionAsked;
-    return handleQuestionAsked(typedEvent, readToken, createService, log);
+    return handleQuestionAsked(
+      typedEvent,
+      workdir,
+      readToken,
+      createService,
+      log,
+    );
   }
 }
 
 async function handlePartUpdated(
   event: EventMessagePartUpdated,
+  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
@@ -175,59 +212,70 @@ async function handlePartUpdated(
   if (!("sessionID" in part)) return;
 
   const resolved = await resolveSession(
+    workdir,
     part.sessionID,
     readToken,
     createService,
   );
   if (!resolved) return;
 
-  const state = getHandlerState(part.sessionID);
+  const state = createInitialHandlerState();
 
   if (isToolPart(part)) {
     const result = processToolPart(part, state, resolved.ctx);
-    updateHandlerState(part.sessionID, result.state);
     await executeActions(result.actions, resolved.linear, log);
     return;
   }
 
   if (isTextPart(part)) {
     const result = processTextPart(part, state, resolved.ctx);
-    updateHandlerState(part.sessionID, result.state);
     await executeActions(result.actions, resolved.linear, log);
     return;
   }
 }
 
-async function handleSessionStatus(
-  event: EventSessionStatus,
+async function handleSessionIdle(
+  event: EventSessionIdle,
+  workdir: string,
+  readSessionMessages: SessionMessagesReader,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  if (event.properties.status.type !== "idle") return;
-
   const sessionID = event.properties.sessionID;
-  const resolved = await resolveSession(sessionID, readToken, createService);
+  const resolved = await resolveSession(
+    workdir,
+    sessionID,
+    readToken,
+    createService,
+  );
   if (!resolved) return;
 
-  const state = getHandlerState(sessionID);
-  const result = processSessionIdle(state, resolved.ctx);
-  updateHandlerState(sessionID, result.state);
-  await executeActions(result.actions, resolved.linear, log);
+  const messages = await readSessionMessages(sessionID);
+  const text = extractLatestAssistantText(messages);
+  if (!text) return;
 
-  // Clean up handler state so resumed sessions start fresh
-  handlerStates.delete(sessionID);
+  const state = createInitialHandlerState();
+  state.latestResponseText = text;
+  const result = processSessionIdle(state, resolved.ctx);
+  await executeActions(result.actions, resolved.linear, log);
 }
 
 async function handleTodoUpdated(
   event: EventTodoUpdated,
+  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   const { sessionID, todos } = event.properties;
 
-  const resolved = await resolveSession(sessionID, readToken, createService);
+  const resolved = await resolveSession(
+    workdir,
+    sessionID,
+    readToken,
+    createService,
+  );
   if (!resolved) return;
 
   const actions = processTodoUpdated({ sessionID, todos }, resolved.ctx);
@@ -236,6 +284,7 @@ async function handleTodoUpdated(
 
 async function handleSessionErrorEvent(
   event: EventSessionError,
+  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
@@ -243,28 +292,38 @@ async function handleSessionErrorEvent(
   const sessionID = event.properties.sessionID;
   if (!sessionID) return;
 
-  const resolved = await resolveSession(sessionID, readToken, createService);
+  const resolved = await resolveSession(
+    workdir,
+    sessionID,
+    readToken,
+    createService,
+  );
   if (!resolved) return;
 
-  const state = getHandlerState(sessionID);
+  const state = createInitialHandlerState();
   const errorProps: SessionErrorProperties = {
     sessionID,
     error: event.properties.error,
   };
   const result = processSessionError(errorProps, state, resolved.ctx);
-  updateHandlerState(sessionID, result.state);
   await executeActions(result.actions, resolved.linear, log);
 }
 
 async function handleQuestionAsked(
   event: EventQuestionAsked,
+  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   const { id, sessionID, questions } = event.properties;
 
-  const resolved = await resolveSession(sessionID, readToken, createService);
+  const resolved = await resolveSession(
+    workdir,
+    sessionID,
+    readToken,
+    createService,
+  );
   if (!resolved) return;
 
   const result = processQuestionAsked(id, questions, resolved.ctx);
@@ -272,10 +331,8 @@ async function handleQuestionAsked(
   await persistPendingQuestion(result.pendingQuestion);
 }
 
-/**
- * Handle permission.ask hook - called from plugin.ts
- */
 export async function handlePermissionAskHook(
+  workdir: string,
   sessionId: string,
   requestId: string,
   permission: string,
@@ -284,10 +341,10 @@ export async function handlePermissionAskHook(
   linear: LinearService,
   log: Logger,
 ): Promise<void> {
-  const session = await getSessionAsync(sessionId);
-  if (!session?.linear.sessionId) return;
+  const session = await getSessionAsync(workdir);
+  if (!session?.sessionId) return;
 
-  const ctx = toSessionContext(sessionId, session.linear);
+  const ctx = toSessionContext(sessionId, session);
   if (!ctx) return;
 
   const result = processPermissionAsked(

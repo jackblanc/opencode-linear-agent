@@ -6,6 +6,7 @@ import {
   readAccessToken,
   readAccessTokenSafe,
   readAnyAccessTokenSafe,
+  getSessionAsync,
   savePendingQuestion,
   savePendingPermission,
   setStorePath,
@@ -121,6 +122,66 @@ describe("storage", () => {
         expect(result.error.kind).toBe("schema_error");
         expect(result.error.path).toBe(TEST_STORE_PATH);
       }
+    });
+  });
+
+  describe("getSessionAsync", () => {
+    test("should resolve session by workdir", async () => {
+      const storeData = {
+        "token:access:org123": { value: "test-token-abc" },
+        "session:lin-1": {
+          value: {
+            opencodeSessionId: "oc-1",
+            linearSessionId: "lin-1",
+            issueId: "CODE-1",
+            branchName: "feat/code-1",
+            workdir: "/tmp/workdir-a",
+            lastActivityTime: Date.now(),
+          },
+        },
+      };
+      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+
+      const session = await getSessionAsync("/tmp/workdir-a");
+
+      expect(session).toEqual({
+        sessionId: "lin-1",
+        issueId: "CODE-1",
+        organizationId: "org123",
+        workdir: "/tmp/workdir-a",
+      });
+    });
+
+    test("should pick latest session for same workdir", async () => {
+      const storeData = {
+        "token:access:org123": { value: "test-token-abc" },
+        "session:lin-old": {
+          value: {
+            opencodeSessionId: "oc-old",
+            linearSessionId: "lin-old",
+            issueId: "CODE-1",
+            branchName: "feat/code-1",
+            workdir: "/tmp/workdir-a",
+            lastActivityTime: 100,
+          },
+        },
+        "session:lin-new": {
+          value: {
+            opencodeSessionId: "oc-new",
+            linearSessionId: "lin-new",
+            issueId: "CODE-2",
+            branchName: "feat/code-2",
+            workdir: "/tmp/workdir-a",
+            lastActivityTime: 200,
+          },
+        },
+      };
+      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+
+      const session = await getSessionAsync("/tmp/workdir-a");
+
+      expect(session?.sessionId).toBe("lin-new");
+      expect(session?.issueId).toBe("CODE-2");
     });
   });
 

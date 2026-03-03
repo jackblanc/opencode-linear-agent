@@ -9,13 +9,6 @@ export type TokenReader = (organizationId: string) => Promise<string | null>;
 
 export type LinearServiceFactory = (accessToken: string) => LinearService;
 
-const postedMessages = new Set<string>();
-const postingMessages = new Set<string>();
-
-function getPostedKey(sessionId: string, messageId: string): string {
-  return `${sessionId}:${messageId}`;
-}
-
 function isTextPart(part: Part): part is Extract<Part, { type: "text" }> {
   return part.type === "text";
 }
@@ -52,46 +45,27 @@ function extractUserText(parts: Part[]): string {
 }
 
 export async function handleUserMessage(
-  sessionId: string,
-  messageId: string | undefined,
+  workdir: string,
   parts: Part[],
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  let key: string | undefined;
-  if (messageId) {
-    key = getPostedKey(sessionId, messageId);
-    if (postedMessages.has(key) || postingMessages.has(key)) return;
-    postingMessages.add(key);
-  }
+  const text = extractUserText(parts);
+  if (!text) return;
 
-  try {
-    const text = extractUserText(parts);
-    if (!text) return;
+  const session = await getSessionAsync(workdir);
+  if (!session?.sessionId) return;
 
-    const session = await getSessionAsync(sessionId);
-    if (!session?.linear.sessionId) return;
+  const token = await readToken(session.organizationId);
+  if (!token) return;
 
-    const token = await readToken(session.linear.organizationId);
-    if (!token) return;
-
-    const linear = createService(token);
-    const result = await linear.postActivity(session.linear.sessionId, {
-      type: "thought",
-      body: `User: ${text}`,
-    });
-    if (Result.isError(result)) {
-      log("chat.message: failed to post user message to Linear");
-      return;
-    }
-
-    if (key) {
-      postedMessages.add(key);
-    }
-  } finally {
-    if (key) {
-      postingMessages.delete(key);
-    }
+  const linear = createService(token);
+  const result = await linear.postActivity(session.sessionId, {
+    type: "thought",
+    body: `User: ${text}`,
+  });
+  if (Result.isError(result)) {
+    log("chat.message: failed to post user message to Linear");
   }
 }

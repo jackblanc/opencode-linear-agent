@@ -58,6 +58,7 @@ function textPart(sessionID: string, messageID: string, text: string): Part {
 async function seedStore(
   opencodeSessionId: string,
   linearSessionId: string,
+  workdir = "/tmp/workdir",
 ): Promise<void> {
   const store = {
     "token:access:org-1": { value: "token-1" },
@@ -67,7 +68,7 @@ async function seedStore(
         linearSessionId,
         issueId: "CODE-150",
         branchName: "feat/code-150",
-        workdir: "/tmp/workdir",
+        workdir,
         lastActivityTime: Date.now(),
       },
     },
@@ -90,8 +91,7 @@ describe("handleUserMessage", () => {
     const calls: Array<{ sessionId: string; body: string }> = [];
 
     await handleUserMessage(
-      "oc-1",
-      "msg-1",
+      "/tmp/workdir",
       [textPart("oc-1", "msg-1", "hello from user")],
       async () => "token-1",
       () => createLinear(calls),
@@ -108,8 +108,7 @@ describe("handleUserMessage", () => {
     const calls: Array<{ sessionId: string; body: string }> = [];
 
     await handleUserMessage(
-      "oc-2",
-      "msg-2",
+      "/tmp/workdir",
       [
         textPart(
           "oc-2",
@@ -127,69 +126,28 @@ describe("handleUserMessage", () => {
     ]);
   });
 
-  test("dedupes by message id", async () => {
+  test("posts duplicate deliveries", async () => {
     await seedStore("oc-3", "lin-3");
     const calls: Array<{ sessionId: string; body: string }> = [];
 
     await handleUserMessage(
-      "oc-3",
-      "msg-3",
+      "/tmp/workdir",
       [textPart("oc-3", "msg-3", "once")],
       async () => "token-1",
       () => createLinear(calls),
       () => {},
     );
     await handleUserMessage(
-      "oc-3",
-      "msg-3",
+      "/tmp/workdir",
       [textPart("oc-3", "msg-3", "once")],
       async () => "token-1",
       () => createLinear(calls),
       () => {},
     );
 
-    expect(calls).toEqual([{ sessionId: "lin-3", body: "User: once" }]);
-  });
-
-  test("dedupes concurrent deliveries for same message id", async () => {
-    await seedStore("oc-4", "lin-4");
-    const calls: Array<{ sessionId: string; body: string }> = [];
-
-    const pending = new Promise<void>((resolve) => {
-      setTimeout(resolve, 10);
-    });
-
-    const linear = {
-      ...createLinear(calls),
-      postActivity: async (
-        sessionId: string,
-        content: { type: "thought"; body: string },
-      ): ReturnType<LinearService["postActivity"]> => {
-        await pending;
-        calls.push({ sessionId, body: content.body });
-        return Result.ok(undefined);
-      },
-    } satisfies LinearService;
-
-    await Promise.all([
-      handleUserMessage(
-        "oc-4",
-        "msg-4",
-        [textPart("oc-4", "msg-4", "race")],
-        async () => "token-1",
-        () => linear,
-        () => {},
-      ),
-      handleUserMessage(
-        "oc-4",
-        "msg-4",
-        [textPart("oc-4", "msg-4", "race")],
-        async () => "token-1",
-        () => linear,
-        () => {},
-      ),
+    expect(calls).toEqual([
+      { sessionId: "lin-3", body: "User: once" },
+      { sessionId: "lin-3", body: "User: once" },
     ]);
-
-    expect(calls).toEqual([{ sessionId: "lin-4", body: "User: race" }]);
   });
 });

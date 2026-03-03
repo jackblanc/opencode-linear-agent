@@ -321,53 +321,55 @@ interface StoredSession {
 }
 
 /**
- * Read session state from the shared store file by OpenCode session ID.
- * Scans all session:* keys to find a match.
+ * Read session state from the shared store file by workdir.
+ * Scans all session:* keys and returns the most recent match.
  */
-async function readSessionByOpencodeId(
-  opencodeSessionId: string,
+async function readSessionByWorkdir(
+  workdir: string,
 ): Promise<StoredSession | null> {
   const data = await readStore(storePath);
+  let latest: StoredSession | null = null;
+
   for (const key of Object.keys(data)) {
     if (key.startsWith(SESSION_PREFIX)) {
       const session = getValue<StoredSession>(data, key);
-      if (session?.opencodeSessionId === opencodeSessionId) {
-        return session;
+      if (!session || session.workdir !== workdir) {
+        continue;
+      }
+      if (!latest || session.lastActivityTime > latest.lastActivityTime) {
+        latest = session;
       }
     }
   }
-  return null;
+  return latest;
 }
 
 /**
- * Get session state by reading from file store.
- * Combines stored session data with organization ID from token store.
+ * Get session context by workdir from file store.
  * Returns null if session or token not found.
  */
 export async function getSessionAsync(
-  opencodeSessionId: string,
-): Promise<{ linear: LinearContext } | null> {
-  const stored = await readSessionByOpencodeId(opencodeSessionId);
+  workdir: string,
+): Promise<LinearContext | null> {
+  const stored = await readSessionByWorkdir(workdir);
   if (!stored) return null;
 
   const tokenInfo = await readAnyAccessTokenWithOrg();
   if (!tokenInfo) return null;
 
   return {
-    linear: {
-      sessionId: stored.linearSessionId,
-      issueId: stored.issueId,
-      organizationId: tokenInfo.organizationId,
-      workdir: stored.workdir,
-    },
+    sessionId: stored.linearSessionId,
+    issueId: stored.issueId,
+    organizationId: tokenInfo.organizationId,
+    workdir: stored.workdir,
   };
 }
 
 export async function getSessionAsyncSafe(
-  opencodeSessionId: string,
-): Promise<Result<{ linear: LinearContext } | null, StoreReadError>> {
+  workdir: string,
+): Promise<Result<LinearContext | null, StoreReadError>> {
   return Result.tryPromise({
-    try: async () => getSessionAsync(opencodeSessionId),
+    try: async () => getSessionAsync(workdir),
     catch: (e) => toStoreReadError(e, storePath),
   });
 }
