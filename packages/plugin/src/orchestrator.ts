@@ -112,7 +112,7 @@ function extractLatestAssistantText(
   messages: Array<{ info: { role: string; error?: unknown }; parts: Part[] }>,
 ): string | null {
   const m = messages[messages.length - 1];
-  if (!m || m.info.role !== "assistant" || m.info.error) {
+  if (m?.info.role !== "assistant" || m.info.error) {
     return null;
   }
 
