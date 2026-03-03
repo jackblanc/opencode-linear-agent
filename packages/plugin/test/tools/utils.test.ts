@@ -1,10 +1,29 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdir, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { Result } from "better-result";
+import { setStorePath } from "../../src/storage";
 import {
   parseDateFilter,
   withWarnings,
   errMsg,
   errorJson,
+  getClient,
+  resetClientCacheForTest,
 } from "../../src/tools/utils";
+
+const TEST_DIR = join(import.meta.dir, "..", ".test-tools-utils");
+const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+
+beforeEach(async () => {
+  await mkdir(TEST_DIR, { recursive: true });
+  setStorePath(TEST_STORE_PATH);
+  resetClientCacheForTest();
+});
+
+afterEach(async () => {
+  await rm(TEST_DIR, { recursive: true, force: true });
+});
 
 describe("parseDateFilter", () => {
   test("parses ISO date string", () => {
@@ -131,5 +150,31 @@ describe("errorJson", () => {
   test("returns JSON with error field", () => {
     const result = JSON.parse(errorJson("bad input"));
     expect(result).toEqual({ error: "bad input" });
+  });
+});
+
+describe("getClient", () => {
+  test("returns structured corruption error for invalid JSON store", async () => {
+    await Bun.write(TEST_STORE_PATH, "{broken");
+
+    const result = await getClient();
+
+    expect(Result.isError(result)).toBe(true);
+    if (Result.isError(result)) {
+      expect(result.error).toContain("Linear store read failed");
+      expect(result.error).toContain(TEST_STORE_PATH);
+      expect(result.error).toContain("Recovery:");
+    }
+  });
+
+  test("returns missing token error for empty store", async () => {
+    await Bun.write(TEST_STORE_PATH, JSON.stringify({}));
+
+    const result = await getClient();
+
+    expect(Result.isError(result)).toBe(true);
+    if (Result.isError(result)) {
+      expect(result.error).toContain("No Linear access token found");
+    }
   });
 });

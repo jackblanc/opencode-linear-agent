@@ -4,12 +4,16 @@
 
 import { LinearClient } from "@linear/sdk";
 import { Result } from "better-result";
-import { readAnyAccessToken } from "../storage";
+import { readAnyAccessTokenSafe, formatStoreReadError } from "../storage";
 
 let cachedClient: { token: string; client: LinearClient } | null = null;
 
 export async function getClient(): Promise<Result<LinearClient, string>> {
-  const token = await readAnyAccessToken();
+  const tokenResult = await readAnyAccessTokenSafe();
+  if (Result.isError(tokenResult)) {
+    return Result.err(formatStoreReadError(tokenResult.error));
+  }
+  const token = tokenResult.value;
   if (!token) {
     return Result.err(
       "No Linear access token found in store. Ensure the agent server has authenticated.",
@@ -21,6 +25,10 @@ export async function getClient(): Promise<Result<LinearClient, string>> {
   const client = new LinearClient({ accessToken: token });
   cachedClient = { token, client };
   return Result.ok(client);
+}
+
+export function resetClientCacheForTest(): void {
+  cachedClient = null;
 }
 
 export function errorJson(message: string): string {
