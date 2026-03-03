@@ -110,8 +110,18 @@ describe("storage", () => {
             question: "Which option?",
             header: "Select",
             options: [
-              { label: "Option A", description: "First option" },
-              { label: "Option B", description: "Second option" },
+              {
+                label: "Option A",
+                description: "First option",
+                value: "First option",
+                aliases: ["Option A", "First option"],
+              },
+              {
+                label: "Option B",
+                description: "Second option",
+                value: "Second option",
+                aliases: ["Option B", "Second option"],
+              },
             ],
           },
         ],
