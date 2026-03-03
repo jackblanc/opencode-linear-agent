@@ -150,4 +150,46 @@ describe("handleUserMessage", () => {
 
     expect(calls).toEqual([{ sessionId: "lin-3", body: "User: once" }]);
   });
+
+  test("dedupes concurrent deliveries for same message id", async () => {
+    await seedStore("oc-4", "lin-4");
+    const calls: Array<{ sessionId: string; body: string }> = [];
+
+    const pending = new Promise<void>((resolve) => {
+      setTimeout(resolve, 10);
+    });
+
+    const linear = {
+      ...createLinear(calls),
+      postActivity: async (
+        sessionId: string,
+        content: { type: "thought"; body: string },
+      ): ReturnType<LinearService["postActivity"]> => {
+        await pending;
+        calls.push({ sessionId, body: content.body });
+        return Result.ok(undefined);
+      },
+    } satisfies LinearService;
+
+    await Promise.all([
+      handleUserMessage(
+        "oc-4",
+        "msg-4",
+        [textPart("oc-4", "msg-4", "race")],
+        async () => "token-1",
+        () => linear,
+        () => {},
+      ),
+      handleUserMessage(
+        "oc-4",
+        "msg-4",
+        [textPart("oc-4", "msg-4", "race")],
+        async () => "token-1",
+        () => linear,
+        () => {},
+      ),
+    ]);
+
+    expect(calls).toEqual([{ sessionId: "lin-4", body: "User: race" }]);
+  });
 });

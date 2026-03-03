@@ -10,6 +10,7 @@ export type TokenReader = (organizationId: string) => Promise<string | null>;
 export type LinearServiceFactory = (accessToken: string) => LinearService;
 
 const postedMessages = new Set<string>();
+const postingMessages = new Set<string>();
 
 function getPostedKey(sessionId: string, messageId: string): string {
   return `${sessionId}:${messageId}`;
@@ -58,31 +59,39 @@ export async function handleUserMessage(
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
+  let key: string | undefined;
   if (messageId) {
-    const key = getPostedKey(sessionId, messageId);
-    if (postedMessages.has(key)) return;
+    key = getPostedKey(sessionId, messageId);
+    if (postedMessages.has(key) || postingMessages.has(key)) return;
+    postingMessages.add(key);
   }
 
-  const text = extractUserText(parts);
-  if (!text) return;
+  try {
+    const text = extractUserText(parts);
+    if (!text) return;
 
-  const session = await getSessionAsync(sessionId);
-  if (!session?.linear.sessionId) return;
+    const session = await getSessionAsync(sessionId);
+    if (!session?.linear.sessionId) return;
 
-  const token = await readToken(session.linear.organizationId);
-  if (!token) return;
+    const token = await readToken(session.linear.organizationId);
+    if (!token) return;
 
-  const linear = createService(token);
-  const result = await linear.postActivity(session.linear.sessionId, {
-    type: "thought",
-    body: `User: ${text}`,
-  });
-  if (Result.isError(result)) {
-    log("chat.message: failed to post user message to Linear");
-    return;
-  }
+    const linear = createService(token);
+    const result = await linear.postActivity(session.linear.sessionId, {
+      type: "thought",
+      body: `User: ${text}`,
+    });
+    if (Result.isError(result)) {
+      log("chat.message: failed to post user message to Linear");
+      return;
+    }
 
-  if (messageId) {
-    postedMessages.add(getPostedKey(sessionId, messageId));
+    if (key) {
+      postedMessages.add(key);
+    }
+  } finally {
+    if (key) {
+      postingMessages.delete(key);
+    }
   }
 }
