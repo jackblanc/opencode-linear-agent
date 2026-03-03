@@ -23,6 +23,8 @@ import {
 import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
+  const workdir = input.worktree ?? input.directory;
+
   const log: Logger = (message: string) => {
     void input.client.app.log({
       body: {
@@ -71,6 +73,16 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         try: async () => {
           await handleEvent(
             event,
+            workdir,
+            async (sessionId) => {
+              const messages = await input.client.session.messages({
+                path: { id: sessionId },
+              });
+              if (messages.error || !messages.data) {
+                return [];
+              }
+              return messages.data;
+            },
             async (organizationId) =>
               readTokenForHook(organizationId, "event token read failed"),
             createLinearService,
@@ -84,12 +96,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       }
     },
 
-    "chat.message": async (ctx, output) => {
+    "chat.message": async (_ctx, output) => {
       const result = await Result.tryPromise({
         try: async () => {
           await handleUserMessage(
-            ctx.sessionID,
-            ctx.messageID,
+            workdir,
             output.parts,
             async (organizationId) =>
               readTokenForHook(
@@ -118,7 +129,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         id: ctx.id,
       });
 
-      const sessionResult = await getSessionAsyncSafe(ctx.sessionID);
+      const sessionResult = await getSessionAsyncSafe(workdir);
       if (Result.isError(sessionResult)) {
         log(
           `permission.ask session read failed: ${formatStoreReadError(sessionResult.error)}`,
@@ -128,12 +139,12 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
       const session = sessionResult.value;
       if (!session) {
-        info("permission.ask: session not found", { sessionID: ctx.sessionID });
+        info("permission.ask: session not found", { workdir });
         return;
       }
 
       const token = await readTokenForHook(
-        session.linear.organizationId,
+        session.organizationId,
         "permission.ask token read failed",
       );
       if (!token) return;
@@ -146,6 +157,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
           : [];
 
       await handlePermissionAskHook(
+        workdir,
         ctx.sessionID,
         ctx.id,
         ctx.type,

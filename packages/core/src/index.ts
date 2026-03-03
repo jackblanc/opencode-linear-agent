@@ -32,7 +32,7 @@ export { executeActions } from "./actions";
 
 // Session state (consumed by plugin orchestrator)
 export { createInitialHandlerState } from "./session/SessionState";
-export type { SessionState, HandlerState } from "./session/SessionState";
+export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,
   PendingQuestion,
