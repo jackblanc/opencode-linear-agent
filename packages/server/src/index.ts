@@ -32,9 +32,15 @@ import {
   type OAuthConfig,
   type TokenStore,
 } from "@opencode-linear-agent/core";
-import { loadConfig, type Config } from "./config";
+import {
+  createServerLogPath,
+  getLogDir,
+  loadConfig,
+  type Config,
+} from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
+import { mkdir } from "node:fs/promises";
 
 /**
  * Extract client IP from request headers
@@ -278,6 +284,10 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
+  await mkdir(getLogDir(), { recursive: true });
+  const logPath = createServerLogPath();
+  Log.init({ filePath: logPath });
+
   const log = Log.create({ service: "startup" });
   log.info("Starting Linear OpenCode Agent (Local)");
 
@@ -294,6 +304,8 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const kv = new FileStore();
   const tokenStore = new FileTokenStore(kv);
   const sessionRepository = new FileSessionRepository(kv);
+
+  log.info("Storage initialized", { logPath });
 
   // Start proactive token refresh so the plugin always has a valid token
   startTokenRefreshTimer(config, tokenStore);

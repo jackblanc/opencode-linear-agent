@@ -35,13 +35,13 @@ You need two always-on services:
 
 ### Key Paths
 
-| Path                                               | Purpose                                              |
-| -------------------------------------------------- | ---------------------------------------------------- |
-| `$XDG_DATA_HOME/opencode-linear-agent/store.json`  | Session state, tokens, pending questions/permissions |
-| `$XDG_DATA_HOME/opencode-linear-agent/launchd.log` | Webhook server stdout                                |
-| `$XDG_DATA_HOME/opencode-linear-agent/launchd.err` | Webhook server stderr                                |
-| `~/.local/share/opencode/worktree/`                | Git worktrees created by OpenCode                    |
-| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`       | Optional built plugin file                           |
+| Path                                              | Purpose                                              |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| `$XDG_DATA_HOME/opencode-linear-agent/store.json` | Session state, tokens, pending questions/permissions |
+| `$XDG_DATA_HOME/opencode-linear-agent/log/`       | Webhook server per-start structured logs             |
+| `$XDG_DATA_HOME/opencode/log/`                    | OpenCode app + plugin logs                           |
+| `~/.local/share/opencode/worktree/`               | Git worktrees created by OpenCode                    |
+| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`      | Optional built plugin file                           |
 
 ### Plugin Development
 
@@ -243,7 +243,7 @@ if (Result.isError(activityResult)) {
 **Webhooks not triggering:**
 
 - Re-delegating to same agent does not emit a new webhook
-- Check webhook logs in `$XDG_DATA_HOME/opencode-linear-agent/launchd.err` (default `~/.local/share/opencode-linear-agent/launchd.err`)
+- Check webhook logs in `$XDG_DATA_HOME/opencode-linear-agent/log/` (default `~/.local/share/opencode-linear-agent/log/`)
 - Verify tunnel process is running
 
 **Session not resuming:**
@@ -255,7 +255,7 @@ if (Result.isError(activityResult)) {
 
 ```bash
 # Watch webhook server logs
-tail -f "${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/launchd.err"
+tail -f "$(ls -t "${XDG_DATA_HOME:-$HOME/.local/share}"/opencode-linear-agent/log/server-*.log | head -n 1)"
 
 # Check for stale OpenCode processes
 lsof -i :4096 -P -n

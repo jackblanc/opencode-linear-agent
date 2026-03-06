@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { loadConfig } from "../src/config";
+import { createServerLogPath, getDataDir, loadConfig } from "../src/config";
 
 const TEST_DIR = join(import.meta.dir, ".test-config");
 const ConfigResultSchema = z.object({
@@ -16,7 +16,14 @@ beforeEach(async () => {
   await mkdir(TEST_DIR, { recursive: true });
 });
 
+const oldXdgDataHome = process.env["XDG_DATA_HOME"];
+
 afterEach(async () => {
+  if (oldXdgDataHome) {
+    process.env["XDG_DATA_HOME"] = oldXdgDataHome;
+  } else {
+    delete process.env["XDG_DATA_HOME"];
+  }
   await rm(TEST_DIR, { recursive: true, force: true });
 });
 
@@ -119,6 +126,25 @@ describe("loadConfig", () => {
 
     expect(() => loadConfig({ configPath })).toThrow(
       `Config file not found at ${configPath}. Please create a config file with the necessary configuration values.`,
+    );
+  });
+
+  test("uses XDG data dir when set", () => {
+    process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
+
+    expect(getDataDir()).toBe("/tmp/opencode-data/opencode-linear-agent");
+  });
+
+  test("creates per-start server log path", () => {
+    process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
+
+    expect(createServerLogPath(new Date("2026-03-06T21:57:17.187Z"))).toBe(
+      join(
+        "/tmp/opencode-data",
+        "opencode-linear-agent",
+        "log",
+        "server-20260306T215717Z.log",
+      ),
     );
   });
 });
