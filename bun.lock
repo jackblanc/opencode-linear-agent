@@ -43,19 +43,25 @@
     "packages/server": {
       "name": "@opencode-linear-agent/server",
       "version": "0.1.0",
-      "dependencies": {
+      "bin": {
+        "opencode-linear-agent-server": "bin/opencode-linear-agent-server",
+      },
+      "devDependencies": {
         "@linear/sdk": "catalog:",
         "@opencode-ai/sdk": "catalog:",
         "@opencode-linear-agent/core": "workspace:*",
         "better-result": "catalog:",
         "zod": "catalog:",
       },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
     },
   },
   "catalog": {
     "@linear/sdk": "^73.0.0",
-    "@opencode-ai/plugin": "1.2.15",
-    "@opencode-ai/sdk": "1.2.15",
+    "@opencode-ai/plugin": "1.2.19",
+    "@opencode-ai/sdk": "1.2.19",
     "better-result": "^2.7.0",
     "zod": "^4.3.6",
   },
@@ -82,9 +88,9 @@
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
-    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.2.15", "", { "dependencies": { "@opencode-ai/sdk": "1.2.15", "zod": "4.1.8" } }, "sha512-mh9S05W+CZZmo6q3uIEBubS66QVgiev7fRafX7vemrCfz+3pEIkSwipLjU/sxIewC9yLiDWLqS73DH/iEQzVDw=="],
+    "@opencode-ai/plugin": ["@opencode-ai/plugin@1.2.19", "", { "dependencies": { "@opencode-ai/sdk": "1.2.19", "zod": "4.1.8" } }, "sha512-r2hvyco2q0EgwyY8t+/EpW9wdzymaTg8QKXREh/Ux26mp1vOva3lwVlYtFBuUnILYQmfOUkbSh9kL6+1kfbW7w=="],
 
-    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.2.15", "", {}, "sha512-NUJNlyBCdZ4R0EBLjJziEQOp2XbRPJosaMcTcWSWO5XJPKGUpz0u8ql+5cR8K+v2RJ+hp2NobtNwpjEYfe6BRQ=="],
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.2.19", "", {}, "sha512-z3P0GzbShr1Y3hPsfPb4u/PzADXbOURLCYk5dU1ZOummE0QBn0BxLS/BwQ5LlzL5v1nA9yfuZiBsqd/IU4xorw=="],
 
     "@opencode-linear-agent/core": ["@opencode-linear-agent/core@workspace:packages/core"],
 
