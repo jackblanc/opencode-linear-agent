@@ -31,9 +31,6 @@ jobs:
           - runner: ubuntu-latest
             target: bun-linux-arm64
             suffix: linux-arm64
-          - runner: macos-13
-            target: bun-darwin-x64
-            suffix: darwin-x64
           - runner: macos-14
             target: bun-darwin-arm64
             suffix: darwin-arm64
@@ -65,10 +62,10 @@ jobs:
       - name: Configure npm auth
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        run: npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
       - name: Publish plugin (latest)
         working-directory: packages/plugin
-        run: bun publish --access public
+        run: npm publish --access public
 
   publish-server:
     name: Publish server to npm
@@ -85,10 +82,10 @@ jobs:
       - name: Configure npm auth
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        run: npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
       - name: Publish server (latest)
         working-directory: packages/server
-        run: bun publish --access public
+        run: npm publish --access public
 
   github-release:
     name: Publish GitHub release assets
