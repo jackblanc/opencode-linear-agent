@@ -15,29 +15,62 @@ Self-hosted Linear coding agent powered by OpenCode.
 - OAuth-based auth for Linear and OpenCode
 - Plan sync from OpenCode todos to Linear agent plans
 
-## Install Modes
-
-- Runtime (recommended): use npm for server + plugin.
-
 ## Installation
 
 ```bash
-# Install server from npm (recommended)
+# Install webhook server
 bun add -g @opencode-linear-agent/server
 # or: npm i -g @opencode-linear-agent/server
 ```
 
+Add plugin to OpenCode config (`~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@opencode-linear-agent/plugin@latest"]
+}
+```
+
+Use `@stable` instead of `@latest` if you prefer tagged releases only.
+
 ## Quick Start (Runtime)
 
-1. Install latest server binary and bootstrap config:
+1. Install server from npm:
 
    ```bash
    bun add -g @opencode-linear-agent/server
    # or: npm i -g @opencode-linear-agent/server
    ```
 
-2. Create env file at `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/.env` with required values:
-   - `PUBLIC_HOSTNAME`, `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`, `LINEAR_WEBHOOK_SECRET`, `PROJECTS_PATH`
+2. Create env file (default: `~/.local/share/opencode-linear-agent/.env`):
+
+   ```bash
+   DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent"
+   ENV_FILE="$DATA_DIR/.env"
+   mkdir -p "$DATA_DIR"
+   cat > "$ENV_FILE" <<'EOF'
+   # Server
+   PORT=3210
+   PUBLIC_HOSTNAME=your-hostname.example.com
+
+   # OpenCode
+   OPENCODE_URL=http://localhost:4096
+
+   # Linear OAuth
+   LINEAR_CLIENT_ID=
+   LINEAR_CLIENT_SECRET=
+
+   # Linear Webhook
+   LINEAR_WEBHOOK_SECRET=
+
+   # Optional: restrict to one org
+   # LINEAR_ORGANIZATION_ID=
+
+   # Local repos root
+   PROJECTS_PATH=$HOME/projects
+   EOF
+   ```
 
 3. Run OpenCode server:
 
@@ -51,7 +84,10 @@ bun add -g @opencode-linear-agent/server
    ${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server
    ```
 
-5. Expose local port `3210` (or your configured `PORT`) using one ingress option from [Ingress Options](#ingress-options).
+5. Complete setup:
+   - Configure OAuth app + webhook in Linear (see [Setup Guide](#setup-guide))
+   - Expose local port `3210` (or your `PORT`) with [Ingress Options](#ingress-options)
+   - Restart OpenCode after plugin config changes
 
 ## Setup Guide
 
@@ -95,25 +131,17 @@ Run OpenCode locally so this agent can create sessions:
 opencode serve --port 4096 --hostname 127.0.0.1
 ```
 
-Set `OPENCODE_URL=http://localhost:4096` in `.env`.
+Set `OPENCODE_URL=http://localhost:4096` in your env file (`~/.local/share/opencode-linear-agent/.env` by default).
 
 ### 4) Plugin installation (required)
 
-Add plugin to your OpenCode config (`~/.config/opencode/opencode.json`):
+Set plugin in `~/.config/opencode/opencode.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@opencode-linear-agent/plugin"]
+  "plugin": ["@opencode-linear-agent/plugin@latest"]
 }
-```
-
-Or use a local build while developing plugin changes:
-
-```bash
-bun run --filter @opencode-linear-agent/plugin build
-mkdir -p ~/.config/opencode/plugin
-cp packages/plugin/dist/index.js ~/.config/opencode/plugin/linear.js
 ```
 
 Restart `opencode serve` after plugin updates.
@@ -227,8 +255,8 @@ Enable service:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now opencode-linear-agent
-journalctl --user -u opencode-linear-agent -f
+systemctl --user enable --now opencode-linear-agent.service
+journalctl --user -u opencode-linear-agent.service -f
 ```
 
 ## Usage
@@ -238,6 +266,26 @@ journalctl --user -u opencode-linear-agent -f
 3. Delegate to your OpenCode agent user
 4. Agent creates worktree, runs tasks, streams updates, and syncs plan
 
+## Runtime Behavior
+
+### Repository label routing
+
+- `repo:*` label is required for execution.
+- Accepted formats:
+  - `repo:my-repo`
+  - `repo:org/my-repo` (org segment is ignored for local path resolution)
+- Resolver maps to local path under `PROJECTS_PATH`, ex: `repo:my-repo` -> `${PROJECTS_PATH}/my-repo`.
+- Missing/invalid `repo:*` blocks execution before worktree/session creation and posts an actionable error to Linear.
+
+### Plan vs build mode
+
+- Mode is selected from Linear issue **state type**:
+  - `triage` or `backlog` -> `plan` mode
+  - everything else (`unstarted`, `started`, `completed`, `canceled`) -> `build` mode
+- `plan` mode: agent analyzes and updates issue with an implementation plan; no code changes/PR expected.
+- `build` mode: agent implements changes and is instructed to create a PR when work is complete.
+- In `build` mode only, the issue is moved to **In Progress** when processing starts.
+
 ## Project Structure
 
 ```
@@ -246,7 +294,6 @@ opencode-linear-agent/
 │   ├── core/      # Pure processing logic, handlers, action executor
 │   ├── server/    # Bun HTTP webhook server
 │   ├── plugin/    # Required OpenCode plugin
-│   └── oauth/     # OAuth helpers
 ├── docs/
 ├── plans/         # Internal historical planning docs (excluded from publish cleanup in CODE-168)
 ├── .env.example

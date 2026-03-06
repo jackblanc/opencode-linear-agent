@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - master
+    paths:
+      - "packages/**"
+      - "package.json"
+      - "bun.lock"
     tags:
       - "v*"
 
