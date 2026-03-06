@@ -93,7 +93,7 @@ async function collectIssueAgentSessionIds(
 /**
  * Map Linear's WorkflowState.type (typed as string in SDK) to our narrower union type.
  *
- * The Linear SDK types state.type as `string`, but the actual values are always one of:
+ * The Linear SDK types state.type as `string`, but the documented values are:
  * triage, backlog, unstarted, started, completed, canceled.
  *
  * Note: "Icebox" is not a separate type - it's a custom state name with type "backlog".
@@ -108,7 +108,7 @@ function toIssueStateType(value: string): IssueState["type"] {
     case "canceled":
       return value;
     default:
-      return "unstarted";
+      return "started";
   }
 }
 
