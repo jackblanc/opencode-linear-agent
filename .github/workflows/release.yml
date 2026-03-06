@@ -78,7 +78,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Publish plugin (latest)
         working-directory: packages/plugin
-        run: npm publish --access public --provenance
+        run: npm publish --access public --tag stable --provenance
 
   publish-server:
     name: Publish server to npm
@@ -97,7 +97,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Publish server (latest)
         working-directory: packages/server
-        run: npm publish --access public --provenance
+        run: npm publish --access public --tag stable --provenance
 
   github-release:
     name: Publish GitHub release assets

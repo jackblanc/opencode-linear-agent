@@ -255,10 +255,11 @@ opencode-linear-agent/
 
 ## Releases
 
-- Plugin is published to npm as `@opencode-linear-agent/plugin` on `latest`.
-- Server is published to npm as `@opencode-linear-agent/server` on `latest`.
+- `latest` channel tracks `master` via `.github/workflows/publish-latest.yml`.
+- Tagged releases (`v*`) publish to npm `stable` via `.github/workflows/release.yml`.
+- Plugin package: `@opencode-linear-agent/plugin`.
+- Server package: `@opencode-linear-agent/server`.
 - Server standalone binaries are also published via GitHub Releases.
-- Release automation lives in `.github/workflows/release.yml` and runs on `v*` tags.
 
 ## References
 
