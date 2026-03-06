@@ -37,14 +37,20 @@ export type {
   SessionRepository,
   PendingQuestion,
   PendingPermission,
+  PendingRepoSelection,
+  RepoSelectionOption,
 } from "./session/SessionRepository";
 export { WorktreeManager } from "./session/WorktreeManager";
 
 // Linear service interface and implementation
-export type { LinearService } from "./linear/LinearService";
+export type {
+  LinearService,
+  IssueRepositoryCandidate,
+} from "./linear/LinearService";
 export { LinearServiceImpl } from "./linear/LinearServiceImpl";
 
 // Label parsing
+export { findRepoLabel } from "./linear/label-parser";
 export { parseRepoLabel } from "./linear/label-parser";
 
 // Storage interfaces
