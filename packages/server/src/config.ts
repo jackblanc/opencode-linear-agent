@@ -85,6 +85,23 @@ export function getWorkerUrl(config: Config): string {
   return `https://${config.publicHostname}`;
 }
 
+function getDataHome(): string {
+  return process.env["XDG_DATA_HOME"] ?? join(homedir(), ".local", "share");
+}
+
 export function getDataDir(): string {
-  return join(homedir(), ".local/share/opencode-linear-agent");
+  return join(getDataHome(), "opencode-linear-agent");
+}
+
+function formatLogTimestamp(now: Date): string {
+  const head = now.toISOString().split(".")[0];
+  return head ? `${head.replaceAll("-", "").replaceAll(":", "")}Z` : "unknown";
+}
+
+export function getLogDir(): string {
+  return join(getDataDir(), "log");
+}
+
+export function createServerLogPath(now = new Date()): string {
+  return join(getLogDir(), `server-${formatLogTimestamp(now)}.log`);
 }

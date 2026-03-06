@@ -1,3 +1,5 @@
+import { appendFileSync } from "node:fs";
+
 /**
  * Centralized logging module with hybrid output format.
  *
@@ -26,6 +28,7 @@ const UUID_KEYS = new Set([
 
 let currentLevel: LogLevel = "INFO";
 let currentFormat: LogFormat = "pretty";
+let currentFilePath: string | undefined;
 let lastLogTime = Date.now();
 
 function shouldLog(level: LogLevel): boolean {
@@ -88,7 +91,11 @@ function buildJson(
 }
 
 function write(output: string): void {
-  process.stderr.write(output + "\n");
+  const line = output + "\n";
+  process.stderr.write(line);
+  if (currentFilePath) {
+    appendFileSync(currentFilePath, line);
+  }
 }
 
 export interface Logger {
@@ -190,12 +197,16 @@ function parseLevel(value: string | undefined): LogLevel | undefined {
 interface LogInitOptions {
   level?: LogLevel;
   format?: LogFormat;
+  filePath?: string | null;
 }
 
 function initLogger(options: LogInitOptions = {}): void {
   currentLevel =
     options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO";
   currentFormat = options.format ?? detectFormat();
+  if ("filePath" in options) {
+    currentFilePath = options.filePath ?? undefined;
+  }
 }
 
 // Default logger for simple usage

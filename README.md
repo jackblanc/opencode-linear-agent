@@ -155,6 +155,13 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 - Current architecture expects plugin + server to share local state file when running on one machine.
 - Split-host/cloud deployments need extra work to replace shared file-state with a network API.
 
+## Logs
+
+- Plugin logs live under OpenCode's log dir: `~/.local/share/opencode/log/` on macOS/Linux.
+- Webhook server structured logs go to stderr and per-start files under the agent data dir: `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/server-*.log`.
+- The startup banner still prints to stdout.
+- Extra stdout/stderr capture still depends on how you run the server, ex: launchd, systemd, Docker, or a terminal.
+
 ## Ingress Options
 
 Use one option to expose local `:3210` (or your configured `PORT`) publicly for Linear webhooks:
@@ -258,6 +265,8 @@ systemctl --user daemon-reload
 systemctl --user enable --now opencode-linear-agent.service
 journalctl --user -u opencode-linear-agent.service -f
 ```
+
+The app-managed webhook logs still land in `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/`. `StandardOutPath`, `StandardErrorPath`, `journalctl`, or terminal output only control extra stdout/stderr capture.
 
 ## Usage
 
