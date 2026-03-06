@@ -25,15 +25,29 @@ export interface LinearContext {
   workdir: string;
 }
 
+function expandPath(path: string): string {
+  if (path.startsWith("~/")) {
+    return join(homedir(), path.slice(2));
+  }
+
+  return path;
+}
+
+export function getDefaultStorePath(): string {
+  const xdgDataHome = process.env["XDG_DATA_HOME"];
+  return join(
+    xdgDataHome ? expandPath(xdgDataHome) : join(homedir(), ".local/share"),
+    "opencode-linear-agent",
+    "store.json",
+  );
+}
+
 /**
  * XDG-compliant path to the shared store file.
  * Both Docker (via bind mount) and host use the same path.
  * Can be overridden in tests via setStorePath().
  */
-let storePath = join(
-  homedir(),
-  ".local/share/opencode-linear-agent/store.json",
-);
+let storePath = getDefaultStorePath();
 
 export function setStorePath(path: string): void {
   storePath = path;

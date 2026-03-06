@@ -1,8 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdir, rm, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { Result } from "better-result";
 import {
+  getDefaultStorePath,
   readAccessToken,
   readAccessTokenSafe,
   readAnyAccessTokenSafe,
@@ -16,15 +18,40 @@ import {
 
 const TEST_DIR = join(import.meta.dir, ".test-storage");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const oldXdgDataHome = process.env["XDG_DATA_HOME"];
 
 describe("storage", () => {
   beforeEach(async () => {
     await mkdir(TEST_DIR, { recursive: true });
+    delete process.env["XDG_DATA_HOME"];
     setStorePath(TEST_STORE_PATH);
   });
 
   afterEach(async () => {
     await rm(TEST_DIR, { recursive: true, force: true });
+
+    if (oldXdgDataHome === undefined) {
+      delete process.env["XDG_DATA_HOME"];
+      return;
+    }
+
+    process.env["XDG_DATA_HOME"] = oldXdgDataHome;
+  });
+
+  describe("getDefaultStorePath", () => {
+    test("should use default XDG data dir when env missing", () => {
+      expect(getDefaultStorePath()).toBe(
+        join(homedir(), ".local/share", "opencode-linear-agent", "store.json"),
+      );
+    });
+
+    test("should use XDG_DATA_HOME when set", () => {
+      process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
+
+      expect(getDefaultStorePath()).toBe(
+        "/tmp/opencode-data/opencode-linear-agent/store.json",
+      );
+    });
   });
 
   describe("readAccessToken", () => {

@@ -5,8 +5,8 @@
  * JSON format (prod):  {"level":"INFO","service":"webhook","issue":"CODE-123","issueId":"uuid","message":"Message"}
  */
 
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { appendFile } from "node:fs/promises";
+import { Result } from "better-result";
 
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 type LogFormat = "pretty" | "json";
@@ -31,6 +31,8 @@ let currentLevel: LogLevel = "INFO";
 let currentFormat: LogFormat = "pretty";
 let lastLogTime = Date.now();
 let currentFilePath: string | undefined;
+let fileWriteQueue: Promise<void> = Promise.resolve();
+let fileSinkErrored = false;
 
 function shouldLog(level: LogLevel): boolean {
   return levelPriority[level] >= levelPriority[currentLevel];
@@ -91,6 +93,45 @@ function buildJson(
   });
 }
 
+function flushToFile(output: string): void {
+  if (!currentFilePath) {
+    return;
+  }
+
+  const path = currentFilePath;
+  fileWriteQueue = fileWriteQueue.then(async () => {
+    const result = await Result.tryPromise({
+      try: async () => {
+        await appendFile(path, output + "\n");
+      },
+      catch: (e) => (e instanceof Error ? e.message : String(e)),
+    });
+
+    if (Result.isOk(result)) {
+      return;
+    }
+
+    currentFilePath = undefined;
+
+    if (fileSinkErrored) {
+      return;
+    }
+
+    fileSinkErrored = true;
+    process.stderr.write(
+      buildJson(
+        "ERROR",
+        "File log sink disabled",
+        { service: "logger" },
+        {
+          error: result.error,
+          logPath: path,
+        },
+      ) + "\n",
+    );
+  });
+}
+
 function write(output: string, fileOutput?: string): void {
   process.stderr.write(output + "\n");
 
@@ -98,8 +139,7 @@ function write(output: string, fileOutput?: string): void {
     return;
   }
 
-  mkdirSync(dirname(currentFilePath), { recursive: true });
-  appendFileSync(currentFilePath, fileOutput + "\n");
+  flushToFile(fileOutput);
 }
 
 export interface Logger {
@@ -131,11 +171,11 @@ function createLogger(tags?: Record<string, unknown>): Logger {
   ): void {
     if (!shouldLog(level)) return;
 
+    const fileOutput = buildJson(level, message, loggerTags, extra);
     const output =
       currentFormat === "pretty"
         ? buildPretty(level, message, loggerTags, extra)
-        : buildJson(level, message, loggerTags, extra);
-    const fileOutput = buildJson(level, message, loggerTags, extra);
+        : fileOutput;
 
     write(output, fileOutput);
   }
@@ -210,6 +250,8 @@ function initLogger(options: LogInitOptions = {}): void {
     options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO";
   currentFormat = options.format ?? detectFormat();
   currentFilePath = options.filePath;
+  fileWriteQueue = Promise.resolve();
+  fileSinkErrored = false;
 }
 
 // Default logger for simple usage
