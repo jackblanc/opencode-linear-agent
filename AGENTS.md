@@ -35,13 +35,18 @@ You need two always-on services:
 
 ### Key Paths
 
-| Path                                               | Purpose                                              |
-| -------------------------------------------------- | ---------------------------------------------------- |
-| `~/.local/share/opencode-linear-agent/store.json`  | Session state, tokens, pending questions/permissions |
-| `~/.local/share/opencode-linear-agent/launchd.log` | Webhook server stdout                                |
-| `~/.local/share/opencode-linear-agent/launchd.err` | Webhook server stderr                                |
-| `~/.local/share/opencode/worktree/`                | Git worktrees created by OpenCode                    |
-| `~/.config/opencode/plugin/linear.js`              | Optional built plugin file                           |
+| Path                                              | Purpose                                              |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| `~/.local/share/opencode-linear-agent/store.json` | Session state, tokens, pending questions/permissions |
+| `~/.local/share/opencode-linear-agent/logs/`      | App-managed webhook server logs (`server-*.log`)     |
+| `~/.local/share/opencode/worktree/`               | Git worktrees created by OpenCode                    |
+| `~/.config/opencode/plugin/linear.js`             | Optional built plugin file                           |
+
+Notes:
+
+- Plugin logs live under OpenCode's own log dir.
+- Webhook server startup banner still goes to stdout.
+- Extra stdout/stderr capture depends on your process manager config.
 
 ### Plugin Development
 
@@ -243,7 +248,7 @@ if (Result.isError(activityResult)) {
 **Webhooks not triggering:**
 
 - Re-delegating to same agent does not emit a new webhook
-- Check webhook logs in `~/.local/share/opencode-linear-agent/launchd.err`
+- Check webhook logs in `~/.local/share/opencode-linear-agent/logs/server-*.log`
 - Verify tunnel process is running
 
 **Session not resuming:**
@@ -255,7 +260,7 @@ if (Result.isError(activityResult)) {
 
 ```bash
 # Watch webhook server logs
-tail -f ~/.local/share/opencode-linear-agent/launchd.err
+tail -f ~/.local/share/opencode-linear-agent/logs/server-*.log
 
 # Check for stale OpenCode processes
 lsof -i :4096 -P -n

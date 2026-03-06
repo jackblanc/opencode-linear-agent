@@ -5,6 +5,9 @@
  * JSON format (prod):  {"level":"INFO","service":"webhook","issue":"CODE-123","issueId":"uuid","message":"Message"}
  */
 
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 type LogFormat = "pretty" | "json";
 
@@ -27,6 +30,7 @@ const UUID_KEYS = new Set([
 let currentLevel: LogLevel = "INFO";
 let currentFormat: LogFormat = "pretty";
 let lastLogTime = Date.now();
+let currentFilePath: string | undefined;
 
 function shouldLog(level: LogLevel): boolean {
   return levelPriority[level] >= levelPriority[currentLevel];
@@ -87,8 +91,15 @@ function buildJson(
   });
 }
 
-function write(output: string): void {
+function write(output: string, fileOutput?: string): void {
   process.stderr.write(output + "\n");
+
+  if (!currentFilePath || !fileOutput) {
+    return;
+  }
+
+  mkdirSync(dirname(currentFilePath), { recursive: true });
+  appendFileSync(currentFilePath, fileOutput + "\n");
 }
 
 export interface Logger {
@@ -124,8 +135,9 @@ function createLogger(tags?: Record<string, unknown>): Logger {
       currentFormat === "pretty"
         ? buildPretty(level, message, loggerTags, extra)
         : buildJson(level, message, loggerTags, extra);
+    const fileOutput = buildJson(level, message, loggerTags, extra);
 
-    write(output);
+    write(output, fileOutput);
   }
 
   const logger: Logger = {
@@ -190,12 +202,14 @@ function parseLevel(value: string | undefined): LogLevel | undefined {
 interface LogInitOptions {
   level?: LogLevel;
   format?: LogFormat;
+  filePath?: string;
 }
 
 function initLogger(options: LogInitOptions = {}): void {
   currentLevel =
     options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO";
   currentFormat = options.format ?? detectFormat();
+  currentFilePath = options.filePath;
 }
 
 // Default logger for simple usage

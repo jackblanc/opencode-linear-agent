@@ -86,5 +86,9 @@ export function getWorkerUrl(config: Config): string {
 }
 
 export function getDataDir(): string {
-  return join(homedir(), ".local/share/opencode-linear-agent");
+  const xdgDataHome = process.env["XDG_DATA_HOME"];
+  return join(
+    xdgDataHome ? expandPath(xdgDataHome) : join(homedir(), ".local/share"),
+    "opencode-linear-agent",
+  );
 }

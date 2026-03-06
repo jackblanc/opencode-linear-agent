@@ -37,6 +37,7 @@ import {
 import { loadConfig, getWorkerUrl, getDataDir, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
@@ -307,12 +308,27 @@ async function validateStoreFile(
   }
 }
 
+function formatLogTimestamp(date: Date): string {
+  return date.toISOString().replaceAll(":", "-");
+}
+
+function getServerLogPath(dataDir: string, now: Date): string {
+  return join(dataDir, "logs", `server-${formatLogTimestamp(now)}.log`);
+}
+
 /**
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
+  const dataDir = getDataDir();
+  const logPath = getServerLogPath(dataDir, new Date());
+
+  await mkdir(join(dataDir, "logs"), { recursive: true });
+  Log.init({ filePath: logPath });
+
   const log = Log.create({ service: "startup" });
   log.info("Starting Linear OpenCode Agent (Local)");
+  log.info("Server file logging enabled", { logPath });
 
   // Load configuration
   const config = loadConfig();
@@ -325,7 +341,6 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   });
 
   // Initialize storage
-  const dataDir = getDataDir();
   const dataPath = join(dataDir, "store.json");
 
   const kv = new FileStore(dataPath);
