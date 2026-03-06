@@ -47,6 +47,15 @@ export interface LinearAttachment {
   title?: string;
 }
 
+export interface IssueRepositoryCandidate {
+  hostname: string;
+  repositoryFullName: string;
+}
+
+export interface IssueRepositorySuggestion extends IssueRepositoryCandidate {
+  confidence: number;
+}
+
 /**
  * Unified interface for all Linear operations.
  *
@@ -132,6 +141,15 @@ export interface LinearService {
   getIssueAttachments(
     issueId: string,
   ): Promise<Result<LinearAttachment[], LinearServiceError>>;
+
+  /**
+   * Ask Linear to rank likely repositories for an issue.
+   */
+  getIssueRepositorySuggestions(
+    issueId: string,
+    agentSessionId: string,
+    candidates: IssueRepositoryCandidate[],
+  ): Promise<Result<IssueRepositorySuggestion[], LinearServiceError>>;
 
   /**
    * Get all agent session IDs referenced by comments on an issue.

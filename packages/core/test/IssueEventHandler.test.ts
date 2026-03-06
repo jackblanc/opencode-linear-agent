@@ -27,6 +27,7 @@ function createLinear(ids: string[]): LinearService {
       }),
     getIssueLabels: async () => Result.ok([]),
     getIssueAttachments: async () => Result.ok([]),
+    getIssueRepositorySuggestions: async () => Result.ok([]),
     getIssueAgentSessionIds: async () => Result.ok(ids),
     moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>

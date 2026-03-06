@@ -34,6 +34,7 @@ function createLinear(
       }),
     getIssueLabels: async () => Result.ok([]),
     getIssueAttachments: async () => Result.ok([]),
+    getIssueRepositorySuggestions: async () => Result.ok([]),
     getIssueAgentSessionIds: async () => Result.ok([]),
     moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>

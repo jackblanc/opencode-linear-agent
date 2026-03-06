@@ -6,6 +6,8 @@ import type {
   LinearLabel,
   LinearAttachment,
   ElicitationSignal,
+  IssueRepositoryCandidate,
+  IssueRepositorySuggestion,
 } from "./LinearService";
 import type {
   ActivityContent,
@@ -24,6 +26,12 @@ interface IssueCommentPage {
   pageInfo: {
     hasNextPage: boolean;
     endCursor?: string | null;
+  };
+}
+
+interface IssueRepositorySuggestionsQuery {
+  issueRepositorySuggestions: {
+    suggestions: IssueRepositorySuggestion[];
   };
 }
 
@@ -367,6 +375,63 @@ export class LinearServiceImpl implements LinearService {
     if (Result.isError(result)) {
       this.log.error("Failed to get issue attachments", {
         issueId,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+    }
+
+    return result;
+  }
+
+  async getIssueRepositorySuggestions(
+    issueId: string,
+    agentSessionId: string,
+    candidates: IssueRepositoryCandidate[],
+  ): Promise<Result<IssueRepositorySuggestion[], LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const response = await this.client.client.rawRequest<
+          IssueRepositorySuggestionsQuery,
+          {
+            issueId: string;
+            agentSessionId: string;
+            candidateRepositories: IssueRepositoryCandidate[];
+          }
+        >(
+          `query IssueRepositorySuggestions($issueId: String!, $agentSessionId: String!, $candidateRepositories: [RepositoryInput!]!) {
+            issueRepositorySuggestions(
+              issueId: $issueId
+              agentSessionId: $agentSessionId
+              candidateRepositories: $candidateRepositories
+            ) {
+              suggestions {
+                repositoryFullName
+                hostname
+                confidence
+              }
+            }
+          }`,
+          {
+            issueId,
+            agentSessionId,
+            candidateRepositories: candidates,
+          },
+        );
+
+        if (!response.data) {
+          return [];
+        }
+
+        return response.data.issueRepositorySuggestions.suggestions;
+      },
+      catch: mapLinearError,
+    });
+
+    if (Result.isError(result)) {
+      this.log.error("Failed to get issue repository suggestions", {
+        issueId,
+        agentSessionId,
+        candidateCount: candidates.length,
         error: result.error.message,
         errorType: result.error._tag,
       });

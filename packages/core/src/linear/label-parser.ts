@@ -6,7 +6,7 @@
  * - "repo:org/my-repo" -> { repositoryName: "my-repo", organizationName: "org" }
  */
 
-export interface ParsedRepoLabel {
+interface ParsedRepoLabel {
   repositoryName: string;
   organizationName?: string;
 }
@@ -15,25 +15,28 @@ export interface LinearLabelLike {
   name: string;
 }
 
+export type RepoLabelMatch =
+  | { status: "missing" }
+  | { status: "invalid"; label: string }
+  | { status: "valid"; label: string; value: ParsedRepoLabel };
+
 /**
  * Parses Linear labels to extract repository information from "repo:" labels
  *
  * @param labels Array of objects with a name property (Linear labels)
  * @returns ParsedRepoLabel if a valid repo label is found, null otherwise
  */
-export function parseRepoLabel(
-  labels: LinearLabelLike[],
-): ParsedRepoLabel | null {
+export function findRepoLabel(labels: LinearLabelLike[]): RepoLabelMatch {
   const repoLabel = labels.find((label) => label.name.startsWith("repo:"));
 
   if (!repoLabel) {
-    return null;
+    return { status: "missing" };
   }
 
   const repoPath = repoLabel.name.slice(5); // Remove "repo:" prefix
 
   if (!repoPath.trim()) {
-    return null;
+    return { status: "invalid", label: repoLabel.name };
   }
 
   // Check if it includes organization (format: org/repo)
@@ -41,17 +44,37 @@ export function parseRepoLabel(
     const [organizationName, repositoryName] = repoPath.split("/", 2);
 
     if (!organizationName?.trim() || !repositoryName?.trim()) {
-      return null;
+      return { status: "invalid", label: repoLabel.name };
     }
 
     return {
-      organizationName: organizationName.trim(),
-      repositoryName: repositoryName.trim(),
+      status: "valid",
+      label: repoLabel.name,
+      value: {
+        organizationName: organizationName.trim(),
+        repositoryName: repositoryName.trim(),
+      },
     };
   }
 
   // Simple format: just the repository name
   return {
-    repositoryName: repoPath.trim(),
+    status: "valid",
+    label: repoLabel.name,
+    value: {
+      repositoryName: repoPath.trim(),
+    },
   };
+}
+
+export function parseRepoLabel(
+  labels: LinearLabelLike[],
+): ParsedRepoLabel | null {
+  const result = findRepoLabel(labels);
+
+  if (result.status !== "valid") {
+    return null;
+  }
+
+  return result.value;
 }
