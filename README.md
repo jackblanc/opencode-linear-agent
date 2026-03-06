@@ -127,6 +127,13 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 - Current architecture expects plugin + server to share local state file when running on one machine.
 - Split-host/cloud deployments need extra work to replace shared file-state with a network API.
 
+## Runtime Behavior
+
+- Add a `repo:*` label to issues you want the agent to run against. Accepted formats: `repo:name` and `repo:org/name`.
+- Repo labels resolve under `PROJECTS_PATH`. `repo:name` maps to `PROJECTS_PATH/name`, and `repo:org/name` also maps to `PROJECTS_PATH/name`.
+- If no `repo:*` label is present, the agent falls back to `PROJECTS_PATH` itself.
+- Linear workflow state type selects mode: `triage` and `backlog` run in plan mode; `unstarted`, `started`, `completed`, and `canceled` run in build mode.
+
 ## Ingress Options
 
 Use one option to expose local `:3210` (or your configured `PORT`) publicly for Linear webhooks:
