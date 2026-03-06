@@ -19,7 +19,6 @@ import type {
 } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
-  LinearEventProcessor,
   IssueEventHandler,
   WorktreeManager,
   handleAuthorize,
@@ -31,120 +30,14 @@ import {
   Log,
   parseStoreData,
   type EventDispatcher,
-  type LinearService,
   type KeyValueStore,
   type OAuthConfig,
-  type SessionRepository,
   type TokenStore,
 } from "@opencode-linear-agent/core";
 import { loadConfig, getWorkerUrl, getDataDir, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
-import {
-  resolveRepoPath,
-  type MissingRepoLabelResolution,
-} from "./RepoResolver";
+import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
 import { join } from "node:path";
-
-function buildRepoLabelErrorBody(
-  resolution: MissingRepoLabelResolution,
-): string {
-  const lines = [
-    resolution.reason === "invalid"
-      ? `Missing valid repository label. Replace \`${resolution.invalidLabel ?? "repo:"}\` with a valid \`repo:*\` label before re-running.`
-      : "Missing repository label. Add a `repo:*` label before re-running.",
-    "",
-    `Example: \`${resolution.exampleLabel}\``,
-  ];
-
-  if (resolution.suggestions.length > 0) {
-    lines.push(
-      "",
-      "Suggested labels:",
-      ...resolution.suggestions.map((suggestion) =>
-        suggestion.confidence === null
-          ? `- \`${suggestion.labelValue}\``
-          : `- \`${suggestion.labelValue}\` (${Math.round(suggestion.confidence * 100)}%)`,
-      ),
-    );
-  }
-
-  lines.push("", "I stopped before creating any OpenCode session or worktree.");
-
-  return lines.join("\n");
-}
-
-export async function reportMissingRepoLabel(
-  linear: LinearService,
-  linearSessionId: string,
-  resolution: MissingRepoLabelResolution,
-): Promise<void> {
-  await linear.postError(
-    linearSessionId,
-    new Error(buildRepoLabelErrorBody(resolution)),
-  );
-}
-
-export async function dispatchAgentSessionEvent(
-  event: AgentSessionEventWebhookPayload,
-  linear: LinearService,
-  opencode: OpencodeService,
-  sessionRepository: SessionRepository,
-  config: Pick<Config, "projectsPath">,
-  organizationId: string,
-  processWithResolvedRepo?: (repoPath: string) => Promise<void>,
-): Promise<void> {
-  const linearSessionId = event.agentSession.id;
-  const issueId =
-    event.agentSession.issue?.id ?? event.agentSession.issueId ?? "unknown";
-  const issueIdentifier = event.agentSession.issue?.identifier ?? issueId;
-
-  const log = Log.create({ service: "dispatcher" })
-    .tag("organizationId", organizationId)
-    .tag("issue", issueIdentifier);
-
-  const resolveResult = await resolveRepoPath(
-    linear,
-    issueId,
-    linearSessionId,
-    config.projectsPath,
-  );
-
-  if (Result.isError(resolveResult)) {
-    log.error("Failed to resolve repository", {
-      error: resolveResult.error.message,
-    });
-    await linear.postError(linearSessionId, resolveResult.error);
-    return;
-  }
-
-  const resolved = resolveResult.value;
-  if (resolved.status === "needs_repo_label") {
-    await reportMissingRepoLabel(linear, linearSessionId, resolved);
-    return;
-  }
-
-  log.info("Using repository path", {
-    repoPath: resolved.path,
-    repoName: resolved.repoName,
-  });
-
-  if (processWithResolvedRepo) {
-    await processWithResolvedRepo(resolved.path);
-    return;
-  }
-
-  const processor = new LinearEventProcessor(
-    opencode,
-    linear,
-    sessionRepository,
-    resolved.path,
-    {
-      organizationId,
-    },
-  );
-
-  await processor.process(event);
-}
 
 /**
  * Extract client IP from request headers
@@ -259,8 +152,10 @@ function createDirectDispatcher(
         linear,
         opencode,
         sessionRepository,
-        config,
-        organizationId,
+        {
+          organizationId,
+          projectsPath: config.projectsPath,
+        },
       );
     },
   };

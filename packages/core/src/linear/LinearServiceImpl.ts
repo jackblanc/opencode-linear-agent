@@ -35,6 +35,36 @@ interface IssueRepositorySuggestionsQuery {
   };
 }
 
+interface IssueLabelCreateMutation {
+  issueLabelCreate: {
+    success: boolean;
+    issueLabel?: {
+      id: string;
+    } | null;
+  };
+}
+
+interface LinearLabelPage {
+  nodes: Array<{ id: string; name: string }>;
+  pageInfo: { hasNextPage: boolean };
+  fetchNext: () => Promise<LinearLabelPage>;
+}
+
+async function collectTeamLabels(team: {
+  labels: () => Promise<LinearLabelPage>;
+}): Promise<Array<{ id: string; name: string }>> {
+  const first = await team.labels();
+  const labels = [...first.nodes];
+  let page = first;
+
+  while (page.pageInfo.hasNextPage) {
+    page = await page.fetchNext();
+    labels.push(...page.nodes);
+  }
+
+  return labels;
+}
+
 async function collectIssueAgentSessionIds(
   fetchPage: (after?: string) => Promise<IssueCommentPage>,
 ): Promise<string[]> {
@@ -438,6 +468,77 @@ export class LinearServiceImpl implements LinearService {
     }
 
     return result;
+  }
+
+  async setIssueRepoLabel(
+    issueId: string,
+    labelName: string,
+  ): Promise<Result<void, LinearServiceError>> {
+    const result = await Result.tryPromise({
+      try: async () => {
+        const issue = await this.client.issue(issueId);
+        const team = await issue.team;
+
+        if (!team) {
+          throw new Error("Issue has no associated team");
+        }
+
+        const issueLabels = await issue.labels();
+        const teamLabels = await collectTeamLabels(team);
+        let repoLabelId = teamLabels.find(
+          (label) => label.name.toLowerCase() === labelName.toLowerCase(),
+        )?.id;
+
+        if (!repoLabelId) {
+          const response = await this.client.client.rawRequest<
+            IssueLabelCreateMutation,
+            { input: { name: string; teamId: string } }
+          >(
+            `mutation IssueLabelCreate($input: IssueLabelCreateInput!) {
+              issueLabelCreate(input: $input) {
+                success
+                issueLabel {
+                  id
+                }
+              }
+            }`,
+            {
+              input: {
+                name: labelName,
+                teamId: team.id,
+              },
+            },
+          );
+
+          repoLabelId = response.data?.issueLabelCreate.issueLabel?.id;
+
+          if (!repoLabelId) {
+            throw new Error(`Failed to create repo label ${labelName}`);
+          }
+        }
+
+        const labelIds = issueLabels.nodes
+          .filter((label) => !label.name.startsWith("repo:"))
+          .map((label) => label.id);
+
+        await issue.update({
+          labelIds: [...labelIds, repoLabelId],
+        });
+      },
+      catch: mapLinearError,
+    });
+
+    if (Result.isError(result)) {
+      this.log.error("Failed to set repo label on issue", {
+        issueId,
+        labelName,
+        error: result.error.message,
+        errorType: result.error._tag,
+      });
+      return Result.err(result.error);
+    }
+
+    return Result.ok(undefined);
   }
 
   async getIssueAgentSessionIds(

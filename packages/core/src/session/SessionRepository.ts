@@ -70,6 +70,20 @@ export interface PendingPermission {
   createdAt: number;
 }
 
+export interface RepoSelectionOption {
+  label: string;
+  labelValue: string;
+  aliases: string[];
+}
+
+export interface PendingRepoSelection {
+  linearSessionId: string;
+  issueId: string;
+  options: RepoSelectionOption[];
+  promptContext?: string;
+  createdAt: number;
+}
+
 /**
  * Repository for session state persistence
  */
@@ -120,4 +134,12 @@ export interface SessionRepository {
    * Delete pending permission
    */
   deletePendingPermission(linearSessionId: string): Promise<void>;
+
+  getPendingRepoSelection(
+    linearSessionId: string,
+  ): Promise<PendingRepoSelection | null>;
+
+  savePendingRepoSelection(selection: PendingRepoSelection): Promise<void>;
+
+  deletePendingRepoSelection(linearSessionId: string): Promise<void>;
 }

@@ -83,6 +83,9 @@ function createProcessorHarness(pendingQuestion: PendingQuestion | null): {
     deletePendingQuestion: async (sessionId: string): Promise<void> => {
       deleted.push(sessionId);
     },
+    getPendingRepoSelection: async (): Promise<null> => null,
+    savePendingRepoSelection: async (): Promise<void> => undefined,
+    deletePendingRepoSelection: async (): Promise<void> => undefined,
     deletePendingPermission: async (): Promise<void> => undefined,
   };
 

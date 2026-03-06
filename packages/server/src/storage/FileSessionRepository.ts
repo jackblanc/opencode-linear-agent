@@ -10,6 +10,7 @@ import type {
   SessionState,
   PendingQuestion,
   PendingPermission,
+  PendingRepoSelection,
 } from "@opencode-linear-agent/core";
 
 /**
@@ -26,6 +27,8 @@ const QUESTION_PREFIX = "question:";
  * Key prefix for pending permission storage
  */
 const PERMISSION_PREFIX = "permission:";
+
+const REPO_SELECTION_PREFIX = "repo-selection:";
 
 /**
  * File-based SessionRepository implementation
@@ -79,5 +82,26 @@ export class FileSessionRepository implements SessionRepository {
 
   async deletePendingPermission(linearSessionId: string): Promise<void> {
     await this.kv.delete(`${PERMISSION_PREFIX}${linearSessionId}`);
+  }
+
+  async getPendingRepoSelection(
+    linearSessionId: string,
+  ): Promise<PendingRepoSelection | null> {
+    return this.kv.get<PendingRepoSelection>(
+      `${REPO_SELECTION_PREFIX}${linearSessionId}`,
+    );
+  }
+
+  async savePendingRepoSelection(
+    selection: PendingRepoSelection,
+  ): Promise<void> {
+    await this.kv.put(
+      `${REPO_SELECTION_PREFIX}${selection.linearSessionId}`,
+      selection,
+    );
+  }
+
+  async deletePendingRepoSelection(linearSessionId: string): Promise<void> {
+    await this.kv.delete(`${REPO_SELECTION_PREFIX}${linearSessionId}`);
   }
 }

@@ -151,6 +151,11 @@ export interface LinearService {
     candidates: IssueRepositoryCandidate[],
   ): Promise<Result<IssueRepositorySuggestion[], LinearServiceError>>;
 
+  setIssueRepoLabel(
+    issueId: string,
+    labelName: string,
+  ): Promise<Result<void, LinearServiceError>>;
+
   /**
    * Get all agent session IDs referenced by comments on an issue.
    * Includes archived comments.

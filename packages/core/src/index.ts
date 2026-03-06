@@ -37,6 +37,8 @@ export type {
   SessionRepository,
   PendingQuestion,
   PendingPermission,
+  PendingRepoSelection,
+  RepoSelectionOption,
 } from "./session/SessionRepository";
 export { WorktreeManager } from "./session/WorktreeManager";
 

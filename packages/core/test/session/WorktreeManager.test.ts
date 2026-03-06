@@ -42,6 +42,7 @@ function createLinearService(): LinearService {
     getIssueLabels: async () => Result.ok([]),
     getIssueAttachments: async () => Result.ok([]),
     getIssueRepositorySuggestions: async () => Result.ok([]),
+    setIssueRepoLabel: async () => Result.ok(undefined),
     getIssueAgentSessionIds: async () => Result.ok([]),
     moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>
@@ -60,6 +61,9 @@ function createRepository(): SessionRepository {
     getPendingPermission: async (): Promise<PendingPermission | null> => null,
     savePendingPermission: async (): Promise<void> => undefined,
     deletePendingPermission: async (): Promise<void> => undefined,
+    getPendingRepoSelection: async (): Promise<null> => null,
+    savePendingRepoSelection: async (): Promise<void> => undefined,
+    deletePendingRepoSelection: async (): Promise<void> => undefined,
   };
 }
 
@@ -160,6 +164,9 @@ describe("WorktreeManager.resolveWorktree", () => {
       getPendingPermission: async (): Promise<PendingPermission | null> => null,
       savePendingPermission: async (): Promise<void> => undefined,
       deletePendingPermission: async (): Promise<void> => undefined,
+      getPendingRepoSelection: async (): Promise<null> => null,
+      savePendingRepoSelection: async (): Promise<void> => undefined,
+      deletePendingRepoSelection: async (): Promise<void> => undefined,
     };
 
     const createCalls: string[] = [];
@@ -230,6 +237,9 @@ describe("WorktreeManager.resolveWorktree", () => {
       getPendingPermission: async (): Promise<PendingPermission | null> => null,
       savePendingPermission: async (): Promise<void> => undefined,
       deletePendingPermission: async (): Promise<void> => undefined,
+      getPendingRepoSelection: async (): Promise<null> => null,
+      savePendingRepoSelection: async (): Promise<void> => undefined,
+      deletePendingRepoSelection: async (): Promise<void> => undefined,
     };
 
     const opencode = new OpencodeService(

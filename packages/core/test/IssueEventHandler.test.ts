@@ -28,6 +28,7 @@ function createLinear(ids: string[]): LinearService {
     getIssueLabels: async () => Result.ok([]),
     getIssueAttachments: async () => Result.ok([]),
     getIssueRepositorySuggestions: async () => Result.ok([]),
+    setIssueRepoLabel: async () => Result.ok(undefined),
     getIssueAgentSessionIds: async () => Result.ok(ids),
     moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>
@@ -51,6 +52,9 @@ function createRepo(state: SessionState | null): SessionRepository {
     getPendingPermission: async () => null,
     savePendingPermission: async () => undefined,
     deletePendingPermission: async () => undefined,
+    getPendingRepoSelection: async () => null,
+    savePendingRepoSelection: async () => undefined,
+    deletePendingRepoSelection: async () => undefined,
   };
 }
 

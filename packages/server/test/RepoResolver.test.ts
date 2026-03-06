@@ -38,6 +38,7 @@ function createLinear(labels: string[]): LinearService {
           }))
           .toReversed(),
       ),
+    setIssueRepoLabel: async () => Result.ok(undefined),
     getIssueAgentSessionIds: async () => Result.ok([]),
     moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>

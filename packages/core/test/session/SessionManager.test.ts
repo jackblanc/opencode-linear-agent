@@ -30,6 +30,9 @@ function createRepository(state: SessionState): {
       getPendingPermission: async (): Promise<PendingPermission | null> => null,
       savePendingPermission: async (): Promise<void> => undefined,
       deletePendingPermission: async (): Promise<void> => undefined,
+      getPendingRepoSelection: async (): Promise<null> => null,
+      savePendingRepoSelection: async (): Promise<void> => undefined,
+      deletePendingRepoSelection: async (): Promise<void> => undefined,
     },
     saves,
   };
