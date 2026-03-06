@@ -316,19 +316,42 @@ function getServerLogPath(dataDir: string, now: Date): string {
   return join(dataDir, "logs", `server-${formatLogTimestamp(now)}.log`);
 }
 
+async function initServerLogging(dataDir: string): Promise<string | undefined> {
+  const logPath = getServerLogPath(dataDir, new Date());
+  const result = await Result.tryPromise({
+    try: async () => {
+      await mkdir(join(dataDir, "logs"), { recursive: true });
+      return logPath;
+    },
+    catch: (e) => (e instanceof Error ? e.message : String(e)),
+  });
+
+  if (Result.isError(result)) {
+    Log.init();
+    const log = Log.create({ service: "startup" });
+    log.warn("Server file logging disabled", {
+      logPath,
+      error: result.error,
+    });
+    return undefined;
+  }
+
+  Log.init({ filePath: result.value });
+  return result.value;
+}
+
 /**
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const dataDir = getDataDir();
-  const logPath = getServerLogPath(dataDir, new Date());
-
-  await mkdir(join(dataDir, "logs"), { recursive: true });
-  Log.init({ filePath: logPath });
+  const logPath = await initServerLogging(dataDir);
 
   const log = Log.create({ service: "startup" });
   log.info("Starting Linear OpenCode Agent (Local)");
-  log.info("Server file logging enabled", { logPath });
+  if (logPath) {
+    log.info("Server file logging enabled", { logPath });
+  }
 
   // Load configuration
   const config = loadConfig();
