@@ -218,4 +218,35 @@ describe("LinearServiceImpl.moveIssueToInProgress", () => {
     expect(stateCalls).toEqual([]);
     expect(updates).toEqual([]);
   });
+
+  test("preserves unknown state types in getIssueState", async () => {
+    const svc = new LinearServiceImpl("token");
+
+    const fakeClient = {
+      issue: async (): Promise<{
+        state: Promise<{ id: string; name: string; type: string }>;
+      }> => ({
+        state: Promise.resolve({
+          id: "s6",
+          name: "Future State",
+          type: "future",
+        }),
+      }),
+    };
+
+    Object.defineProperty(svc, "client", { value: fakeClient });
+
+    const result = await svc.getIssueState("issue-1");
+
+    expect(Result.isOk(result)).toBe(true);
+    if (Result.isError(result)) {
+      return;
+    }
+
+    expect(result.value).toEqual({
+      id: "s6",
+      name: "Future State",
+      type: "unknown",
+    });
+  });
 });

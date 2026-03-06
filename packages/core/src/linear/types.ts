@@ -129,6 +129,7 @@ export const STAGE_MESSAGES: Record<ProcessingStage, string> = {
  * - started: Issues in progress
  * - completed: Issues that are done
  * - canceled: Issues that were canceled
+ * - unknown: Any future or undocumented category returned by Linear
  *
  * Note: The Linear SDK types WorkflowState.type as `string`, so we define our own
  * narrower type based on the documented values.
@@ -142,5 +143,6 @@ export interface IssueState {
     | "unstarted"
     | "started"
     | "completed"
-    | "canceled";
+    | "canceled"
+    | "unknown";
 }

@@ -95,6 +95,7 @@ async function collectIssueAgentSessionIds(
  *
  * The Linear SDK types state.type as `string`, but the documented values are:
  * triage, backlog, unstarted, started, completed, canceled.
+ * Unknown values are preserved as `unknown` so callers can handle them safely.
  *
  * Note: "Icebox" is not a separate type - it's a custom state name with type "backlog".
  */
@@ -108,7 +109,7 @@ function toIssueStateType(value: string): IssueState["type"] {
     case "canceled":
       return value;
     default:
-      return "started";
+      return "unknown";
   }
 }
 
