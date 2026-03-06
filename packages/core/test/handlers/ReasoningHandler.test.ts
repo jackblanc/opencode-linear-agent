@@ -34,6 +34,29 @@ describe("processReasoningPart", () => {
     ]);
   });
 
+  test("trims reasoning before posting", () => {
+    const part: ReasoningPart = {
+      type: "reasoning",
+      id: "reasoning-1",
+      sessionID: "session-1",
+      messageID: "msg-1",
+      text: "\n Need inspect handler flow first. \n",
+      time: { start: now, end: now + 100 },
+    };
+
+    const state = createInitialHandlerState();
+    const result = processReasoningPart(part, state, ctx);
+
+    expect(result.actions).toEqual([
+      {
+        type: "postActivity",
+        sessionId: "linear-123",
+        content: { type: "thought", body: "Need inspect handler flow first." },
+        ephemeral: true,
+      },
+    ]);
+  });
+
   test("skips incomplete reasoning", () => {
     const part: ReasoningPart = {
       type: "reasoning",

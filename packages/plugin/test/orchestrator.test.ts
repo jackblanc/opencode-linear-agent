@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Event } from "@opencode-ai/sdk";
 import type { Part, ReasoningPart, TextPart } from "@opencode-ai/sdk/v2";
 import type { LinearService } from "@opencode-linear-agent/core";
+import type { ActivityContent, IssueState } from "../../core/src/linear/types";
 import { Result } from "better-result";
 import { handleEvent } from "../src/orchestrator";
 import { setStorePath } from "../src/storage";
@@ -13,13 +14,35 @@ const TEST_STORE_PATH = join(TEST_DIR, "store.json");
 
 interface Call {
   sessionId: string;
-  content: { type: string; body?: string };
+  content: ActivityContent;
   ephemeral: boolean | undefined;
 }
 
+interface ExtendedLinearService extends LinearService {
+  getIssueRepositorySuggestions(
+    issueId: string,
+    agentSessionId: string,
+    candidates: Array<{ hostname: string; repositoryFullName: string }>,
+  ): Promise<ReturnType<typeof Result.ok<Array<never>>>>;
+  setIssueRepoLabel(
+    issueId: string,
+    labelName: string,
+  ): Promise<ReturnType<typeof Result.ok<undefined>>>;
+}
+
 function createLinear(calls: Call[]): LinearService {
-  return {
-    postActivity: async (sessionId, content, ephemeral) => {
+  const state: IssueState = {
+    id: "state-1",
+    name: "Todo",
+    type: "unstarted",
+  };
+
+  const linear: ExtendedLinearService = {
+    postActivity: async (
+      sessionId: string,
+      content: ActivityContent,
+      ephemeral?: boolean,
+    ) => {
       calls.push({ sessionId, content, ephemeral });
       return Result.ok(undefined);
     },
@@ -37,15 +60,14 @@ function createLinear(calls: Call[]): LinearService {
       }),
     getIssueLabels: async () => Result.ok([]),
     getIssueAttachments: async () => Result.ok([]),
+    getIssueRepositorySuggestions: async () => Result.ok([]),
+    setIssueRepoLabel: async () => Result.ok(undefined),
     getIssueAgentSessionIds: async () => Result.ok([]),
     moveIssueToInProgress: async () => Result.ok(undefined),
-    getIssueState: async () =>
-      Result.ok({
-        id: "state-1",
-        name: "Todo",
-        type: "unstarted",
-      }),
+    getIssueState: async () => Result.ok(state),
   };
+
+  return linear;
 }
 
 async function seedStore(workdir: string): Promise<void> {

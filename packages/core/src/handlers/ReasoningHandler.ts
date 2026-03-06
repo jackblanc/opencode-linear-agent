@@ -23,7 +23,7 @@ export function processReasoningPart(
     {
       type: "postActivity",
       sessionId: ctx.linearSessionId,
-      content: { type: "thought", body: part.text },
+      content: { type: "thought", body: part.text.trim() },
       ephemeral: true,
     },
   ];
