@@ -1,6 +1,6 @@
 {
   "name": "@opencode-linear-agent/plugin",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -21,14 +21,13 @@
     "dev": "bun build ./src/index.ts --outfile=$HOME/.config/opencode/plugin/linear.js --target=bun --packages=bundle",
     "prepublishOnly": "bun run build && test -f dist/index.js"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@linear/sdk": "catalog:",
     "@opencode-ai/plugin": "catalog:",
     "@opencode-ai/sdk": "catalog:",
+    "@opencode-linear-agent/core": "workspace:*",
     "better-result": "catalog:"
-  },
-  "devDependencies": {
-    "@opencode-linear-agent/core": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"

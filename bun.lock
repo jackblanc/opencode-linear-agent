@@ -16,7 +16,7 @@
     },
     "packages/core": {
       "name": "@opencode-linear-agent/core",
-      "version": "1.0.0",
+      "version": "0.1.2",
       "dependencies": {
         "@linear/sdk": "catalog:",
         "@opencode-ai/sdk": "catalog:",
@@ -26,15 +26,13 @@
     },
     "packages/plugin": {
       "name": "@opencode-linear-agent/plugin",
-      "version": "0.1.0",
-      "dependencies": {
+      "version": "0.1.2",
+      "devDependencies": {
         "@linear/sdk": "catalog:",
         "@opencode-ai/plugin": "catalog:",
         "@opencode-ai/sdk": "catalog:",
-        "better-result": "catalog:",
-      },
-      "devDependencies": {
         "@opencode-linear-agent/core": "workspace:*",
+        "better-result": "catalog:",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -42,7 +40,7 @@
     },
     "packages/server": {
       "name": "@opencode-linear-agent/server",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "bin": {
         "opencode-linear-agent-server": "bin/opencode-linear-agent-server",
       },
