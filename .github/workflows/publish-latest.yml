@@ -38,7 +38,7 @@ jobs:
         run: |
           base="$(node -p 'require("./package.json").version.split("-")[0]')"
           v="${base}-master.${GITHUB_RUN_NUMBER}"
-          npm version "$v" --no-git-tag-version
+          node -e "const fs=require('node:fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version='${v}'; fs.writeFileSync(p, JSON.stringify(j, null, 2)+'\\n');"
       - name: Publish plugin (latest)
         working-directory: packages/plugin
         run: npm publish --access public --tag latest --provenance
@@ -60,7 +60,7 @@ jobs:
         run: |
           base="$(node -p 'require("./package.json").version.split("-")[0]')"
           v="${base}-master.${GITHUB_RUN_NUMBER}"
-          npm version "$v" --no-git-tag-version
+          node -e "const fs=require('node:fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version='${v}'; fs.writeFileSync(p, JSON.stringify(j, null, 2)+'\\n');"
       - name: Publish server (latest)
         working-directory: packages/server
         run: npm publish --access public --tag latest --provenance
