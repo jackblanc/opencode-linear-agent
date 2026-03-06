@@ -11,15 +11,13 @@ export interface TextHandlerContext {
 /**
  * Process session idle event - pure function
  *
- * When the session becomes idle (processing complete), post the latest
- * assistant text as a "response" activity to mark the session as complete on Linear.
+ * When the session becomes idle, post the final assistant text as a
+ * "response" activity to mark the session as complete on Linear.
  *
- * Guards:
- * - Skip if already posted a final response (defense-in-depth)
- * - Skip if an error was already posted (session is in error state)
- * - Skip if no text was processed (tool-only session)
+ * The caller owns event ordering and deduplication across invocations.
+ * This handler only skips empty text.
  *
- * Takes current state and returns new state + actions.
+ * Returns actions with unchanged state.
  * No side effects, no I/O.
  */
 export function processSessionIdle(
@@ -27,18 +25,9 @@ export function processSessionIdle(
   state: HandlerState,
   ctx: TextHandlerContext,
 ): HandlerResult<HandlerState> {
-  if (state.postedFinalResponse || state.postedError) {
-    return { state, actions: [] };
-  }
-
   if (!text.trim()) {
     return { state, actions: [] };
   }
-
-  const newState: HandlerState = {
-    ...state,
-    postedFinalResponse: true,
-  };
 
   const actions: Action[] = [
     {
@@ -49,5 +38,5 @@ export function processSessionIdle(
     },
   ];
 
-  return { state: newState, actions };
+  return { state, actions };
 }

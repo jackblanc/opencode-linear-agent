@@ -25,8 +25,6 @@ export interface SessionState {
 export interface HandlerState {
   /** Tool IDs we've posted "running" state for */
   runningTools: Set<string>;
-  /** Whether we've posted a final response (for session completion) */
-  postedFinalResponse: boolean;
   /** Whether we've posted an error activity (prevents duplicate error posts) */
   postedError: boolean;
 }
@@ -37,7 +35,6 @@ export interface HandlerState {
 export function createInitialHandlerState(): HandlerState {
   return {
     runningTools: new Set(),
-    postedFinalResponse: false,
     postedError: false,
   };
 }

@@ -12,7 +12,7 @@ describe("processSessionIdle", () => {
 
     const result = processSessionIdle("Hello, world!", state, ctx);
 
-    expect(result.state.postedFinalResponse).toBe(true);
+    expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(1);
     expect(result.actions[0]).toEqual({
       type: "postActivity",
@@ -31,31 +31,11 @@ describe("processSessionIdle", () => {
     expect(result.actions).toHaveLength(0);
   });
 
-  test("does not repost after final response", () => {
-    const state = createInitialHandlerState();
-    state.postedFinalResponse = true;
-
-    const result = processSessionIdle("Hello, world!", state, ctx);
-
-    expect(result.state).toBe(state);
-    expect(result.actions).toHaveLength(0);
-  });
-
-  test("does not post after error", () => {
-    const state = createInitialHandlerState();
-    state.postedError = true;
-
-    const result = processSessionIdle("Hello, world!", state, ctx);
-
-    expect(result.state).toBe(state);
-    expect(result.actions).toHaveLength(0);
-  });
-
   test("does not mutate original state", () => {
     const state = createInitialHandlerState();
 
     processSessionIdle("Hello, world!", state, ctx);
 
-    expect(state.postedFinalResponse).toBe(false);
+    expect(state).toEqual(createInitialHandlerState());
   });
 });
