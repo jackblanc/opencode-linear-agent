@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
   validate:
@@ -69,9 +68,27 @@ jobs:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun publish --access public
 
+  publish-server:
+    name: Publish server to npm
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Publish server (latest)
+        working-directory: packages/server
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun publish --access public
+
   github-release:
     name: Publish GitHub release assets
-    needs: build-server
+    needs: [build-server, publish-plugin, publish-server]
     runs-on: ubuntu-latest
     permissions:
       contents: write

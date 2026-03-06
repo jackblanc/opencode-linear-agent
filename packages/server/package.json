@@ -2,19 +2,36 @@
   "name": "@opencode-linear-agent/server",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "bin": {
+    "opencode-linear-agent-server": "bin/opencode-linear-agent-server"
+  },
+  "files": [
+    "bin",
+    "dist/index.js"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  },
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "build:bin": "mkdir -p dist && bun build ./src/index.ts --compile --outfile=dist/opencode-linear-agent-server"
+    "build": "rm -rf dist && bun build ./src/index.ts --outdir=dist --target=bun --packages=bundle",
+    "build:bin": "mkdir -p dist && bun build ./src/index.ts --compile --outfile=dist/opencode-linear-agent-server",
+    "prepublishOnly": "bun run build && test -f dist/index.js"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@opencode-linear-agent/core": "workspace:*",
     "@linear/sdk": "catalog:",
     "@opencode-ai/sdk": "catalog:",
     "better-result": "catalog:",
     "zod": "catalog:"
   },
-  "devDependencies": {}
+  "peerDependencies": {
+    "typescript": "^5"
+  }
 }

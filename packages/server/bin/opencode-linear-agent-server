@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -eu
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required to run @opencode-linear-agent/server" >&2
+  exit 1
+fi
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec bun run "$DIR/../dist/index.js" "$@"
