@@ -187,7 +187,7 @@ describe("WorktreeManager.resolveWorktree", () => {
 
     const result = await manager.resolveWorktree(
       "linear-1",
-      "CODE-1",
+      { identifier: "CODE-1" },
       "prompted",
       createLogger(),
     );
@@ -256,7 +256,7 @@ describe("WorktreeManager.resolveWorktree", () => {
 
     const result = await manager.resolveWorktree(
       "linear-2",
-      "CODE-2",
+      { identifier: "CODE-2" },
       "created",
       createLogger(),
     );
@@ -271,5 +271,44 @@ describe("WorktreeManager.resolveWorktree", () => {
       source: "existing_session",
     });
     expect(creates).toHaveLength(0);
+  });
+
+  test("uses Linear branch suggestion for new worktrees", async () => {
+    const names: string[] = [];
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+    Object.defineProperty(opencode, "createWorktree", {
+      value: async (
+        _directory: string,
+        name: string,
+      ): Promise<Result<{ directory: string; branch: string }, never>> => {
+        names.push(name);
+        return Result.ok({
+          directory: "/tmp/new-worktree",
+          branch: `opencode/${name}`,
+        });
+      },
+    });
+
+    const manager = new WorktreeManager(
+      opencode,
+      createLinearService(),
+      createRepository(),
+      "/tmp/default",
+    );
+
+    const result = await manager.resolveWorktree(
+      "linear-session-1",
+      {
+        identifier: "CODE-3",
+        branchName: "jack/code-3-linear-branch",
+      },
+      "created",
+      createLogger(),
+    );
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(names).toEqual(["linear-session-1/jack/code-3-linear-branch"]);
   });
 });

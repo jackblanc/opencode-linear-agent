@@ -303,6 +303,7 @@ export class LinearServiceImpl implements LinearService {
         return {
           id: issue.id,
           identifier: issue.identifier,
+          branchName: issue.branchName ?? undefined,
           title: issue.title,
           description: issue.description ?? undefined,
           url: issue.url,

@@ -25,6 +25,7 @@ export type ElicitationSignal = "auth" | "select";
 export interface LinearIssue {
   id: string;
   identifier: string;
+  branchName?: string;
   title: string;
   description?: string;
   url: string;
