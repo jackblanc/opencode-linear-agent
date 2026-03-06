@@ -25,14 +25,8 @@ export interface SessionState {
 export interface HandlerState {
   /** Tool IDs we've posted "running" state for */
   runningTools: Set<string>;
-  /** Text part IDs we've already posted */
-  sentTextParts: Set<string>;
-  /** Whether we've posted a final response (for session completion) */
-  postedFinalResponse: boolean;
   /** Whether we've posted an error activity (prevents duplicate error posts) */
   postedError: boolean;
-  /** Latest response text across all messages - posted as response on session.idle */
-  latestResponseText: string | undefined;
 }
 
 /**
@@ -41,9 +35,6 @@ export interface HandlerState {
 export function createInitialHandlerState(): HandlerState {
   return {
     runningTools: new Set(),
-    sentTextParts: new Set(),
-    postedFinalResponse: false,
     postedError: false,
-    latestResponseText: undefined,
   };
 }

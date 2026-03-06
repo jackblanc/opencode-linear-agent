@@ -5,13 +5,14 @@ import type {
   EventTodoUpdated,
   EventSessionError,
   EventQuestionAsked,
+  ReasoningPart,
   ToolPart,
   Part,
   TextPart,
 } from "@opencode-ai/sdk/v2";
 import {
   processToolPart,
-  processTextPart,
+  processReasoningPart,
   processSessionIdle,
   processTodoUpdated,
   processQuestionAsked,
@@ -83,6 +84,10 @@ function isToolPart(part: { type: string }): part is ToolPart {
 
 function isTextPart(part: { type: string }): part is TextPart {
   return part.type === "text";
+}
+
+function isReasoningPart(part: { type: string }): part is ReasoningPart {
+  return part.type === "reasoning";
 }
 
 interface ResolvedSession {
@@ -227,9 +232,13 @@ async function handlePartUpdated(
     return;
   }
 
-  if (isTextPart(part)) {
-    const result = processTextPart(part, state, resolved.ctx);
+  if (isReasoningPart(part)) {
+    const result = processReasoningPart(part, state, resolved.ctx);
     await executeActions(result.actions, resolved.linear, log);
+    return;
+  }
+
+  if (isTextPart(part)) {
     return;
   }
 }
@@ -256,8 +265,7 @@ async function handleSessionIdle(
   if (!text) return;
 
   const state = createInitialHandlerState();
-  state.latestResponseText = text;
-  const result = processSessionIdle(state, resolved.ctx);
+  const result = processSessionIdle(text, state, resolved.ctx);
   await executeActions(result.actions, resolved.linear, log);
 }
 
