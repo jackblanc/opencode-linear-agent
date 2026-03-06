@@ -59,13 +59,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Configure npm auth
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
       - name: Publish plugin (latest)
         working-directory: packages/plugin
-        run: npm publish --access public
+        run: npm publish --access public --provenance
 
   publish-server:
     name: Publish server to npm
@@ -79,13 +75,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Configure npm auth
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
       - name: Publish server (latest)
         working-directory: packages/server
-        run: npm publish --access public
+        run: npm publish --access public --provenance
 
   github-release:
     name: Publish GitHub release assets
