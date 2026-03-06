@@ -12,7 +12,9 @@
 
 export { processToolPart } from "./ToolHandler";
 
-export { processTextPart, processSessionIdle } from "./TextHandler";
+export { processReasoningPart } from "./ReasoningHandler";
+
+export { processSessionIdle } from "./TextHandler";
 
 export { processTodoUpdated } from "./TodoHandler";
 

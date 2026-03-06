@@ -18,7 +18,7 @@ export { IssueEventHandler } from "./IssueEventHandler";
 // Pure handler functions (consumed by plugin orchestrator)
 export {
   processToolPart,
-  processTextPart,
+  processReasoningPart,
   processSessionIdle,
   processTodoUpdated,
   processPermissionAsked,

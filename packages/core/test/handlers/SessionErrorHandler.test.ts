@@ -97,7 +97,6 @@ describe("processSessionError", () => {
     const state = {
       ...createInitialHandlerState(),
       runningTools: new Set(["tool-1"]),
-      sentTextParts: new Set(["text-1"]),
     };
     const props: SessionErrorProperties = {
       sessionID: "session-1",
@@ -107,6 +106,5 @@ describe("processSessionError", () => {
     const result = processSessionError(props, state, ctx);
 
     expect(result.state.runningTools).toEqual(new Set(["tool-1"]));
-    expect(result.state.sentTextParts).toEqual(new Set(["text-1"]));
   });
 });
