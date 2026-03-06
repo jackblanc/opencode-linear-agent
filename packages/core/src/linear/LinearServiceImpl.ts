@@ -93,8 +93,9 @@ async function collectIssueAgentSessionIds(
 /**
  * Map Linear's WorkflowState.type (typed as string in SDK) to our narrower union type.
  *
- * The Linear SDK types state.type as `string`, but the actual values are always one of:
+ * The Linear SDK types state.type as `string`, but the documented values are:
  * triage, backlog, unstarted, started, completed, canceled.
+ * Unknown values are preserved as `unknown` so callers can handle them safely.
  *
  * Note: "Icebox" is not a separate type - it's a custom state name with type "backlog".
  */
@@ -108,7 +109,7 @@ function toIssueStateType(value: string): IssueState["type"] {
     case "canceled":
       return value;
     default:
-      return "unstarted";
+      return "unknown";
   }
 }
 
@@ -579,16 +580,30 @@ export class LinearServiceImpl implements LinearService {
   ): Promise<Result<void, LinearServiceError>> {
     const result = await Result.tryPromise({
       try: async () => {
-        // Get the issue to find its team
         const issue = await this.client.issue(issueId);
+        const state = await issue.state;
+
+        if (!state) {
+          throw new Error("Issue has no workflow state");
+        }
+
+        const stateType = toIssueStateType(state.type);
+        if (stateType !== "unstarted") {
+          this.log.info("Skipping issue auto-transition", {
+            issueId,
+            stateId: state.id,
+            stateName: state.name,
+            stateType,
+          });
+          return;
+        }
+
         const team = await issue.team;
 
         if (!team) {
           throw new Error("Issue has no associated team");
         }
 
-        // Query the team's workflow states to find the first "started" status
-        // Per Linear docs: filter by type "started" and select lowest position
         const states = await team.states({
           filter: { type: { eq: "started" } },
         });
@@ -597,7 +612,6 @@ export class LinearServiceImpl implements LinearService {
           throw new Error("Team has no started workflow states");
         }
 
-        // Sort by position and take the first one (lowest position = first in workflow)
         const sortedStates = states.nodes.toSorted(
           (a, b) => a.position - b.position,
         );
@@ -608,13 +622,14 @@ export class LinearServiceImpl implements LinearService {
           return;
         }
 
-        this.log.info("Moving issue to In Progress", {
+        this.log.info("Moving issue to first started state", {
           issueId,
+          fromStateId: state.id,
+          fromStateName: state.name,
           stateId: inProgressState.id,
           stateName: inProgressState.name,
         });
 
-        // Update the issue's state
         await issue.update({ stateId: inProgressState.id });
       },
       catch: mapLinearError,
