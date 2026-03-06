@@ -11,6 +11,7 @@ import { SessionManager } from "./session/SessionManager";
 import {
   WorktreeManager,
   type SessionWorktreeAction,
+  type WorktreeIssue,
 } from "./session/WorktreeManager";
 import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
 import { type AgentMode, determineAgentMode } from "./session/AgentMode";
@@ -215,12 +216,27 @@ export class LinearEventProcessor {
   async process(event: AgentSessionEventWebhookPayload): Promise<void> {
     const linearSessionId = event.agentSession.id;
     const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
-    const issueIdentifier =
+    const fallbackIssueIdentifier =
       event.agentSession.issue?.identifier ?? issueId ?? "unknown";
+    let issue: WorktreeIssue = {
+      identifier: fallbackIssueIdentifier,
+      branchName:
+        readStringField(event.agentSession.issue, "branchName") ?? undefined,
+    };
+
+    if (issueId && !issue.branchName) {
+      const issueResult = await this.linear.getIssue(issueId);
+      if (Result.isOk(issueResult)) {
+        issue = {
+          identifier: issueResult.value.identifier,
+          branchName: issueResult.value.branchName,
+        };
+      }
+    }
 
     // Create a tagged logger for this processing context
     const log = Log.create({ service: "processor" })
-      .tag("issue", issueIdentifier)
+      .tag("issue", issue.identifier)
       .tag("sessionId", linearSessionId);
 
     log.info("Processing event", { action: event.action });
@@ -236,7 +252,7 @@ export class LinearEventProcessor {
     // Resolve or create worktree
     const worktreeResult = await this.worktreeManager.resolveWorktree(
       linearSessionId,
-      issueIdentifier,
+      issue,
       action,
       log,
     );

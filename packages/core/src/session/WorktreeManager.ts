@@ -20,6 +20,11 @@ export interface WorktreeResolution {
   source: "existing_session" | "created";
 }
 
+export interface WorktreeIssue {
+  identifier: string;
+  branchName?: string;
+}
+
 export type SessionWorktreeAction = "created" | "prompted";
 
 export interface SessionCleanupResult {
@@ -63,7 +68,7 @@ export class WorktreeManager {
    */
   async resolveWorktree(
     linearSessionId: string,
-    issue: string,
+    issue: WorktreeIssue,
     action: SessionWorktreeAction,
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
@@ -245,7 +250,7 @@ export class WorktreeManager {
 
   private async createWorktree(
     linearSessionId: string,
-    issue: string,
+    issue: WorktreeIssue,
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
     await this.linear.postStageActivity(linearSessionId, "git_setup");
@@ -289,8 +294,17 @@ export class WorktreeManager {
     });
   }
 
-  private buildWorktreeName(issue: string, linearSessionId: string): string {
-    const safeIssue = issue.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  private buildWorktreeName(
+    issue: WorktreeIssue,
+    linearSessionId: string,
+  ): string {
+    if (issue.branchName) {
+      return `${linearSessionId}/${issue.branchName}`;
+    }
+
+    const safeIssue = issue.identifier
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-");
     const sessionSuffix = linearSessionId.slice(0, 8).toLowerCase();
     return `${safeIssue}-${sessionSuffix}`;
   }

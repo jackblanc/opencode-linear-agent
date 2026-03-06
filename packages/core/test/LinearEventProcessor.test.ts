@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import { LinearEventProcessor } from "../src/LinearEventProcessor";
 import type { PendingQuestion } from "../src/session/SessionRepository";
@@ -180,5 +181,88 @@ describe("LinearEventProcessor prompted handling", () => {
     ]);
 
     expect(harness.prompts[0]).toContain("FOLLOWUP:Top level body");
+  });
+
+  test("uses Linear issue branch name when webhook omits it", async () => {
+    const calls: Array<{ linearSessionId: string; issue: unknown }> = [];
+    const processor = Object.create(LinearEventProcessor.prototype);
+
+    processor.linear = {
+      getIssue: async (): Promise<
+        Result<
+          {
+            id: string;
+            identifier: string;
+            branchName: string;
+            title: string;
+            url: string;
+          },
+          never
+        >
+      > =>
+        Result.ok({
+          id: "issue-1",
+          identifier: "CODE-1",
+          branchName: "jack/code-1-from-linear",
+          title: "x",
+          url: "https://linear.app",
+        }),
+      postError: async (): Promise<Result<void, never>> => Result.ok(undefined),
+    };
+    processor.worktreeManager = {
+      resolveWorktree: async (
+        linearSessionId: string,
+        issue: unknown,
+      ): Promise<Result<never, Error>> => {
+        calls.push({ linearSessionId, issue });
+        return Result.err(new Error("stop"));
+      },
+    };
+
+    const event: AgentSessionEventWebhookPayload = {
+      type: "AgentSessionEvent",
+      action: "created",
+      appUserId: "app-user-1",
+      oauthClientId: "oauth-client-1",
+      organizationId: "org-1",
+      webhookId: "webhook-1",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      webhookTimestamp: Date.now(),
+      agentSession: {
+        id: "linear-session-1",
+        type: "AgentSession",
+        appUserId: "app-user-1",
+        organizationId: "org-1",
+        issueId: "issue-1",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        issue: {
+          id: "issue-1",
+          identifier: "CODE-1",
+          title: "Prompt filter",
+          url: "https://linear.app/example/CODE-1",
+          teamId: "team-1",
+          team: {
+            id: "team-1",
+            key: "CODE",
+            name: "OpenCode",
+          },
+        },
+      },
+      promptContext: "Please help.",
+    };
+
+    await processor.process(event);
+
+    expect(calls).toEqual([
+      {
+        linearSessionId: "linear-session-1",
+        issue: {
+          identifier: "CODE-1",
+          branchName: "jack/code-1-from-linear",
+        },
+      },
+    ]);
   });
 });
