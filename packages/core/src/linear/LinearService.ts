@@ -170,14 +170,11 @@ export interface LinearService {
   // ─────────────────────────────────────────────────────────────
 
   /**
-   * Update issue status to "In Progress" (first started status)
+   * Update issue status to the first "started" state when appropriate.
    *
-   * Per Linear best practices: "If your agent is delegated to work on an issue
-   * that is not in a started, completed, or canceled status type, move the
-   * issue to the first status in started when your agent begins work."
-   *
-   * This method moves the issue to the team's first "started" status (lowest position)
-   * regardless of current status (even if already "In Review").
+   * We only auto-transition issues from the "unstarted" category to the
+   * team's first "started" state. Issues already in any other category
+   * (started, completed, canceled, triage, backlog) are left unchanged.
    *
    * @param issueId - The issue ID to update
    */

@@ -78,3 +78,89 @@ describe("LinearServiceImpl.getIssueAgentSessionIds", () => {
     ]);
   });
 });
+
+describe("LinearServiceImpl.moveIssueToInProgress", () => {
+  test("moves unstarted issues to first started state", async () => {
+    const updates: Array<{ stateId: string }> = [];
+    const svc = new LinearServiceImpl("token");
+
+    const fakeClient = {
+      issue: async (): Promise<{
+        state: Promise<{ id: string; name: string; type: string }>;
+        team: Promise<{
+          states: (_vars: { filter: { type: { eq: string } } }) => Promise<{
+            nodes: Array<{ id: string; name: string; position: number }>;
+          }>;
+        }>;
+        update: (input: { stateId: string }) => Promise<void>;
+      }> => ({
+        state: Promise.resolve({ id: "s1", name: "Todo", type: "unstarted" }),
+        team: Promise.resolve({
+          states: async (): Promise<{
+            nodes: Array<{ id: string; name: string; position: number }>;
+          }> => ({
+            nodes: [
+              { id: "s3", name: "Review", position: 2 },
+              { id: "s2", name: "In Progress", position: 1 },
+            ],
+          }),
+        }),
+        update: async (input: { stateId: string }): Promise<void> => {
+          updates.push(input);
+        },
+      }),
+    };
+
+    Object.defineProperty(svc, "client", { value: fakeClient });
+
+    const result = await svc.moveIssueToInProgress("issue-1");
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(updates).toEqual([{ stateId: "s2" }]);
+  });
+
+  test("does not move issues already outside unstarted category", async () => {
+    const updates: Array<{ stateId: string }> = [];
+    const stateCalls: Array<string> = [];
+    const svc = new LinearServiceImpl("token");
+
+    const fakeClient = {
+      issue: async (): Promise<{
+        state: Promise<{ id: string; name: string; type: string }>;
+        team: Promise<{
+          states: (_vars: { filter: { type: { eq: string } } }) => Promise<{
+            nodes: Array<{ id: string; name: string; position: number }>;
+          }>;
+        }>;
+        update: (input: { stateId: string }) => Promise<void>;
+      }> => ({
+        state: Promise.resolve({
+          id: "s4",
+          name: "Ready to merge",
+          type: "started",
+        }),
+        team: Promise.resolve({
+          states: async (vars: {
+            filter: { type: { eq: string } };
+          }): Promise<{
+            nodes: Array<{ id: string; name: string; position: number }>;
+          }> => {
+            stateCalls.push(vars.filter.type.eq);
+            return { nodes: [] };
+          },
+        }),
+        update: async (input: { stateId: string }): Promise<void> => {
+          updates.push(input);
+        },
+      }),
+    };
+
+    Object.defineProperty(svc, "client", { value: fakeClient });
+
+    const result = await svc.moveIssueToInProgress("issue-1");
+
+    expect(Result.isOk(result)).toBe(true);
+    expect(stateCalls).toEqual([]);
+    expect(updates).toEqual([]);
+  });
+});
