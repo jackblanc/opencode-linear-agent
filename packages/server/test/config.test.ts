@@ -30,4 +30,12 @@ describe("getDataDir", () => {
 
     expect(getDataDir()).toBe("/tmp/opencode-data/opencode-linear-agent");
   });
+
+  test("expands ~ in XDG_DATA_HOME", () => {
+    process.env["XDG_DATA_HOME"] = "~/opencode-data";
+
+    expect(getDataDir()).toBe(
+      join(homedir(), "opencode-data", "opencode-linear-agent"),
+    );
+  });
 });

@@ -52,6 +52,14 @@ describe("storage", () => {
         "/tmp/opencode-data/opencode-linear-agent/store.json",
       );
     });
+
+    test("should expand ~ in XDG_DATA_HOME", () => {
+      process.env["XDG_DATA_HOME"] = "~/opencode-data";
+
+      expect(getDefaultStorePath()).toBe(
+        join(homedir(), "opencode-data", "opencode-linear-agent", "store.json"),
+      );
+    });
   });
 
   describe("readAccessToken", () => {

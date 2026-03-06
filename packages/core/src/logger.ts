@@ -33,6 +33,7 @@ let lastLogTime = Date.now();
 let currentFilePath: string | undefined;
 let fileWriteQueue: Promise<void> = Promise.resolve();
 let fileSinkErrored = false;
+let currentSinkId = 0;
 
 function shouldLog(level: LogLevel): boolean {
   return levelPriority[level] >= levelPriority[currentLevel];
@@ -99,6 +100,7 @@ function flushToFile(output: string): void {
   }
 
   const path = currentFilePath;
+  const sinkId = currentSinkId;
   fileWriteQueue = fileWriteQueue.then(async () => {
     const result = await Result.tryPromise({
       try: async () => {
@@ -108,6 +110,10 @@ function flushToFile(output: string): void {
     });
 
     if (Result.isOk(result)) {
+      return;
+    }
+
+    if (sinkId !== currentSinkId || currentFilePath !== path) {
       return;
     }
 
@@ -171,11 +177,13 @@ function createLogger(tags?: Record<string, unknown>): Logger {
   ): void {
     if (!shouldLog(level)) return;
 
-    const fileOutput = buildJson(level, message, loggerTags, extra);
+    const fileOutput = currentFilePath
+      ? buildJson(level, message, loggerTags, extra)
+      : undefined;
     const output =
       currentFormat === "pretty"
         ? buildPretty(level, message, loggerTags, extra)
-        : fileOutput;
+        : (fileOutput ?? buildJson(level, message, loggerTags, extra));
 
     write(output, fileOutput);
   }
@@ -249,6 +257,7 @@ function initLogger(options: LogInitOptions = {}): void {
   currentLevel =
     options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO";
   currentFormat = options.format ?? detectFormat();
+  currentSinkId += 1;
   currentFilePath = options.filePath;
   fileWriteQueue = Promise.resolve();
   fileSinkErrored = false;
