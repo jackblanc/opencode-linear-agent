@@ -255,7 +255,7 @@ opencode-linear-agent/
 
 ## Releases
 
-- `latest` channel tracks `master` via `.github/workflows/publish-latest.yml`.
+- `latest` channel tracks `master` via `.github/workflows/release.yml`.
 - Tagged releases (`v*`) publish to npm `stable` via `.github/workflows/release.yml`.
 - Plugin package: `@opencode-linear-agent/plugin`.
 - Server package: `@opencode-linear-agent/server`.
