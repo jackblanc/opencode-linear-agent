@@ -219,6 +219,7 @@ export class LinearEventProcessor {
     const fallbackIssueIdentifier =
       event.agentSession.issue?.identifier ?? issueId ?? "unknown";
     let issue: WorktreeIssue = {
+      id: issueId ?? undefined,
       identifier: fallbackIssueIdentifier,
       branchName:
         readStringField(event.agentSession.issue, "branchName") ?? undefined,
@@ -228,6 +229,7 @@ export class LinearEventProcessor {
       const issueResult = await this.linear.getIssue(issueId);
       if (Result.isOk(issueResult)) {
         issue = {
+          id: issueResult.value.id,
           identifier: issueResult.value.identifier,
           branchName: issueResult.value.branchName,
         };

@@ -341,9 +341,13 @@ describe("WorktreeManager.resolveWorktree", () => {
     };
 
     const names: string[] = [];
+    const issueIds: string[] = [];
     const repository: SessionRepository = {
       get: async (): Promise<SessionState | null> => null,
-      getByIssueId: async (): Promise<SessionState | null> => state,
+      getByIssueId: async (issueId: string): Promise<SessionState | null> => {
+        issueIds.push(issueId);
+        return issueId === "issue-4" ? state : null;
+      },
       save: async (): Promise<void> => undefined,
       delete: async (): Promise<void> => undefined,
       getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
@@ -383,6 +387,7 @@ describe("WorktreeManager.resolveWorktree", () => {
     const result = await manager.resolveWorktree(
       "linear-2",
       {
+        id: "issue-4",
         identifier: "CODE-4",
         branchName: "jack/code-4-linear-branch",
       },
@@ -399,7 +404,83 @@ describe("WorktreeManager.resolveWorktree", () => {
       branchName: "jack/code-4-linear-branch",
       source: "existing_issue",
     });
+    expect(issueIds).toEqual(["issue-4"]);
     expect(names).toHaveLength(0);
+  });
+
+  test("skips inconclusive issue worktree reuse and creates fresh worktree", async () => {
+    const state: SessionState = {
+      linearSessionId: "linear-1",
+      opencodeSessionId: "opencode-1",
+      issueId: "issue-6",
+      repoDirectory: "/tmp/default",
+      branchName: "jack/code-6-linear-branch",
+      workdir: "/tmp",
+      lastActivityTime: Date.now(),
+    };
+
+    const creates: string[] = [];
+    const repository: SessionRepository = {
+      get: async (): Promise<SessionState | null> => null,
+      getByIssueId: async (): Promise<SessionState | null> => state,
+      save: async (): Promise<void> => undefined,
+      delete: async (): Promise<void> => undefined,
+      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
+      savePendingQuestion: async (): Promise<void> => undefined,
+      deletePendingQuestion: async (): Promise<void> => undefined,
+      getPendingPermission: async (): Promise<PendingPermission | null> => null,
+      savePendingPermission: async (): Promise<void> => undefined,
+      deletePendingPermission: async (): Promise<void> => undefined,
+      getPendingRepoSelection: async (): Promise<null> => null,
+      savePendingRepoSelection: async (): Promise<void> => undefined,
+      deletePendingRepoSelection: async (): Promise<void> => undefined,
+    };
+
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+    Object.defineProperty(opencode, "createWorktree", {
+      value: async () => {
+        creates.push("called");
+        return Result.ok({
+          directory: "/tmp/new-worktree",
+          branch: "jack/code-6-linear-branch",
+        });
+      },
+    });
+
+    const manager = new WorktreeManager(
+      opencode,
+      createLinearService(),
+      repository,
+      "/tmp/default",
+    );
+    Object.defineProperty(manager, "runGit", {
+      value: async (_repoDirectory: string, args: string[]) => {
+        if (args[0] === "show-ref") {
+          return Result.err(new Error("git unavailable"));
+        }
+        return Result.ok(undefined);
+      },
+    });
+
+    const result = await manager.resolveWorktree(
+      "linear-2",
+      {
+        id: "issue-6",
+        identifier: "CODE-6",
+        branchName: "jack/code-6-linear-branch",
+      },
+      "created",
+      createLogger(),
+    );
+
+    expect(Result.isOk(result)).toBe(true);
+    if (Result.isError(result)) {
+      throw result.error;
+    }
+    expect(result.value.source).toBe("created");
+    expect(creates).toHaveLength(1);
   });
 
   test("renames created branch to requested issue branch", async () => {

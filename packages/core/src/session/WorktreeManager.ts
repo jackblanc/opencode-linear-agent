@@ -21,6 +21,7 @@ export interface WorktreeResolution {
 }
 
 export interface WorktreeIssue {
+  id?: string;
   identifier: string;
   branchName?: string;
 }
@@ -63,66 +64,41 @@ export class WorktreeManager {
   /**
    * Resolve or create a worktree for a session.
    *
-   * - `created`: always create a new worktree/branch.
-   * - `prompted`: reuse only this session's worktree when valid.
+   * Reuses a valid session worktree first, then a valid issue worktree, then
+   * creates a new one.
    */
   async resolveWorktree(
     linearSessionId: string,
     issue: WorktreeIssue,
-    action: SessionWorktreeAction,
+    _action: SessionWorktreeAction,
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
     const existingState = await this.repository.get(linearSessionId);
-    const issueState = await this.repository.getByIssueId(issue.identifier);
+    const issueState = issue.id
+      ? await this.repository.getByIssueId(issue.id)
+      : null;
 
-    switch (action) {
-      case "prompted":
-        {
-          const storedResult = await this.resolveStoredWorktree(
-            existingState,
-            linearSessionId,
-            "session",
-            log,
-          );
-          if (storedResult) {
-            return storedResult;
-          }
-
-          const issueResult = await this.resolveStoredWorktree(
-            this.getReusableIssueState(issueState, linearSessionId),
-            linearSessionId,
-            "issue",
-            log,
-          );
-          if (issueResult) {
-            return issueResult;
-          }
-        }
-        return this.createWorktree(linearSessionId, issue, log);
-      case "created":
-        {
-          const storedResult = await this.resolveStoredWorktree(
-            existingState,
-            linearSessionId,
-            "session",
-            log,
-          );
-          if (storedResult) {
-            return storedResult;
-          }
-
-          const issueResult = await this.resolveStoredWorktree(
-            this.getReusableIssueState(issueState, linearSessionId),
-            linearSessionId,
-            "issue",
-            log,
-          );
-          if (issueResult) {
-            return issueResult;
-          }
-        }
-        return this.createWorktree(linearSessionId, issue, log);
+    const storedResult = await this.resolveStoredWorktree(
+      existingState,
+      linearSessionId,
+      "session",
+      log,
+    );
+    if (storedResult) {
+      return storedResult;
     }
+
+    const issueResult = await this.resolveStoredWorktree(
+      this.getReusableIssueState(issueState, linearSessionId),
+      linearSessionId,
+      "issue",
+      log,
+    );
+    if (issueResult) {
+      return issueResult;
+    }
+
+    return this.createWorktree(linearSessionId, issue, log);
   }
 
   /**
@@ -311,6 +287,16 @@ export class WorktreeManager {
     }
 
     if (stateResult.status === "inconclusive") {
+      if (kind === "issue") {
+        log.warn("Issue worktree validation inconclusive, skipping reuse", {
+          workdir: state.workdir,
+          branchName: state.branchName,
+          linearSessionId: state.linearSessionId,
+          reason: stateResult.reason,
+        });
+        return null;
+      }
+
       log.warn(
         "Stored worktree validation inconclusive, preserving session state",
         {
