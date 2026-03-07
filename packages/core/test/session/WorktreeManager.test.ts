@@ -198,7 +198,6 @@ describe("WorktreeManager.resolveWorktree", () => {
     const result = await manager.resolveWorktree(
       "linear-1",
       { identifier: "CODE-1" },
-      "prompted",
       createLogger(),
     );
 
@@ -271,7 +270,6 @@ describe("WorktreeManager.resolveWorktree", () => {
     const result = await manager.resolveWorktree(
       "linear-2",
       { identifier: "CODE-2" },
-      "created",
       createLogger(),
     );
 
@@ -321,7 +319,6 @@ describe("WorktreeManager.resolveWorktree", () => {
         identifier: "CODE-3",
         branchName: "jack/code-3-linear-branch",
       },
-      "created",
       createLogger(),
     );
 
@@ -391,7 +388,6 @@ describe("WorktreeManager.resolveWorktree", () => {
         identifier: "CODE-4",
         branchName: "jack/code-4-linear-branch",
       },
-      "created",
       createLogger(),
     );
 
@@ -471,7 +467,6 @@ describe("WorktreeManager.resolveWorktree", () => {
         identifier: "CODE-6",
         branchName: "jack/code-6-linear-branch",
       },
-      "created",
       createLogger(),
     );
 
@@ -515,7 +510,6 @@ describe("WorktreeManager.resolveWorktree", () => {
         identifier: "CODE-5",
         branchName: "jack/code-5-linear-branch",
       },
-      "created",
       createLogger(),
     );
 
@@ -525,5 +519,51 @@ describe("WorktreeManager.resolveWorktree", () => {
     }
     expect(result.value.branchName).toBe("jack/code-5-linear-branch");
     expect(gitCalls).toEqual([["branch", "-m", "jack/code-5-linear-branch"]]);
+  });
+
+  test("keeps created branch name when target branch already exists", async () => {
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+    Object.defineProperty(opencode, "createWorktree", {
+      value: async () =>
+        Result.ok({
+          directory: "/tmp/new-worktree",
+          branch: "opencode/jack/code-7-linear-branch",
+        }),
+    });
+
+    const manager = new WorktreeManager(
+      opencode,
+      createLinearService(),
+      createRepository(),
+      "/tmp/default",
+    );
+    Object.defineProperty(manager, "runGit", {
+      value: async (_repoDirectory: string, args: string[]) => {
+        if (args[0] === "branch") {
+          return Result.err(new Error("branch already exists"));
+        }
+        if (args[0] === "show-ref") {
+          return Result.ok(undefined);
+        }
+        return Result.err(new Error("unexpected"));
+      },
+    });
+
+    const result = await manager.resolveWorktree(
+      "linear-session-1",
+      {
+        identifier: "CODE-7",
+        branchName: "jack/code-7-linear-branch",
+      },
+      createLogger(),
+    );
+
+    expect(Result.isOk(result)).toBe(true);
+    if (Result.isError(result)) {
+      throw result.error;
+    }
+    expect(result.value.branchName).toBe("opencode/jack/code-7-linear-branch");
   });
 });

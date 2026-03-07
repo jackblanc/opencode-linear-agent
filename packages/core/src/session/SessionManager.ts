@@ -84,6 +84,7 @@ export class SessionManager {
    */
   async getOrCreateSession(
     linearSessionId: string,
+    linearSessionCreatedAt: number,
     issueId: string,
     repoDirectory: string,
     branchName: string,
@@ -139,6 +140,7 @@ export class SessionManager {
 
       return this.createNewSession(
         linearSessionId,
+        linearSessionCreatedAt,
         issueId,
         sessionRepoDirectory,
         branchName,
@@ -151,9 +153,30 @@ export class SessionManager {
 
     const issueState = await this.repository.getByIssueId(issueId);
 
+    if (issueState && issueState.linearSessionId !== linearSessionId) {
+      const issueSessionCreatedAt = this.getSessionCreatedAt(issueState);
+      if (issueSessionCreatedAt > linearSessionCreatedAt) {
+        log.info(
+          "Ignoring stale Linear session in favor of newer issue session",
+          {
+            requestedLinearSessionCreatedAt: linearSessionCreatedAt,
+            issueSessionLinearSessionId: issueState.linearSessionId,
+            issueSessionCreatedAt,
+          },
+        );
+
+        return Result.ok({
+          opencodeSessionId: issueState.opencodeSessionId,
+          existingState: issueState,
+          isNewSession: false,
+        });
+      }
+    }
+
     // No existing state - create fresh session
     const result = await this.createNewSession(
       linearSessionId,
+      linearSessionCreatedAt,
       issueId,
       repoDirectory,
       branchName,
@@ -213,6 +236,7 @@ export class SessionManager {
    */
   private async createNewSession(
     linearSessionId: string,
+    linearSessionCreatedAt: number,
     issueId: string,
     repoDirectory: string,
     branchName: string,
@@ -245,6 +269,7 @@ export class SessionManager {
     const newState: SessionState = {
       opencodeSessionId: sessionId,
       linearSessionId,
+      linearSessionCreatedAt,
       issueId,
       repoDirectory,
       branchName,
@@ -262,6 +287,10 @@ export class SessionManager {
       isNewSession: true,
       previousContext,
     });
+  }
+
+  private getSessionCreatedAt(state: SessionState): number {
+    return state.linearSessionCreatedAt ?? 0;
   }
 
   /**
