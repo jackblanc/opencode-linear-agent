@@ -17,7 +17,7 @@ const execFileAsync = promisify(execFile);
 export interface WorktreeResolution {
   workdir: string;
   branchName: string;
-  source: "existing_session" | "created";
+  source: "existing_session" | "existing_issue" | "created";
 }
 
 export interface WorktreeIssue {
@@ -73,103 +73,52 @@ export class WorktreeManager {
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
     const existingState = await this.repository.get(linearSessionId);
+    const issueState = await this.repository.getByIssueId(issue.identifier);
 
     switch (action) {
       case "prompted":
-        if (existingState) {
-          const stateResult = await this.validateSessionState(
+        {
+          const storedResult = await this.resolveStoredWorktree(
             existingState,
+            linearSessionId,
+            "session",
             log,
           );
-          if (stateResult.status === "valid") {
-            if (existingState.repoDirectory !== stateResult.repoDirectory) {
-              await this.repository.save({
-                ...existingState,
-                repoDirectory: stateResult.repoDirectory,
-              });
-              log.info("Migrated stored session repo directory", {
-                workdir: existingState.workdir,
-                repoDirectory: stateResult.repoDirectory,
-              });
-            }
-
-            log.info("Reusing existing session worktree", {
-              workdir: existingState.workdir,
-              branchName: existingState.branchName,
-            });
-
-            return Result.ok({
-              workdir: existingState.workdir,
-              branchName: existingState.branchName,
-              source: "existing_session" as const,
-            });
+          if (storedResult) {
+            return storedResult;
           }
 
-          if (stateResult.status === "inconclusive") {
-            log.warn(
-              "Stored worktree validation inconclusive, preserving session state",
-              {
-                workdir: existingState.workdir,
-                branchName: existingState.branchName,
-                reason: stateResult.reason,
-              },
-            );
-            return Result.err(new Error(stateResult.reason));
+          const issueResult = await this.resolveStoredWorktree(
+            this.getReusableIssueState(issueState, linearSessionId),
+            linearSessionId,
+            "issue",
+            log,
+          );
+          if (issueResult) {
+            return issueResult;
           }
-
-          log.warn("Stored worktree state is stale, clearing state", {
-            workdir: existingState.workdir,
-            branchName: existingState.branchName,
-          });
-          await this.repository.delete(linearSessionId);
         }
         return this.createWorktree(linearSessionId, issue, log);
       case "created":
-        if (existingState) {
-          const stateResult = await this.validateSessionState(
+        {
+          const storedResult = await this.resolveStoredWorktree(
             existingState,
+            linearSessionId,
+            "session",
             log,
           );
-          if (stateResult.status === "valid") {
-            if (existingState.repoDirectory !== stateResult.repoDirectory) {
-              await this.repository.save({
-                ...existingState,
-                repoDirectory: stateResult.repoDirectory,
-              });
-              log.info("Migrated stored session repo directory", {
-                workdir: existingState.workdir,
-                repoDirectory: stateResult.repoDirectory,
-              });
-            }
-
-            log.info("Reusing existing session worktree for created replay", {
-              workdir: existingState.workdir,
-              branchName: existingState.branchName,
-            });
-
-            return Result.ok({
-              workdir: existingState.workdir,
-              branchName: existingState.branchName,
-              source: "existing_session" as const,
-            });
+          if (storedResult) {
+            return storedResult;
           }
 
-          if (stateResult.status === "stale") {
-            log.warn("Stored worktree state is stale on created replay", {
-              workdir: existingState.workdir,
-              branchName: existingState.branchName,
-            });
-            await this.repository.delete(linearSessionId);
-          } else {
-            log.warn(
-              "Stored worktree validation inconclusive on created replay",
-              {
-                workdir: existingState.workdir,
-                branchName: existingState.branchName,
-                reason: stateResult.reason,
-              },
-            );
-            return Result.err(new Error(stateResult.reason));
+          const issueResult = await this.resolveStoredWorktree(
+            this.getReusableIssueState(issueState, linearSessionId),
+            linearSessionId,
+            "issue",
+            log,
+          );
+          if (issueResult) {
+            return issueResult;
           }
         }
         return this.createWorktree(linearSessionId, issue, log);
@@ -266,7 +215,7 @@ export class WorktreeManager {
       log.info("No lockfile found, skipping dependency installation");
     }
 
-    const worktreeName = this.buildWorktreeName(issue, linearSessionId);
+    const worktreeName = this.buildWorktreeName(issue);
     const worktreeResult = await this.opencode.createWorktree(
       this.repoDirectory,
       worktreeName,
@@ -287,26 +236,136 @@ export class WorktreeManager {
       worktreeName,
     });
 
+    const branchResult = await this.ensureBranchName(
+      worktreeResult.value.directory,
+      worktreeResult.value.branch,
+      worktreeName,
+      log,
+    );
+
+    if (Result.isError(branchResult)) {
+      return Result.err(branchResult.error);
+    }
+
     return Result.ok({
       workdir: worktreeResult.value.directory,
-      branchName: worktreeResult.value.branch,
+      branchName: branchResult.value,
       source: "created" as const,
     });
   }
 
-  private buildWorktreeName(
-    issue: WorktreeIssue,
-    linearSessionId: string,
-  ): string {
+  private buildWorktreeName(issue: WorktreeIssue): string {
     if (issue.branchName) {
-      return `${linearSessionId}/${issue.branchName}`;
+      return issue.branchName;
     }
 
-    const safeIssue = issue.identifier
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-");
-    const sessionSuffix = linearSessionId.slice(0, 8).toLowerCase();
-    return `${safeIssue}-${sessionSuffix}`;
+    return issue.identifier.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  }
+
+  private getReusableIssueState(
+    state: SessionState | null,
+    linearSessionId: string,
+  ): SessionState | null {
+    if (!state || state.linearSessionId === linearSessionId) {
+      return null;
+    }
+
+    return state;
+  }
+
+  private async resolveStoredWorktree(
+    state: SessionState | null,
+    linearSessionId: string,
+    kind: "session" | "issue",
+    log: Logger,
+  ): Promise<Result<WorktreeResolution, Error> | null> {
+    if (!state) {
+      return null;
+    }
+
+    const stateResult = await this.validateSessionState(state, log);
+    if (stateResult.status === "valid") {
+      if (state.repoDirectory !== stateResult.repoDirectory) {
+        await this.repository.save({
+          ...state,
+          repoDirectory: stateResult.repoDirectory,
+        });
+        log.info("Migrated stored session repo directory", {
+          workdir: state.workdir,
+          repoDirectory: stateResult.repoDirectory,
+        });
+      }
+
+      const label = kind === "session" ? "session" : "issue";
+      log.info(`Reusing existing ${label} worktree`, {
+        workdir: state.workdir,
+        branchName: state.branchName,
+        linearSessionId: state.linearSessionId,
+      });
+
+      return Result.ok({
+        workdir: state.workdir,
+        branchName: state.branchName,
+        source: kind === "session" ? "existing_session" : "existing_issue",
+      });
+    }
+
+    if (stateResult.status === "inconclusive") {
+      log.warn(
+        "Stored worktree validation inconclusive, preserving session state",
+        {
+          workdir: state.workdir,
+          branchName: state.branchName,
+          linearSessionId: state.linearSessionId,
+          reason: stateResult.reason,
+        },
+      );
+      return Result.err(new Error(stateResult.reason));
+    }
+
+    log.warn("Stored worktree state is stale, clearing state", {
+      workdir: state.workdir,
+      branchName: state.branchName,
+      linearSessionId: state.linearSessionId,
+      requestedLinearSessionId: linearSessionId,
+    });
+    await this.repository.delete(state.linearSessionId);
+    return null;
+  }
+
+  private async ensureBranchName(
+    workdir: string,
+    currentBranchName: string,
+    expectedBranchName: string,
+    log: Logger,
+  ): Promise<Result<string, Error>> {
+    if (currentBranchName === expectedBranchName) {
+      return Result.ok(currentBranchName);
+    }
+
+    const renameResult = await this.runGit(workdir, [
+      "branch",
+      "-m",
+      expectedBranchName,
+    ]);
+
+    if (Result.isError(renameResult)) {
+      log.warn("Failed to rename created branch", {
+        workdir,
+        currentBranchName,
+        expectedBranchName,
+        error: renameResult.error.message,
+      });
+      return Result.err(renameResult.error);
+    }
+
+    log.info("Renamed created branch", {
+      workdir,
+      previousBranchName: currentBranchName,
+      branchName: expectedBranchName,
+    });
+
+    return Result.ok(expectedBranchName);
   }
 
   private async validateSessionState(

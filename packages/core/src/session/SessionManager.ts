@@ -149,8 +149,10 @@ export class SessionManager {
       );
     }
 
+    const issueState = await this.repository.getByIssueId(issueId);
+
     // No existing state - create fresh session
-    return this.createNewSession(
+    const result = await this.createNewSession(
       linearSessionId,
       issueId,
       repoDirectory,
@@ -160,6 +162,19 @@ export class SessionManager {
       undefined,
       log,
     );
+
+    if (Result.isError(result)) {
+      return result;
+    }
+
+    if (issueState && issueState.linearSessionId !== linearSessionId) {
+      await this.repository.delete(issueState.linearSessionId);
+      log.info("Reassigned issue session state to new Linear session", {
+        previousLinearSessionId: issueState.linearSessionId,
+      });
+    }
+
+    return result;
   }
 
   /**
