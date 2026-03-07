@@ -26,8 +26,6 @@ export interface WorktreeIssue {
   branchName?: string;
 }
 
-export type SessionWorktreeAction = "created" | "prompted";
-
 export interface SessionCleanupResult {
   worktreeRemoved: boolean;
   branchRemoved: boolean;
@@ -70,7 +68,6 @@ export class WorktreeManager {
   async resolveWorktree(
     linearSessionId: string,
     issue: WorktreeIssue,
-    _action: SessionWorktreeAction,
     log: Logger,
   ): Promise<Result<WorktreeResolution, Error>> {
     const existingState = await this.repository.get(linearSessionId);
@@ -261,7 +258,10 @@ export class WorktreeManager {
 
     const stateResult = await this.validateSessionState(state, log);
     if (stateResult.status === "valid") {
-      if (state.repoDirectory !== stateResult.repoDirectory) {
+      if (
+        kind === "session" &&
+        state.repoDirectory !== stateResult.repoDirectory
+      ) {
         await this.repository.save({
           ...state,
           repoDirectory: stateResult.repoDirectory,
@@ -336,6 +336,23 @@ export class WorktreeManager {
     ]);
 
     if (Result.isError(renameResult)) {
+      const branchStateResult = await this.getBranchState(
+        expectedBranchName,
+        workdir,
+      );
+      if (
+        Result.isOk(branchStateResult) &&
+        branchStateResult.value === "exists"
+      ) {
+        log.warn("Target branch already exists, keeping created branch name", {
+          workdir,
+          currentBranchName,
+          expectedBranchName,
+          error: renameResult.error.message,
+        });
+        return Result.ok(currentBranchName);
+      }
+
       log.warn("Failed to rename created branch", {
         workdir,
         currentBranchName,

@@ -8,11 +8,7 @@ import type {
   QuestionOption,
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
-import {
-  WorktreeManager,
-  type SessionWorktreeAction,
-  type WorktreeIssue,
-} from "./session/WorktreeManager";
+import { WorktreeManager, type WorktreeIssue } from "./session/WorktreeManager";
 import { PromptBuilder, type PromptContext } from "./session/PromptBuilder";
 import { type AgentMode, determineAgentMode } from "./session/AgentMode";
 import type { OpencodeService } from "./opencode/OpencodeService";
@@ -243,8 +239,7 @@ export class LinearEventProcessor {
 
     log.info("Processing event", { action: event.action });
 
-    const action = this.toSessionWorktreeAction(event.action);
-    if (!action) {
+    if (event.action !== "created" && event.action !== "prompted") {
       log.info("Ignoring unsupported agent session action", {
         action: event.action,
       });
@@ -255,7 +250,6 @@ export class LinearEventProcessor {
     const worktreeResult = await this.worktreeManager.resolveWorktree(
       linearSessionId,
       issue,
-      action,
       log,
     );
 
@@ -307,6 +301,7 @@ export class LinearEventProcessor {
     // Get or create OpenCode session
     const sessionResult = await this.sessionManager.getOrCreateSession(
       linearSessionId,
+      Date.parse(event.agentSession.createdAt),
       issueId ?? "unknown",
       this.repoDirectory,
       branchName,
@@ -343,7 +338,7 @@ export class LinearEventProcessor {
     const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
     await this.linear.setExternalLink(linearSessionId, externalLink);
 
-    switch (action) {
+    switch (event.action) {
       case "created":
         await this.handleCreated(
           event,
@@ -366,16 +361,6 @@ export class LinearEventProcessor {
           log,
         );
         return;
-    }
-  }
-
-  private toSessionWorktreeAction(value: string): SessionWorktreeAction | null {
-    switch (value) {
-      case "created":
-      case "prompted":
-        return value;
-      default:
-        return null;
     }
   }
 
