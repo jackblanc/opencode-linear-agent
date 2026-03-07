@@ -44,6 +44,7 @@ function createRepo(state: SessionState | null): SessionRepository {
       }
       return state;
     },
+    getByIssueId: async () => state,
     save: async () => undefined,
     delete: async () => undefined,
     getPendingQuestion: async () => null,

@@ -17,6 +17,7 @@ import type {
  * Key prefix for session storage
  */
 const SESSION_PREFIX = "session:";
+const ISSUE_SESSION_PREFIX = "issue-session:";
 
 /**
  * Key prefix for pending question storage
@@ -40,12 +41,41 @@ export class FileSessionRepository implements SessionRepository {
     return this.kv.get<SessionState>(`${SESSION_PREFIX}${linearSessionId}`);
   }
 
+  async getByIssueId(issueId: string): Promise<SessionState | null> {
+    const linearSessionId = await this.kv.getString(
+      `${ISSUE_SESSION_PREFIX}${issueId}`,
+    );
+
+    if (!linearSessionId) {
+      return null;
+    }
+
+    return this.get(linearSessionId);
+  }
+
   async save(state: SessionState): Promise<void> {
     await this.kv.put(`${SESSION_PREFIX}${state.linearSessionId}`, state);
+    await this.kv.put(
+      `${ISSUE_SESSION_PREFIX}${state.issueId}`,
+      state.linearSessionId,
+    );
   }
 
   async delete(linearSessionId: string): Promise<void> {
+    const state = await this.get(linearSessionId);
     await this.kv.delete(`${SESSION_PREFIX}${linearSessionId}`);
+
+    if (!state) {
+      return;
+    }
+
+    const issueSessionId = await this.kv.getString(
+      `${ISSUE_SESSION_PREFIX}${state.issueId}`,
+    );
+
+    if (issueSessionId === linearSessionId) {
+      await this.kv.delete(`${ISSUE_SESSION_PREFIX}${state.issueId}`);
+    }
   }
 
   async getPendingQuestion(

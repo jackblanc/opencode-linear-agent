@@ -94,6 +94,11 @@ export interface SessionRepository {
   get(linearSessionId: string): Promise<SessionState | null>;
 
   /**
+   * Get the latest session state for an issue
+   */
+  getByIssueId(issueId: string): Promise<SessionState | null>;
+
+  /**
    * Save session state
    */
   save(state: SessionState): Promise<void>;

@@ -85,6 +85,7 @@ function createOpencode(): OpencodeService {
 function createSessionRepository(repo: RepoState): SessionRepository {
   return {
     get: async () => repo.state,
+    getByIssueId: async () => repo.state,
     save: async () => undefined,
     delete: async () => undefined,
     getPendingQuestion: async () => null,
