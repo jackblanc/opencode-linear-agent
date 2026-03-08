@@ -259,6 +259,7 @@ describe("LinearEventProcessor prompted handling", () => {
       {
         linearSessionId: "linear-session-1",
         issue: {
+          id: "issue-1",
           identifier: "CODE-1",
           branchName: "jack/code-1-from-linear",
         },

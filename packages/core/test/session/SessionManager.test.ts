@@ -14,16 +14,21 @@ import type { SessionState } from "../../src/session/SessionState";
 function createRepository(state: SessionState): {
   repository: SessionRepository;
   saves: SessionState[];
+  deletes: string[];
 } {
   const saves: SessionState[] = [];
+  const deletes: string[] = [];
 
   return {
     repository: {
       get: async (): Promise<SessionState | null> => state,
+      getByIssueId: async (): Promise<SessionState | null> => state,
       save: async (next: SessionState): Promise<void> => {
         saves.push(next);
       },
-      delete: async (): Promise<void> => undefined,
+      delete: async (linearSessionId: string): Promise<void> => {
+        deletes.push(linearSessionId);
+      },
       getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
       savePendingQuestion: async (): Promise<void> => undefined,
       deletePendingQuestion: async (): Promise<void> => undefined,
@@ -35,6 +40,7 @@ function createRepository(state: SessionState): {
       deletePendingRepoSelection: async (): Promise<void> => undefined,
     },
     saves,
+    deletes,
   };
 }
 
