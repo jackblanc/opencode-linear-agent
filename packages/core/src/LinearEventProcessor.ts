@@ -301,7 +301,6 @@ export class LinearEventProcessor {
     // Get or create OpenCode session
     const sessionResult = await this.sessionManager.getOrCreateSession(
       linearSessionId,
-      Date.parse(event.agentSession.createdAt),
       issueId ?? "unknown",
       this.repoDirectory,
       branchName,

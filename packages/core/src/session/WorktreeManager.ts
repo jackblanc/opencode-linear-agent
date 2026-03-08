@@ -209,20 +209,9 @@ export class WorktreeManager {
       worktreeName,
     });
 
-    const branchResult = await this.ensureBranchName(
-      worktreeResult.value.directory,
-      worktreeResult.value.branch,
-      worktreeName,
-      log,
-    );
-
-    if (Result.isError(branchResult)) {
-      return Result.err(branchResult.error);
-    }
-
     return Result.ok({
       workdir: worktreeResult.value.directory,
-      branchName: branchResult.value,
+      branchName: worktreeResult.value.branch,
       source: "created" as const,
     });
   }
@@ -258,10 +247,7 @@ export class WorktreeManager {
 
     const stateResult = await this.validateSessionState(state, log);
     if (stateResult.status === "valid") {
-      if (
-        kind === "session" &&
-        state.repoDirectory !== stateResult.repoDirectory
-      ) {
+      if (state.repoDirectory !== stateResult.repoDirectory) {
         await this.repository.save({
           ...state,
           repoDirectory: stateResult.repoDirectory,
@@ -317,58 +303,6 @@ export class WorktreeManager {
     });
     await this.repository.delete(state.linearSessionId);
     return null;
-  }
-
-  private async ensureBranchName(
-    workdir: string,
-    currentBranchName: string,
-    expectedBranchName: string,
-    log: Logger,
-  ): Promise<Result<string, Error>> {
-    if (currentBranchName === expectedBranchName) {
-      return Result.ok(currentBranchName);
-    }
-
-    const renameResult = await this.runGit(workdir, [
-      "branch",
-      "-m",
-      expectedBranchName,
-    ]);
-
-    if (Result.isError(renameResult)) {
-      const branchStateResult = await this.getBranchState(
-        expectedBranchName,
-        workdir,
-      );
-      if (
-        Result.isOk(branchStateResult) &&
-        branchStateResult.value === "exists"
-      ) {
-        log.warn("Target branch already exists, keeping created branch name", {
-          workdir,
-          currentBranchName,
-          expectedBranchName,
-          error: renameResult.error.message,
-        });
-        return Result.ok(currentBranchName);
-      }
-
-      log.warn("Failed to rename created branch", {
-        workdir,
-        currentBranchName,
-        expectedBranchName,
-        error: renameResult.error.message,
-      });
-      return Result.err(renameResult.error);
-    }
-
-    log.info("Renamed created branch", {
-      workdir,
-      previousBranchName: currentBranchName,
-      branchName: expectedBranchName,
-    });
-
-    return Result.ok(expectedBranchName);
   }
 
   private async validateSessionState(
