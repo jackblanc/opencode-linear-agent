@@ -43,34 +43,23 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    # or: npm i -g @opencode-linear-agent/server
    ```
 
-2. Create env file (default: `~/.local/share/opencode-linear-agent/.env`):
+2. Create configuration file at `~/.config/opencode-linear-agent/config.json`:
 
-   ```bash
-   DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent"
-   ENV_FILE="$DATA_DIR/.env"
-   mkdir -p "$DATA_DIR"
-   cat > "$ENV_FILE" <<'EOF'
-   # Server
-   PORT=3210
-   PUBLIC_HOSTNAME=your-hostname.example.com
-
-   # OpenCode
-   OPENCODE_URL=http://localhost:4096
-
-   # Linear OAuth
-   LINEAR_CLIENT_ID=
-   LINEAR_CLIENT_SECRET=
-
-   # Linear Webhook
-   LINEAR_WEBHOOK_SECRET=
-
-   # Optional: restrict to one org
-   # LINEAR_ORGANIZATION_ID=
-
-   # Local repos root
-   PROJECTS_PATH=$HOME/projects
-   EOF
+   ```json
+   {
+     "webhookServerPublicHostname": "your-hostname.example.com",
+     "webhookServerPort": 3210,
+     "opencodeServerUrl": "http://localhost:4096",
+     "linearClientId": "<linear-client-id>",
+     "linearClientSecret": "<linear-client-secret>",
+     "linearWebhookSecret": "<linear-webhook-secret>",
+     "projectsPath": "/Users/you/projects"
+   }
    ```
+
+   Optional keys:
+   - `linearOrganizationId`: restrict webhook processing to one Linear org
+   - `linearWebhookIps`: override the default Linear webhook IP allowlist
 
 3. Run OpenCode server:
 
@@ -86,7 +75,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
 
 5. Complete setup:
    - Configure OAuth app + webhook in Linear (see [Setup Guide](#setup-guide))
-   - Expose local port `3210` (or your `PORT`) with [Ingress Options](#ingress-options)
+   - Expose local port `3210` (or your configured `webhookServerPort`) with [Ingress Options](#ingress-options)
    - Restart OpenCode after plugin config changes
 
 ## Setup Guide
@@ -100,9 +89,9 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    - `write`
    - `app:mentionable`
    - `app:assignable`
-4. Save values:
-   - Client ID -> `LINEAR_CLIENT_ID`
-   - Client Secret -> `LINEAR_CLIENT_SECRET`
+4. Save values into `~/.config/opencode-linear-agent/config.json`:
+   - Client ID -> `linearClientId`
+   - Client Secret -> `linearClientSecret`
 
 Optional org allowlist ID:
 
@@ -113,7 +102,7 @@ curl -X POST https://api.linear.app/graphql \
   -d '{"query":"{ organization { id name } }"}'
 ```
 
-Use `organization.id` as `LINEAR_ORGANIZATION_ID`.
+Use `organization.id` as `linearOrganizationId` if you want to restrict webhooks to one org.
 
 ### 2) Linear webhook
 
@@ -121,7 +110,7 @@ Use `organization.id` as `LINEAR_ORGANIZATION_ID`.
 2. Set:
    - URL: `https://<public-hostname>/api/webhook/linear`
    - Events: `AgentSessionEvent` and `Issue`
-3. Copy webhook secret to `LINEAR_WEBHOOK_SECRET`
+3. Copy webhook secret to `linearWebhookSecret` in `~/.config/opencode-linear-agent/config.json`
 
 ### 3) OpenCode server
 
@@ -131,7 +120,7 @@ Run OpenCode locally so this agent can create sessions:
 opencode serve --port 4096 --hostname 127.0.0.1
 ```
 
-Set `OPENCODE_URL=http://localhost:4096` in your env file (`~/.local/share/opencode-linear-agent/.env` by default).
+Set `opencodeServerUrl` to `http://localhost:4096` in `~/.config/opencode-linear-agent/config.json`.
 
 ### 4) Plugin installation (required)
 
@@ -157,7 +146,7 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 
 ## Ingress Options
 
-Use one option to expose local `:3210` (or your configured `PORT`) publicly for Linear webhooks:
+Use one option to expose local `:3210` (or your configured `webhookServerPort`) publicly for Linear webhooks:
 
 - Cloudflare Tunnel: see `docs/cloudflare-tunnel-setup.md`
 - ngrok:
@@ -169,7 +158,7 @@ Use one option to expose local `:3210` (or your configured `PORT`) publicly for 
   tailscale funnel 3210
   ```
 
-Set `PUBLIC_HOSTNAME` to the hostname from your selected ingress.
+Set `webhookServerPublicHostname` to the hostname from your selected ingress.
 
 ## Architecture
 
@@ -209,9 +198,7 @@ Create `~/Library/LaunchAgents/com.opencode-linear-agent.server.plist`:
   <string>com.opencode-linear-agent.server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>-lc</string>
-    <string>set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server"</string>
+    <string>/Users/you/.local/bin/opencode-linear-agent-server</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -243,7 +230,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'set -a; source "${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/.env"; set +a; exec "${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server"'
+ExecStart=%h/.local/bin/opencode-linear-agent-server
 Restart=always
 RestartSec=5
 
@@ -274,7 +261,7 @@ journalctl --user -u opencode-linear-agent.service -f
 - Accepted formats:
   - `repo:my-repo`
   - `repo:org/my-repo` (org segment is ignored for local path resolution)
-- Resolver maps to local path under `PROJECTS_PATH`, ex: `repo:my-repo` -> `${PROJECTS_PATH}/my-repo`.
+- Resolver maps to local path under `projectsPath`, ex: `repo:my-repo` -> `<projectsPath>/my-repo`.
 - Missing/invalid `repo:*` blocks execution before worktree/session creation and posts an actionable error to Linear.
 
 ### Plan vs build mode
@@ -296,7 +283,6 @@ opencode-linear-agent/
 │   ├── plugin/    # Required OpenCode plugin
 ├── docs/
 ├── plans/         # Internal historical planning docs (excluded from publish cleanup in CODE-168)
-├── .env.example
 └── package.json
 ```
 

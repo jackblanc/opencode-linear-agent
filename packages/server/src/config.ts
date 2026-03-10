@@ -1,7 +1,9 @@
 import { homedir } from "node:os";
-import { resolve, join } from "node:path";
+import path, { resolve } from "node:path";
 import { z } from "zod";
-import { Log } from "@opencode-linear-agent/core";
+
+import { xdgConfig } from "xdg-basedir";
+import { existsSync, readFileSync } from "node:fs";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -9,65 +11,58 @@ const DEFAULT_WEBHOOK_IPS = [
   "34.145.29.68",
 ];
 
-const ConfigSchema = z.object({
-  port: z.coerce.number(),
-  publicHostname: z.string(),
-  opencode: z.object({
-    url: z.string(),
-  }),
-  linear: z.object({
-    clientId: z.string(),
-    clientSecret: z.string(),
-    webhookSecret: z.string(),
-    organizationId: z.string().optional(),
-    webhookIps: z.array(z.string()).min(1),
-  }),
-  projectsPath: z.string(),
+const ConfigFileSchema = z.object({
+  webhookServerPublicHostname: z.string().min(1),
+  webhookServerPort: z.coerce.number().default(3210),
+  opencodeServerUrl: z.string().min(1).default("http://localhost:4096"),
+
+  linearClientId: z.string().min(1),
+  linearClientSecret: z.string().min(1),
+  linearWebhookSecret: z.string().min(1),
+  linearWebhookIps: z.array(z.string()).min(1).default(DEFAULT_WEBHOOK_IPS),
+  linearOrganizationId: z.string().optional(),
+
+  projectsPath: z
+    .string()
+    .min(1)
+    .transform((projectsPath) => {
+      if (projectsPath.startsWith("~/")) {
+        return resolve(homedir(), projectsPath.slice(2));
+      }
+      return projectsPath;
+    }),
 });
 
-export type Config = z.infer<typeof ConfigSchema>;
+export type Config = z.infer<typeof ConfigFileSchema>;
 
-function expandPath(path: string): string {
-  if (path.startsWith("~/")) {
-    return resolve(homedir(), path.slice(2));
-  }
-  return path;
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+export const APPLICATION_DIRECTORY = "opencode-linear-agent";
 
 export function loadConfig(): Config {
-  const log = Log.create({ service: "config" });
-  log.info("Loading config from environment variables");
+  if (!xdgConfig) {
+    throw new Error(
+      "Failed to find directory for config storage. Please ensure HOME or XDG_CONFIG_HOME environment variable is set.",
+    );
+  }
 
-  const webhookIpsRaw = process.env["LINEAR_WEBHOOK_IPS"];
-  const webhookIps = webhookIpsRaw
-    ? webhookIpsRaw.split(",").map((ip) => ip.trim())
-    : DEFAULT_WEBHOOK_IPS;
+  const configPath = path.join(xdgConfig, APPLICATION_DIRECTORY, "config.json");
+  if (!existsSync(configPath)) {
+    throw new Error(
+      `Config file not found at ${configPath}. Please create a config file with the necessary configuration values.`,
+    );
+  }
 
-  const raw = {
-    port: process.env["PORT"] ?? "3210",
-    publicHostname: requiredEnv("PUBLIC_HOSTNAME"),
-    opencode: {
-      url: process.env["OPENCODE_URL"] ?? "http://localhost:4096",
-    },
-    linear: {
-      clientId: requiredEnv("LINEAR_CLIENT_ID"),
-      clientSecret: requiredEnv("LINEAR_CLIENT_SECRET"),
-      webhookSecret: requiredEnv("LINEAR_WEBHOOK_SECRET"),
-      organizationId: process.env["LINEAR_ORGANIZATION_ID"],
-      webhookIps,
-    },
-    projectsPath: requiredEnv("PROJECTS_PATH"),
-  };
+  const rawConfig = readFileSync(configPath, "utf-8");
 
-  const result = ConfigSchema.safeParse(raw);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(rawConfig);
+  } catch (err) {
+    throw new Error(`Failed to parse config file at ${configPath}`, {
+      cause: err,
+    });
+  }
+
+  const result = ConfigFileSchema.safeParse(raw);
   if (!result.success) {
     const issues = result.error.issues
       .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
@@ -75,16 +70,5 @@ export function loadConfig(): Config {
     throw new Error(`Invalid configuration:\n${issues}`);
   }
 
-  return {
-    ...result.data,
-    projectsPath: expandPath(result.data.projectsPath),
-  };
-}
-
-export function getWorkerUrl(config: Config): string {
-  return `https://${config.publicHostname}`;
-}
-
-export function getDataDir(): string {
-  return join(homedir(), ".local/share/opencode-linear-agent");
+  return result.data;
 }

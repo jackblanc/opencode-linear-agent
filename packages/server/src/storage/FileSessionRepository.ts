@@ -4,8 +4,8 @@
  * Wraps FileStore for session-specific operations.
  */
 
-import type { KeyValueStore } from "@opencode-linear-agent/core";
 import type {
+  KeyValueStore,
   SessionRepository,
   SessionState,
   PendingQuestion,

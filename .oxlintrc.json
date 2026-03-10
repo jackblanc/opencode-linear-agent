@@ -13,8 +13,8 @@
   "rules": {
     // Disable no-await-in-loop - we have legitimate sequential retry loops
     "eslint/no-await-in-loop": "off",
-    // Export/Import Control - CRITICAL for project requirements
 
+    // Export/Import Control - CRITICAL for project requirements
     "eslint-plugin-import/no-commonjs": "error",
     "eslint-plugin-import/no-cycle": "error",
     "typescript/no-require-imports": "error",
@@ -25,15 +25,23 @@
     "typescript/explicit-function-return-type": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/promise-function-async": "error",
+    "typescript/await-thenable": "error",
     "typescript/switch-exhaustiveness-check": "error",
     "typescript/no-misused-promises": "error",
     "typescript/only-throw-error": "error",
     "typescript/prefer-nullish-coalescing": "error",
     "typescript/no-deprecated": "error",
-    "typescript/consistent-type-imports": "error",
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports",
+        "fixStyle": "separate-type-imports"
+      }
+    ],
 
     // Code Quality & Safety
     "eslint/no-console": "error",
+    "eslint/no-duplicate-imports": "off",
     "eslint/no-var": "error",
     "eslint/no-param-reassign": "error",
     "eslint/no-regex-spaces": "error",
@@ -43,6 +51,7 @@
     "eslint/no-self-compare": "error",
     "eslint/curly": "off",
     "eslint/default-case-last": "error",
+    "import/no-duplicates": "error",
     "typescript/no-namespace": "error",
 
     // Bun/Node Best Practices

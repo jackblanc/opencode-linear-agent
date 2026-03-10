@@ -64,14 +64,14 @@ cloudflared service install
 
 ## 6) Update app config
 
-Set these values in your project `.env`:
+Set these keys in `~/.config/opencode-linear-agent/config.json`:
 
-- `PUBLIC_HOSTNAME=linear-webhook.yourdomain.com`
-- `LINEAR_WEBHOOK_SECRET=<your webhook secret>`
+- `webhookServerPublicHostname`: `linear-webhook.yourdomain.com`
+- `linearWebhookSecret`: your Linear webhook secret
 
 Update Linear webhook URL to:
 
-`https://linear-webhook.yourdomain.com/webhook/linear`
+`https://linear-webhook.yourdomain.com/api/webhook/linear`
 
 ## Verification
 
@@ -103,13 +103,13 @@ cloudflared tunnel list
 ### Webhooks not received
 
 - Verify Linear webhook URL is correct
-- Verify `LINEAR_WEBHOOK_SECRET` matches Linear
+- Verify `linearWebhookSecret` matches Linear
 - Check webhook server logs
 
 ## Security Notes
 
 - Keep `~/.cloudflared/<TUNNEL_ID>.json` private
-- Keep `.env` and webhook secrets private
+- Keep `~/.config/opencode-linear-agent/config.json` and webhook secrets private
 - Webhook signatures are still verified by the server
 
 ## References

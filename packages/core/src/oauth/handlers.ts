@@ -116,7 +116,7 @@ function generateSuccessHtml(result: OAuthCallbackResult): string {
     
     <h2>Next Steps:</h2>
     <ul>
-      <li><strong>Optional:</strong> set <code>LINEAR_ORGANIZATION_ID</code> to restrict to one org:
+      <li><strong>Optional:</strong> set <code>linearOrganizationId</code> in <code>~/.config/opencode-linear-agent/config.json</code> to restrict to one org:
         <br><code>${result.organizationId}</code>
       </li>
       <li>Make sure your webhook URL is configured in Linear:

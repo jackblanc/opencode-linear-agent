@@ -12,14 +12,16 @@
  * locking if concurrent access is required.
  */
 
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
-import type { KeyValueStore } from "@opencode-linear-agent/core";
+import { mkdir, writeFile, readFile, exists } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   parseStoreData,
+  type KeyValueStore,
   type StoreData,
   type StoredValue,
 } from "@opencode-linear-agent/core";
+import { xdgData } from "xdg-basedir";
+import { APPLICATION_DIRECTORY } from "../config";
 
 /**
  * File-based KeyValueStore implementation
@@ -27,8 +29,17 @@ import {
 export class FileStore implements KeyValueStore {
   private data: StoreData = {};
   private loaded = false;
+  private filePath: string;
 
-  constructor(private readonly filePath: string) {}
+  constructor() {
+    if (!xdgData) {
+      throw new Error(
+        "Failed to find directory for data storage. Please ensure HOME or XDG_DATA_HOME environment variable is set.",
+      );
+    }
+    const dataDir = join(xdgData, APPLICATION_DIRECTORY, "store.json");
+    this.filePath = dataDir;
+  }
 
   /**
    * Ensure the store is loaded from disk
@@ -45,16 +56,22 @@ export class FileStore implements KeyValueStore {
    * Use this when expecting changes from external processes (e.g., plugin).
    */
   private async reload(): Promise<void> {
-    const file = Bun.file(this.filePath);
-    if (await file.exists()) {
-      try {
-        const json: unknown = await file.json();
-        this.data = parseStoreData(json);
-      } catch {
-        // File exists but is invalid - start fresh
-        this.data = {};
-      }
+    if (!(await exists(this.filePath))) {
+      this.data = {};
+      this.loaded = true;
+      return;
     }
+
+    const file = await readFile(this.filePath);
+
+    try {
+      const json: unknown = JSON.parse(file.toString());
+      this.data = parseStoreData(json);
+    } catch {
+      // File exists but is invalid - start fresh
+      this.data = {};
+    }
+
     this.loaded = true;
   }
 
@@ -64,7 +81,7 @@ export class FileStore implements KeyValueStore {
   private async save(): Promise<void> {
     // Ensure directory exists
     await mkdir(dirname(this.filePath), { recursive: true });
-    await Bun.write(this.filePath, JSON.stringify(this.data, null, 2));
+    await writeFile(this.filePath, JSON.stringify(this.data, null, 2));
   }
 
   /**

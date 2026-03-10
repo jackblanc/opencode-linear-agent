@@ -13,6 +13,7 @@
       "@opencode-ai/sdk": "1.2.19",
       "@opencode-ai/plugin": "1.2.19",
       "better-result": "^2.7.0",
+      "xdg-basedir": "^5.1.0",
       "zod": "^4.3.6"
     }
   },

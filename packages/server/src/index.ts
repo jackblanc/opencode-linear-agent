@@ -8,8 +8,8 @@
  *
  * Prerequisites:
  * - OpenCode running separately via `opencode serve`
- * - Environment variables configured (see .env.example)
- * - Local repository at the configured path
+ * - Configuration file at XDG config directory with necessary values (see README)
+ * - Local repository at the configured projects path
  */
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
@@ -17,7 +17,6 @@ import type {
   AgentSessionEventWebhookPayload,
   EntityWebhookPayloadWithIssueData,
 } from "@linear/sdk/webhooks";
-import { Result } from "better-result";
 import {
   IssueEventHandler,
   WorktreeManager,
@@ -28,16 +27,14 @@ import {
   LinearServiceImpl,
   OpencodeService,
   Log,
-  parseStoreData,
   type EventDispatcher,
   type KeyValueStore,
   type OAuthConfig,
   type TokenStore,
 } from "@opencode-linear-agent/core";
-import { loadConfig, getWorkerUrl, getDataDir, type Config } from "./config";
+import { loadConfig, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
-import { join } from "node:path";
 
 /**
  * Extract client IP from request headers
@@ -80,7 +77,7 @@ function createDirectDispatcher(
   sessionRepository: FileSessionRepository,
 ): EventDispatcher {
   const opencodeClient = createOpencodeClient({
-    baseUrl: config.opencode.url,
+    baseUrl: config.opencodeServerUrl,
   });
   const opencode = new OpencodeService(opencodeClient);
 
@@ -97,8 +94,8 @@ function createDirectDispatcher(
         let accessToken = await tokenStore.getAccessToken(organizationId);
         if (!accessToken) {
           const oauthConfig: OAuthConfig = {
-            clientId: config.linear.clientId,
-            clientSecret: config.linear.clientSecret,
+            clientId: config.linearClientId,
+            clientSecret: config.linearClientSecret,
           };
           accessToken = await refreshAccessToken(
             oauthConfig,
@@ -133,8 +130,8 @@ function createDirectDispatcher(
           .info("No access token, attempting refresh");
 
         const oauthConfig: OAuthConfig = {
-          clientId: config.linear.clientId,
-          clientSecret: config.linear.clientSecret,
+          clientId: config.linearClientId,
+          clientSecret: config.linearClientSecret,
         };
 
         accessToken = await refreshAccessToken(
@@ -171,13 +168,13 @@ function createServer(
   dispatcher: EventDispatcher,
 ): ReturnType<typeof Bun.serve> {
   const oauthConfig: OAuthConfig = {
-    clientId: config.linear.clientId,
-    clientSecret: config.linear.clientSecret,
-    baseUrl: getWorkerUrl(config),
+    clientId: config.linearClientId,
+    clientSecret: config.linearClientSecret,
+    baseUrl: `https://${config.webhookServerPublicHostname}`,
   };
 
   return Bun.serve({
-    port: config.port,
+    port: config.webhookServerPort,
     async fetch(request: Request): Promise<Response> {
       const url = new URL(request.url);
       const pathname = url.pathname;
@@ -197,13 +194,13 @@ function createServer(
         return response;
       };
 
+      if (pathname === "/health") {
+        return respond(new Response("OK", { status: 200 }));
+      }
+
       // OAuth authorize - start the OAuth flow
       if (pathname === "/api/oauth/authorize") {
         return respond(await handleAuthorize(request, oauthConfig, kv));
-      }
-
-      if (pathname === "/health") {
-        return respond(new Response("OK", { status: 200 }));
       }
 
       // OAuth callback - handle the redirect from Linear
@@ -213,16 +210,13 @@ function createServer(
         );
       }
 
-      // Linear webhook (support both paths for consistency with Cloudflare worker)
-      if (
-        pathname === "/api/webhook/linear" ||
-        pathname === "/webhook/linear"
-      ) {
+      // Linear webhook endpoint - receive events from Linear (issue updates, agent events, etc.)
+      if (pathname === "/api/webhook/linear") {
         // IP allowlist check - only Linear's servers can call this endpoint
-        if (!isAllowedIp(clientIp, config.linear.webhookIps)) {
+        if (!isAllowedIp(clientIp, config.linearWebhookIps)) {
           log.warn("Webhook request from unauthorized IP", {
             clientIp,
-            allowedIps: config.linear.webhookIps,
+            allowedIps: config.linearWebhookIps,
           });
           return respond(new Response("Forbidden", { status: 403 }));
         }
@@ -230,11 +224,11 @@ function createServer(
         return respond(
           await handleWebhook(
             request,
-            config.linear.webhookSecret,
+            config.linearWebhookSecret,
             tokenStore,
             dispatcher,
             undefined, // statusPosterFactory
-            config.linear.organizationId, // only accept webhooks from this org
+            config.linearOrganizationId, // only accept webhooks from this org
           ),
         );
       }
@@ -251,7 +245,7 @@ function createServer(
  */
 function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
   const log = Log.create({ service: "token-refresh" });
-  const organizationId = config.linear.organizationId;
+  const organizationId = config.linearOrganizationId;
   if (!organizationId) {
     log.info(
       "Skipping proactive token refresh (LINEAR_ORGANIZATION_ID not set)",
@@ -259,8 +253,8 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
     return;
   }
   const oauthConfig: OAuthConfig = {
-    clientId: config.linear.clientId,
-    clientSecret: config.linear.clientSecret,
+    clientId: config.linearClientId,
+    clientSecret: config.linearClientSecret,
   };
 
   const REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1000;
@@ -280,33 +274,6 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
   setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
 }
 
-async function validateStoreFile(
-  filePath: string,
-  log: ReturnType<typeof Log.create>,
-): Promise<void> {
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) {
-    return;
-  }
-
-  const result = await Result.tryPromise({
-    try: async () => {
-      const json: unknown = await file.json();
-      parseStoreData(json);
-    },
-    catch: (e) => (e instanceof Error ? e.message : String(e)),
-  });
-
-  if (Result.isError(result)) {
-    log.warn("Invalid shared store file detected", {
-      dataPath: filePath,
-      error: result.error,
-      recovery:
-        "Fix/restore store.json, restart server, then re-auth Linear if token data was lost.",
-    });
-  }
-}
-
 /**
  * Main entry point
  */
@@ -318,23 +285,15 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const config = loadConfig();
 
   log.info("Configuration loaded", {
-    port: config.port,
-    publicHostname: config.publicHostname,
-    opencodeUrl: config.opencode.url,
+    port: config.webhookServerPort,
+    publicHostname: config.webhookServerPublicHostname,
+    opencodeUrl: config.opencodeServerUrl,
     projectsPath: config.projectsPath,
   });
 
-  // Initialize storage
-  const dataDir = getDataDir();
-  const dataPath = join(dataDir, "store.json");
-
-  const kv = new FileStore(dataPath);
+  const kv = new FileStore();
   const tokenStore = new FileTokenStore(kv);
   const sessionRepository = new FileSessionRepository(kv);
-
-  log.info("Storage initialized", { dataPath });
-
-  await validateStoreFile(dataPath, log);
 
   // Start proactive token refresh so the plugin always has a valid token
   startTokenRefreshTimer(config, tokenStore);
@@ -349,23 +308,23 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   // Start server
   const server = createServer(config, kv, tokenStore, dispatcher);
 
-  const workerUrl = getWorkerUrl(config);
+  const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;
   log.info("Server started", {
-    port: config.port,
-    workerUrl,
-    webhookUrl: `${workerUrl}/api/webhook/linear`,
-    oauthUrl: `${workerUrl}/api/oauth/authorize`,
+    port: config.webhookServerPort,
+    webhookServerUrl,
+    webhookUrl: `${webhookServerUrl}/api/webhook/linear`,
+    oauthUrl: `${webhookServerUrl}/api/oauth/authorize`,
   });
 
   // Banner output - use process.stdout directly for multi-line
   process.stdout.write(`
 Linear OpenCode Agent (Local) running!
 
-  Local:    http://localhost:${config.port}
-  Public:   ${workerUrl}
+  Local:    http://localhost:${config.webhookServerPort}
+  Public:   ${webhookServerUrl}
 
-  Webhook URL: ${workerUrl}/api/webhook/linear
-  OAuth URL:   ${workerUrl}/api/oauth/authorize
+  Webhook URL: ${webhookServerUrl}/api/webhook/linear
+  OAuth URL:   ${webhookServerUrl}/api/oauth/authorize
 
 Make sure OpenCode is running: opencode serve
 `);
