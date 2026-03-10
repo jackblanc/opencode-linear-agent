@@ -5,3 +5,4 @@ build
 *.lock
 bun.lock
 worker-configuration.d.ts
+.opencode
