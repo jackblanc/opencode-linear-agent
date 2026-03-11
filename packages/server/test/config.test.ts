@@ -73,4 +73,30 @@ describe("loadConfig", () => {
       "Failed to resolve XDG config path. Set HOME or XDG_CONFIG_HOME.",
     );
   });
+
+  test("loads config with only XDG_CONFIG_HOME set", async () => {
+    const configRoot = join(TEST_DIR, "config-only-root");
+    const configDir = join(configRoot, "opencode-linear-agent");
+    const configPath = join(configDir, "config.json");
+
+    await mkdir(configDir, { recursive: true });
+    await Bun.write(
+      configPath,
+      JSON.stringify({
+        webhookServerPublicHostname: "example.com",
+        linearClientId: "client",
+        linearClientSecret: "secret",
+        linearWebhookSecret: "webhook",
+        projectsPath: "/tmp/projects",
+      }),
+    );
+
+    const config = loadConfig({
+      env: {
+        XDG_CONFIG_HOME: configRoot,
+      },
+    });
+
+    expect(config.projectsPath).toBe("/tmp/projects");
+  });
 });

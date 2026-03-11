@@ -29,7 +29,7 @@ interface AppPaths {
 
 type RootKind = "cache" | "config" | "data" | "state";
 
-function getProcessEnvironment(): PathEnvironment {
+export function getProcessEnvironment(): PathEnvironment {
   return {
     HOME: process.env.HOME,
     XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
@@ -105,29 +105,42 @@ function resolveRuntimeDir(env: PathEnvironment, stateDir: string): string {
 export function getAppPaths(
   env: PathEnvironment = getProcessEnvironment(),
 ): AppPaths {
-  const configDir = join(resolveRoot(env, "config"), APPLICATION_DIRECTORY);
-  const dataDir = join(resolveRoot(env, "data"), APPLICATION_DIRECTORY);
-  const cacheDir = join(resolveRoot(env, "cache"), APPLICATION_DIRECTORY);
-  const stateDir = join(resolveRoot(env, "state"), APPLICATION_DIRECTORY);
-  const runtimeDir = resolveRuntimeDir(env, stateDir);
-  const opencodeConfigDir = join(
-    resolveRoot(env, "config"),
-    OPENCODE_DIRECTORY,
-  );
-  const opencodePluginDir = join(opencodeConfigDir, "plugin");
-
   return {
-    configDir,
-    configFile: join(configDir, "config.json"),
-    dataDir,
-    cacheDir,
-    stateDir,
-    runtimeDir,
-    storeFile: join(stateDir, "store.json"),
-    launchdLogFile: join(stateDir, "launchd.log"),
-    launchdErrFile: join(stateDir, "launchd.err"),
-    opencodeConfigDir,
-    opencodePluginDir,
-    opencodePluginFile: join(opencodePluginDir, "linear.js"),
+    get configDir() {
+      return join(resolveRoot(env, "config"), APPLICATION_DIRECTORY);
+    },
+    get configFile() {
+      return join(this.configDir, "config.json");
+    },
+    get dataDir() {
+      return join(resolveRoot(env, "data"), APPLICATION_DIRECTORY);
+    },
+    get cacheDir() {
+      return join(resolveRoot(env, "cache"), APPLICATION_DIRECTORY);
+    },
+    get stateDir() {
+      return join(resolveRoot(env, "state"), APPLICATION_DIRECTORY);
+    },
+    get runtimeDir() {
+      return resolveRuntimeDir(env, this.stateDir);
+    },
+    get storeFile() {
+      return join(this.dataDir, "store.json");
+    },
+    get launchdLogFile() {
+      return join(this.dataDir, "launchd.log");
+    },
+    get launchdErrFile() {
+      return join(this.dataDir, "launchd.err");
+    },
+    get opencodeConfigDir() {
+      return join(resolveRoot(env, "config"), OPENCODE_DIRECTORY);
+    },
+    get opencodePluginDir() {
+      return join(this.opencodeConfigDir, "plugin");
+    },
+    get opencodePluginFile() {
+      return join(this.opencodePluginDir, "linear.js");
+    },
   };
 }

@@ -11,10 +11,16 @@ describe("getAppPaths", () => {
     expect(paths.dataDir).toBe("/tmp/home/.local/share/opencode-linear-agent");
     expect(paths.cacheDir).toBe("/tmp/home/.cache/opencode-linear-agent");
     expect(paths.storeFile).toBe(
-      "/tmp/home/.local/state/opencode-linear-agent/store.json",
+      "/tmp/home/.local/share/opencode-linear-agent/store.json",
     );
     expect(paths.runtimeDir).toBe(
       "/tmp/home/.local/state/opencode-linear-agent/runtime",
+    );
+    expect(paths.launchdLogFile).toBe(
+      "/tmp/home/.local/share/opencode-linear-agent/launchd.log",
+    );
+    expect(paths.launchdErrFile).toBe(
+      "/tmp/home/.local/share/opencode-linear-agent/launchd.err",
     );
     expect(paths.opencodePluginFile).toBe(
       "/tmp/home/.config/opencode/plugin/linear.js",
@@ -36,10 +42,25 @@ describe("getAppPaths", () => {
     expect(paths.cacheDir).toBe("/tmp/cache/opencode-linear-agent");
     expect(paths.stateDir).toBe("/tmp/state/opencode-linear-agent");
     expect(paths.runtimeDir).toBe("/tmp/runtime/opencode-linear-agent");
+    expect(paths.configFile).toBe(
+      "/tmp/config/opencode-linear-agent/config.json",
+    );
+    expect(paths.storeFile).toBe("/tmp/data/opencode-linear-agent/store.json");
+    expect(paths.launchdLogFile).toBe(
+      "/tmp/data/opencode-linear-agent/launchd.log",
+    );
+    expect(paths.launchdErrFile).toBe(
+      "/tmp/data/opencode-linear-agent/launchd.err",
+    );
+    expect(paths.opencodeConfigDir).toBe("/tmp/config/opencode");
+    expect(paths.opencodePluginDir).toBe("/tmp/config/opencode/plugin");
+    expect(paths.opencodePluginFile).toBe(
+      "/tmp/config/opencode/plugin/linear.js",
+    );
   });
 
   test("throws when config root cannot resolve", () => {
-    expect(() => getAppPaths({})).toThrow(
+    expect(() => getAppPaths({}).configFile).toThrow(
       "Failed to resolve XDG config path. Set HOME or XDG_CONFIG_HOME.",
     );
   });

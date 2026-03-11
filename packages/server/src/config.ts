@@ -1,9 +1,12 @@
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
-import { getAppPaths, type PathEnvironment } from "@opencode-linear-agent/core";
+import {
+  getAppPaths,
+  getProcessEnvironment,
+  type PathEnvironment,
+} from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -27,13 +30,6 @@ const ConfigFileSchema = z.object({
 
 export type Config = z.infer<typeof ConfigFileSchema>;
 
-function resolveHome(env: PathEnvironment): string {
-  if (env.HOME) {
-    return env.HOME;
-  }
-  return homedir();
-}
-
 function resolveProjectsPath(
   projectsPath: string,
   env: PathEnvironment,
@@ -41,7 +37,10 @@ function resolveProjectsPath(
   if (!projectsPath.startsWith("~/")) {
     return projectsPath;
   }
-  return resolve(resolveHome(env), projectsPath.slice(2));
+  if (!env.HOME) {
+    throw new Error("Failed to expand ~/ in projectsPath. Set HOME.");
+  }
+  return resolve(env.HOME, projectsPath.slice(2));
 }
 
 export interface LoadConfigOptions {
@@ -50,14 +49,7 @@ export interface LoadConfigOptions {
 }
 
 export function loadConfig(options: LoadConfigOptions = {}): Config {
-  const env = options.env ?? {
-    HOME: process.env.HOME,
-    XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
-    XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
-    XDG_DATA_HOME: process.env.XDG_DATA_HOME,
-    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
-    XDG_STATE_HOME: process.env.XDG_STATE_HOME,
-  };
+  const env = options.env ?? getProcessEnvironment();
   const configPath = options.configPath ?? getAppPaths(env).configFile;
 
   if (!existsSync(configPath)) {
