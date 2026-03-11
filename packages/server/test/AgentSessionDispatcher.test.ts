@@ -5,6 +5,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
 import {
+  LinearForbiddenError,
   OpencodeService,
   type LinearService,
   type PendingRepoSelection,
@@ -16,6 +17,7 @@ import { dispatchAgentSessionEvent } from "../src/AgentSessionDispatcher";
 const TEST_DIR = join(import.meta.dir, ".test-agent-dispatcher");
 
 interface LinearCallState {
+  activities: Array<{ sessionId: string; body: string; type: string }>;
   elicitations: Array<{
     sessionId: string;
     body: string;
@@ -113,9 +115,23 @@ function createLinear(
       confidence: 0.91,
     },
   ],
+  setIssueRepoLabel: LinearService["setIssueRepoLabel"] = async (
+    issueId,
+    labelName,
+  ) => {
+    calls.repoLabels.push({ issueId, labelName });
+    return Result.ok(undefined);
+  },
 ): LinearService {
   return {
-    postActivity: async () => Result.ok(undefined),
+    postActivity: async (sessionId, content) => {
+      calls.activities.push({
+        sessionId,
+        body: content.body ?? "",
+        type: content.type,
+      });
+      return Result.ok(undefined);
+    },
     postStageActivity: async () => Result.ok(undefined),
     postError: async (_sessionId, error) => {
       calls.errors.push(error instanceof Error ? error.message : String(error));
@@ -138,10 +154,7 @@ function createLinear(
       Result.ok(labels.map((name, i) => ({ id: `label-${i}`, name }))),
     getIssueAttachments: async () => Result.ok([]),
     getIssueRepositorySuggestions: async () => Result.ok(suggestions),
-    setIssueRepoLabel: async (issueId, labelName) => {
-      calls.repoLabels.push({ issueId, labelName });
-      return Result.ok(undefined);
-    },
+    setIssueRepoLabel,
     getIssueAgentSessionIds: async () => Result.ok([]),
     moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>
@@ -161,6 +174,7 @@ describe("dispatchAgentSessionEvent", () => {
 
   test("posts select elicitation and saves pending repo selection when suggestions exist", async () => {
     const calls: LinearCallState = {
+      activities: [],
       elicitations: [],
       errors: [],
       repoLabels: [],
@@ -199,6 +213,7 @@ describe("dispatchAgentSessionEvent", () => {
 
   test("posts actionable error when no suggestions exist", async () => {
     const calls: LinearCallState = {
+      activities: [],
       elicitations: [],
       errors: [],
       repoLabels: [],
@@ -228,6 +243,7 @@ describe("dispatchAgentSessionEvent", () => {
 
   test("uses selected repo label and starts session as created", async () => {
     const calls: LinearCallState = {
+      activities: [],
       elicitations: [],
       errors: [],
       repoLabels: [],
@@ -280,6 +296,7 @@ describe("dispatchAgentSessionEvent", () => {
 
   test("accepts freeform repo input for pending selection", async () => {
     const calls: LinearCallState = {
+      activities: [],
       elicitations: [],
       errors: [],
       repoLabels: [],
@@ -329,6 +346,7 @@ describe("dispatchAgentSessionEvent", () => {
 
   test("reuses stored repo directory for active prompted sessions", async () => {
     const calls: LinearCallState = {
+      activities: [],
       elicitations: [],
       errors: [],
       repoLabels: [],
@@ -368,5 +386,143 @@ describe("dispatchAgentSessionEvent", () => {
     ]);
     expect(calls.elicitations).toEqual([]);
     expect(calls.errors).toEqual([]);
+  });
+
+  test("continues startup when syncing selected repo label fails", async () => {
+    const calls: LinearCallState = {
+      activities: [],
+      elicitations: [],
+      errors: [],
+      repoLabels: [],
+    };
+    const repo: RepoState = {
+      state: null,
+      pendingSelection: {
+        linearSessionId: "session-1",
+        issueId: "issue-1",
+        options: [
+          {
+            label: "opencode-linear-agent",
+            labelValue: "repo:opencode-linear-agent",
+            aliases: ["repo:opencode-linear-agent", "opencode-linear-agent"],
+          },
+        ],
+        promptContext: "<issue>saved</issue>",
+        createdAt: Date.now(),
+      },
+      savedSelections: [],
+      deletedSelections: [],
+    };
+    const processed: string[] = [];
+
+    await dispatchAgentSessionEvent(
+      createEvent("prompted", "repo:opencode-linear-agent"),
+      createLinear([], calls, undefined, async (issueId, labelName) => {
+        calls.repoLabels.push({ issueId, labelName });
+        return Result.err(
+          new LinearForbiddenError({
+            resource: "issue label",
+            action: "update",
+          }),
+        );
+      }),
+      createOpencode(),
+      createSessionRepository(repo),
+      {
+        organizationId: "org-1",
+        projectsPath: TEST_DIR,
+      },
+      async (_event, repoPath) => {
+        processed.push(repoPath);
+      },
+    );
+
+    expect(calls.repoLabels).toEqual([
+      { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
+    ]);
+    expect(repo.deletedSelections).toEqual(["session-1"]);
+    expect(processed).toEqual([join(TEST_DIR, "opencode-linear-agent")]);
+    expect(calls.errors).toEqual([]);
+    expect(calls.activities).toEqual([
+      {
+        sessionId: "session-1",
+        type: "response",
+        body: expect.stringContaining(
+          "couldn't sync issue repo label to Linear",
+        ),
+      },
+    ]);
+  });
+
+  test("keeps pending selection when startup fails after label sync warning", async () => {
+    const calls: LinearCallState = {
+      activities: [],
+      elicitations: [],
+      errors: [],
+      repoLabels: [],
+    };
+    const repo: RepoState = {
+      state: null,
+      pendingSelection: {
+        linearSessionId: "session-1",
+        issueId: "issue-1",
+        options: [
+          {
+            label: "opencode-linear-agent",
+            labelValue: "repo:opencode-linear-agent",
+            aliases: ["repo:opencode-linear-agent", "opencode-linear-agent"],
+          },
+        ],
+        promptContext: "<issue>saved</issue>",
+        createdAt: Date.now(),
+      },
+      savedSelections: [],
+      deletedSelections: [],
+    };
+
+    const err = await dispatchAgentSessionEvent(
+      createEvent("prompted", "repo:opencode-linear-agent"),
+      createLinear([], calls, undefined, async (issueId, labelName) => {
+        calls.repoLabels.push({ issueId, labelName });
+        return Result.err(
+          new LinearForbiddenError({
+            resource: "issue label",
+            action: "update",
+          }),
+        );
+      }),
+      createOpencode(),
+      createSessionRepository(repo),
+      {
+        organizationId: "org-1",
+        projectsPath: TEST_DIR,
+      },
+      async () => {
+        throw new Error("startup failed");
+      },
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(Error);
+    if (err instanceof Error) {
+      expect(err.message).toBe("startup failed");
+    }
+
+    expect(calls.repoLabels).toEqual([
+      { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
+    ]);
+    expect(repo.pendingSelection?.issueId).toBe("issue-1");
+    expect(repo.deletedSelections).toEqual([]);
+    expect(calls.activities).toEqual([
+      {
+        sessionId: "session-1",
+        type: "response",
+        body: expect.stringContaining(
+          "couldn't sync issue repo label to Linear",
+        ),
+      },
+    ]);
   });
 });

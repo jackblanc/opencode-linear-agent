@@ -2,6 +2,7 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
   LinearEventProcessor,
+  LinearForbiddenError,
   Log,
   findRepoLabel,
   parseRepoLabel,
@@ -402,22 +403,6 @@ async function handleRepoSelectionPrompt(
     return;
   }
 
-  const setLabelResult = await linear.setIssueRepoLabel(
-    pendingSelection.issueId,
-    selectedLabel,
-  );
-  if (Result.isError(setLabelResult)) {
-    log.error("Failed to set selected repo label", {
-      labelValue: selectedLabel,
-      error: setLabelResult.error.message,
-      errorType: setLabelResult.error._tag,
-    });
-    await linear.postError(linearSessionId, setLabelResult.error);
-    return;
-  }
-
-  await sessionRepository.deletePendingRepoSelection(linearSessionId);
-
   const parsed = findRepoLabel([{ name: selectedLabel }]);
   if (parsed.status !== "valid") {
     await linear.postError(
@@ -425,6 +410,36 @@ async function handleRepoSelectionPrompt(
       new Error(`Invalid repo label selected: ${selectedLabel}`),
     );
     return;
+  }
+
+  const setLabelResult = await linear.setIssueRepoLabel(
+    pendingSelection.issueId,
+    selectedLabel,
+  );
+  if (Result.isError(setLabelResult)) {
+    const noteBody =
+      setLabelResult.error instanceof LinearForbiddenError
+        ? `Warning: couldn't sync issue repo label to Linear because this agent can't update labels, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed.`
+        : `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`;
+
+    log.error("Failed to set selected repo label", {
+      labelValue: selectedLabel,
+      error: setLabelResult.error.message,
+      errorType: setLabelResult.error._tag,
+    });
+
+    const note = await linear.postActivity(linearSessionId, {
+      type: "response",
+      body: noteBody,
+    });
+
+    if (Result.isError(note)) {
+      log.warn("Failed to post repo label sync warning", {
+        labelValue: selectedLabel,
+        error: note.error.message,
+        errorType: note.error._tag,
+      });
+    }
   }
 
   await processWithRepo(
@@ -436,6 +451,8 @@ async function handleRepoSelectionPrompt(
     config,
     processWithResolvedRepo,
   );
+
+  await sessionRepository.deletePendingRepoSelection(linearSessionId);
 }
 
 export async function dispatchAgentSessionEvent(
