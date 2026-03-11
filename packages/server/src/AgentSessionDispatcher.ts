@@ -402,6 +402,17 @@ async function handleRepoSelectionPrompt(
     return;
   }
 
+  const parsed = findRepoLabel([{ name: selectedLabel }]);
+  if (parsed.status !== "valid") {
+    await linear.postError(
+      linearSessionId,
+      new Error(`Invalid repo label selected: ${selectedLabel}`),
+    );
+    return;
+  }
+
+  await sessionRepository.deletePendingRepoSelection(linearSessionId);
+
   const setLabelResult = await linear.setIssueRepoLabel(
     pendingSelection.issueId,
     selectedLabel,
@@ -412,19 +423,19 @@ async function handleRepoSelectionPrompt(
       error: setLabelResult.error.message,
       errorType: setLabelResult.error._tag,
     });
-    await linear.postError(linearSessionId, setLabelResult.error);
-    return;
-  }
 
-  await sessionRepository.deletePendingRepoSelection(linearSessionId);
+    const note = await linear.postActivity(linearSessionId, {
+      type: "response",
+      body: `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`,
+    });
 
-  const parsed = findRepoLabel([{ name: selectedLabel }]);
-  if (parsed.status !== "valid") {
-    await linear.postError(
-      linearSessionId,
-      new Error(`Invalid repo label selected: ${selectedLabel}`),
-    );
-    return;
+    if (Result.isError(note)) {
+      log.warn("Failed to post repo label sync warning", {
+        labelValue: selectedLabel,
+        error: note.error.message,
+        errorType: note.error._tag,
+      });
+    }
   }
 
   await processWithRepo(
