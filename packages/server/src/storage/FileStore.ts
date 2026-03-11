@@ -15,7 +15,7 @@
 import { mkdir, writeFile, readFile, exists } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
-  getAppPaths,
+  getStorePath,
   parseStoreData,
   type KeyValueStore,
   type StoreData,
@@ -31,7 +31,7 @@ export class FileStore implements KeyValueStore {
   private filePath: string;
 
   constructor() {
-    this.filePath = getAppPaths().storeFile;
+    this.filePath = getStorePath();
   }
 
   /**

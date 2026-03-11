@@ -11,9 +11,9 @@ import { open, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Result } from "better-result";
 import {
-  getAppPaths,
+  getStorePath,
   parseStoreData,
-  type PathEnvironment,
+  type AppPathOptions,
   type StoreData,
   type PendingQuestion,
   type PendingPermission,
@@ -30,8 +30,8 @@ export interface LinearContext {
  * Both Docker (via bind mount) and host use the same path.
  * Can be overridden in tests via setStorePath().
  */
-export function getDefaultStorePath(env?: PathEnvironment): string {
-  return getAppPaths(env).storeFile;
+export function getDefaultStorePath(options?: AppPathOptions): string {
+  return getStorePath(options);
 }
 
 let storePath = getDefaultStorePath();

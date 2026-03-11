@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { loadConfig } from "../src/config";
 
 const TEST_DIR = join(import.meta.dir, ".test-config");
@@ -16,8 +17,7 @@ afterEach(async () => {
 
 describe("loadConfig", () => {
   test("loads config from shared default path", async () => {
-    const home = join(TEST_DIR, "home");
-    const configDir = join(home, ".config", "opencode-linear-agent");
+    const configDir = join(TEST_DIR, "config-home", "opencode-linear-agent");
     const configPath = join(configDir, "config.json");
 
     await mkdir(configDir, { recursive: true });
@@ -34,15 +34,14 @@ describe("loadConfig", () => {
       }),
     );
 
-    const config = loadConfig({ env: { HOME: home } });
+    const config = loadConfig({ configPath });
 
-    expect(config.projectsPath).toBe(join(home, "projects"));
+    expect(config.projectsPath).toBe(resolve(homedir(), "projects"));
     expect(config.linearWebhookIps).toHaveLength(3);
   });
 
-  test("prefers XDG_CONFIG_HOME override", async () => {
-    const configRoot = join(TEST_DIR, "config-root");
-    const configDir = join(configRoot, "opencode-linear-agent");
+  test("loads explicit config path", async () => {
+    const configDir = join(TEST_DIR, "config-root", "opencode-linear-agent");
     const configPath = join(configDir, "config.json");
 
     await mkdir(configDir, { recursive: true });
@@ -57,46 +56,17 @@ describe("loadConfig", () => {
       }),
     );
 
-    const config = loadConfig({
-      env: {
-        HOME: "/unused-home",
-        XDG_CONFIG_HOME: configRoot,
-      },
-    });
+    const config = loadConfig({ configPath });
 
     expect(config.webhookServerPort).toBe(3210);
     expect(config.projectsPath).toBe("/tmp/projects");
   });
 
-  test("fails clearly when config root cannot resolve", () => {
-    expect(() => loadConfig({ env: {} })).toThrow(
-      "Failed to resolve XDG config path. Set HOME or XDG_CONFIG_HOME.",
+  test("fails clearly when config file is missing", () => {
+    const configPath = join(TEST_DIR, "missing.json");
+
+    expect(() => loadConfig({ configPath })).toThrow(
+      `Config file not found at ${configPath}. Please create a config file with the necessary configuration values.`,
     );
-  });
-
-  test("loads config with only XDG_CONFIG_HOME set", async () => {
-    const configRoot = join(TEST_DIR, "config-only-root");
-    const configDir = join(configRoot, "opencode-linear-agent");
-    const configPath = join(configDir, "config.json");
-
-    await mkdir(configDir, { recursive: true });
-    await Bun.write(
-      configPath,
-      JSON.stringify({
-        webhookServerPublicHostname: "example.com",
-        linearClientId: "client",
-        linearClientSecret: "secret",
-        linearWebhookSecret: "webhook",
-        projectsPath: "/tmp/projects",
-      }),
-    );
-
-    const config = loadConfig({
-      env: {
-        XDG_CONFIG_HOME: configRoot,
-      },
-    });
-
-    expect(config.projectsPath).toBe("/tmp/projects");
   });
 });

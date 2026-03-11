@@ -1,12 +1,9 @@
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
-import {
-  getAppPaths,
-  getProcessEnvironment,
-  type PathEnvironment,
-} from "@opencode-linear-agent/core";
+import { getConfigPath } from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -30,27 +27,19 @@ const ConfigFileSchema = z.object({
 
 export type Config = z.infer<typeof ConfigFileSchema>;
 
-function resolveProjectsPath(
-  projectsPath: string,
-  env: PathEnvironment,
-): string {
+function resolveProjectsPath(projectsPath: string): string {
   if (!projectsPath.startsWith("~/")) {
     return projectsPath;
   }
-  if (!env.HOME) {
-    throw new Error("Failed to expand ~/ in projectsPath. Set HOME.");
-  }
-  return resolve(env.HOME, projectsPath.slice(2));
+  return resolve(homedir(), projectsPath.slice(2));
 }
 
 export interface LoadConfigOptions {
   configPath?: string;
-  env?: PathEnvironment;
 }
 
 export function loadConfig(options: LoadConfigOptions = {}): Config {
-  const env = options.env ?? getProcessEnvironment();
-  const configPath = options.configPath ?? getAppPaths(env).configFile;
+  const configPath = options.configPath ?? getConfigPath();
 
   if (!existsSync(configPath)) {
     throw new Error(
@@ -79,6 +68,6 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
 
   return {
     ...result.data,
-    projectsPath: resolveProjectsPath(result.data.projectsPath, env),
+    projectsPath: resolveProjectsPath(result.data.projectsPath),
   };
 }

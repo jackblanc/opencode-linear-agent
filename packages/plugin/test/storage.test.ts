@@ -14,7 +14,7 @@ import {
   type PendingQuestion,
   type PendingPermission,
 } from "../src/storage";
-import { getAppPaths } from "@opencode-linear-agent/core";
+import { getStorePath } from "@opencode-linear-agent/core";
 
 const TEST_DIR = join(import.meta.dir, ".test-storage");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
@@ -31,12 +31,11 @@ describe("storage", () => {
 
   describe("readAccessToken", () => {
     test("default store path matches shared helper", () => {
-      const env = {
-        HOME: "/tmp/home",
-        XDG_STATE_HOME: "/tmp/state",
+      const options = {
+        dataHome: "/tmp/data",
       };
 
-      expect(getDefaultStorePath(env)).toBe(getAppPaths(env).storeFile);
+      expect(getDefaultStorePath(options)).toBe(getStorePath(options));
     });
 
     test("should return token when it exists", async () => {

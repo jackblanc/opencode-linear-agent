@@ -6,7 +6,7 @@ import { LinearClient } from "@linear/sdk";
 import type { KeyValueStore, TokenStore, RefreshTokenData } from "../storage";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../logger";
-import { getAppPaths } from "../paths";
+import { getConfigPath } from "../paths";
 import {
   parseTokenResponse as parseTokenResponseJson,
   type TokenResponse,
@@ -80,7 +80,7 @@ async function exchangeCodeForToken(
  * Generate the success HTML page after OAuth callback
  */
 function generateSuccessHtml(result: OAuthCallbackResult): string {
-  const configPath = getAppPaths().configFile;
+  const configPath = getConfigPath();
   return `
 <!DOCTYPE html>
 <html>

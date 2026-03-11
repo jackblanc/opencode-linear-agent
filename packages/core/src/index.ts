@@ -72,8 +72,8 @@ export { LinearForbiddenError } from "./errors/linear";
 export type { LinearServiceError } from "./errors/linear";
 
 // Paths
-export { getAppPaths, getProcessEnvironment } from "./paths";
-export type { PathEnvironment } from "./paths";
+export { getConfigPath, getStorePath } from "./paths";
+export type { AppPathOptions } from "./paths";
 
 // Zod schemas for runtime validation
 export { parseStoreData } from "./schemas";
