@@ -1,6 +1,14 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": ["AGENTS.md"],
+  "permission": {
+    "external_directory": {
+      "~/projects/opencode/**": "allow",
+    },
+    "edit": {
+      "~/projects/opencode/**": "ask",
+    },
+  },
   // "mcp": {
   //   "linear": {
   //     "type": "remote",

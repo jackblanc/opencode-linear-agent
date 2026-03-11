@@ -230,7 +230,9 @@ export const issueTools = {
         .string()
         .optional()
         .nullable()
-        .describe("Delegate agent name, user ID, or 'me'. Null to remove"),
+        .describe(
+          "Delegate agent name, user ID, or 'me'. Warning: setting this starts agent execution immediately. Only set when the user explicitly wants to start an OpenCode session. Null to remove",
+        ),
       milestone: z
         .string()
         .optional()
@@ -379,7 +381,9 @@ export const issueTools = {
       delegate: z
         .string()
         .optional()
-        .describe("Delegate agent name, user ID, or 'me'"),
+        .describe(
+          "Delegate agent name, user ID, or 'me'. Warning: setting this starts agent execution immediately. Only set when the user explicitly wants to start an OpenCode session",
+        ),
       project: z.string().optional().describe("Project name or ID"),
       cycle: z.string().optional().describe("Cycle name, number, or ID"),
       estimate: z.number().optional().describe("Issue estimate value"),
