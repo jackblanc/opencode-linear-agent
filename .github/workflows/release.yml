@@ -8,6 +8,7 @@ on:
       - "packages/**"
       - "package.json"
       - "bun.lock"
+      - ".github/workflows/release.yml"
     tags:
       - "v*"
 
@@ -41,19 +42,21 @@ jobs:
   build-server:
     name: Build server (${{ matrix.suffix }})
     needs: validate
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          - runner: macos-15-intel
+            target: bun-darwin-x64
+            suffix: darwin-x64
           - runner: ubuntu-latest
             target: bun-linux-x64
             suffix: linux-x64
           - runner: ubuntu-latest
             target: bun-linux-arm64
             suffix: linux-arm64
-          - runner: macos-14
+          - runner: macos-15
             target: bun-darwin-arm64
             suffix: darwin-arm64
     steps:
@@ -62,12 +65,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Build standalone server binary
-        run: mkdir -p dist && bun build ./packages/server/src/index.ts --compile --target=${{ matrix.target }} --outfile=dist/opencode-linear-agent-server-${{ matrix.suffix }}
+        run: mkdir -p dist && bun build ./packages/server/src/index.ts --compile --target=${{ matrix.target }} --outfile=dist/opencode-linear-agent-${{ matrix.suffix }}
       - name: Upload server binary
         uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.suffix }}
-          path: dist/opencode-linear-agent-server-${{ matrix.suffix }}
+          path: dist/opencode-linear-agent-${{ matrix.suffix }}
 
   publish-plugin-stable:
     name: Publish plugin stable
@@ -89,24 +92,75 @@ jobs:
         working-directory: packages/plugin
         run: npm publish --access public --tag stable --provenance
 
+  package-server-stable:
+    name: Prepare server npm packages stable
+    needs: [validate, build-server]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages/server/dist
+          pattern: server-*
+          merge-multiple: true
+      - name: Generate npm packages
+        run: SERVER_NPM_VERSION="${GITHUB_REF_NAME#v}" bun run --filter @opencode-linear-agent/server generate:npm
+      - name: Upload npm packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-server-stable
+          path: packages/server/dist/npm
+
+  publish-runtime-stable:
+    name: Publish runtime stable (${{ matrix.package }})
+    needs: package-server-stable
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - server-darwin-x64
+          - server-darwin-arm64
+          - server-linux-arm64
+          - server-linux-x64
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-server-stable
+          path: dist/npm
+      - name: Publish runtime package (stable)
+        working-directory: dist/npm/@opencode-linear-agent/${{ matrix.package }}
+        run: npm publish --access public --tag stable --provenance
+
   publish-server-stable:
     name: Publish server stable
-    needs: validate
+    needs: [package-server-stable, publish-runtime-stable]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-server-stable
+          path: dist/npm
       - name: Publish server (stable)
-        working-directory: packages/server
+        working-directory: dist/npm/@opencode-linear-agent/server
         run: npm publish --access public --tag stable --provenance
 
   publish-plugin-latest:
@@ -135,30 +189,78 @@ jobs:
         working-directory: packages/plugin
         run: npm publish --access public --tag latest --provenance
 
+  package-server-latest:
+    name: Prepare server npm packages latest
+    needs: [validate, build-server]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages/server/dist
+          pattern: server-*
+          merge-multiple: true
+      - name: Generate npm packages
+        run: |
+          base="$(node -p 'require("./packages/server/package.json").version.split("-")[0]')"
+          v="${base}-master.${GITHUB_RUN_NUMBER}"
+          SERVER_NPM_VERSION="$v" bun run --filter @opencode-linear-agent/server generate:npm
+      - name: Upload npm packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-server-latest
+          path: packages/server/dist/npm
+
+  publish-runtime-latest:
+    name: Publish runtime latest (${{ matrix.package }})
+    needs: package-server-latest
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - server-darwin-x64
+          - server-darwin-arm64
+          - server-linux-arm64
+          - server-linux-x64
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-server-latest
+          path: dist/npm
+      - name: Publish runtime package (latest)
+        working-directory: dist/npm/@opencode-linear-agent/${{ matrix.package }}
+        run: npm publish --access public --tag latest --provenance
+
   publish-server-latest:
     name: Publish server latest
-    needs: validate
+    needs: [package-server-latest, publish-runtime-latest]
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-      - name: Set canary version
-        working-directory: packages/server
-        run: |
-          base="$(node -p 'require("./package.json").version.split("-")[0]')"
-          v="${base}-master.${GITHUB_RUN_NUMBER}"
-          node -e "const fs=require('node:fs'); const p='package.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.version='${v}'; fs.writeFileSync(p, JSON.stringify(j, null, 2)+'\\n');"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-server-latest
+          path: dist/npm
       - name: Publish server (latest)
-        working-directory: packages/server
+        working-directory: dist/npm/@opencode-linear-agent/server
         run: npm publish --access public --tag latest --provenance
 
   github-release:
@@ -175,10 +277,10 @@ jobs:
           pattern: server-*
           merge-multiple: true
       - name: Generate checksums
-        run: cd dist && sha256sum opencode-linear-agent-server-* > SHA256SUMS
+        run: cd dist && sha256sum opencode-linear-agent-* > SHA256SUMS
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/opencode-linear-agent-server-*
+            dist/opencode-linear-agent-*
             dist/SHA256SUMS

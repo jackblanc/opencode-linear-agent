@@ -1,0 +1,77 @@
+#!/usr/bin/env sh
+set -eu
+
+PRG="$0"
+while [ -h "$PRG" ]; do
+  LINK=$(readlink "$PRG")
+  case "$LINK" in
+    /*) PRG="$LINK" ;;
+    *) PRG="$(dirname "$PRG")/$LINK" ;;
+  esac
+done
+
+DIR=$(CDPATH= cd -- "$(dirname -- "$PRG")" && pwd)
+ROOT=$(CDPATH= cd -- "$DIR/.." && pwd)
+
+PLATFORM=$(uname -s)
+ARCH=$(uname -m)
+
+case "$PLATFORM" in
+  Darwin) PLATFORM="darwin" ;;
+  Linux) PLATFORM="linux" ;;
+  *) PLATFORM=$(printf '%s' "$PLATFORM" | tr '[:upper:]' '[:lower:]') ;;
+esac
+
+case "$ARCH" in
+  arm64|aarch64) ARCH="arm64" ;;
+  x86_64|amd64) ARCH="x64" ;;
+esac
+
+PACKAGE=""
+case "$PLATFORM-$ARCH" in
+  darwin-arm64) PACKAGE="@opencode-linear-agent/server-darwin-arm64" ;;
+  darwin-x64) PACKAGE="@opencode-linear-agent/server-darwin-x64" ;;
+  linux-arm64) PACKAGE="@opencode-linear-agent/server-linux-arm64" ;;
+  linux-x64) PACKAGE="@opencode-linear-agent/server-linux-x64" ;;
+esac
+
+if [ -z "$PACKAGE" ]; then
+  printf 'Unsupported platform for opencode-linear-agent: %s-%s. Supported: darwin-arm64, darwin-x64, linux-arm64, linux-x64.\n' "$PLATFORM" "$ARCH" >&2
+  exit 1
+fi
+
+CACHE="$ROOT/bin/.opencode-linear-agent-$PLATFORM-$ARCH"
+if [ -x "$CACHE" ]; then
+  exec "$CACHE" "$@"
+fi
+
+find_binary() {
+  search_root="$ROOT"
+  while :; do
+    nested="$search_root/node_modules/${PACKAGE%/*}/${PACKAGE#*/}/bin/opencode-linear-agent"
+    if [ -x "$nested" ]; then
+      printf '%s\n' "$nested"
+      return 0
+    fi
+
+    sibling="$(dirname "$search_root")/${PACKAGE#*/}/bin/opencode-linear-agent"
+    if [ -x "$sibling" ]; then
+      printf '%s\n' "$sibling"
+      return 0
+    fi
+
+    parent=$(dirname "$search_root")
+    if [ "$parent" = "$search_root" ]; then
+      return 1
+    fi
+    search_root="$parent"
+  done
+}
+
+BINARY=$(find_binary || true)
+if [ -z "$BINARY" ]; then
+  printf 'Missing runtime package %s. Reinstall @opencode-linear-agent/server on a supported platform.\n' "$PACKAGE" >&2
+  exit 1
+fi
+
+exec "$BINARY" "$@"

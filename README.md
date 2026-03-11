@@ -17,10 +17,11 @@ Self-hosted Linear coding agent powered by OpenCode.
 
 ## Installation
 
+Global npm install pulls a native platform binary. Bun and Node are not required at runtime.
+
 ```bash
 # Install webhook server
-bun add -g @opencode-linear-agent/server
-# or: npm i -g @opencode-linear-agent/server
+npm i -g @opencode-linear-agent/server
 ```
 
 Add plugin to OpenCode config (`~/.config/opencode/opencode.json`):
@@ -39,8 +40,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
 1. Install server from npm:
 
    ```bash
-   bun add -g @opencode-linear-agent/server
-   # or: npm i -g @opencode-linear-agent/server
+   npm i -g @opencode-linear-agent/server
    ```
 
 2. Create configuration file at `~/.config/opencode-linear-agent/config.json`:
@@ -70,7 +70,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
 4. Start webhook server binary:
 
    ```bash
-   ${XDG_BIN_DIR:-$HOME/.local/bin}/opencode-linear-agent-server
+   opencode-linear-agent
    ```
 
 5. Complete setup:
@@ -169,7 +169,7 @@ Linear Webhooks
 Ingress Tunnel (Cloudflare Tunnel / ngrok / Tailscale Funnel)
       |
       v
-Bun HTTP Server (@opencode-linear-agent/server, :3210)
+Native Server Binary (@opencode-linear-agent/server, :3210)
       |                              |
       v                              v
 Linear API                    OpenCode Server (:4096)
@@ -179,7 +179,7 @@ Linear API                    OpenCode Server (:4096)
 
 | Service         | Type   | Purpose                                  | Port           |
 | --------------- | ------ | ---------------------------------------- | -------------- |
-| webhook server  | Bun    | Handles webhooks + session orchestration | 3210 (default) |
+| webhook server  | Native | Handles webhooks + session orchestration | 3210 (default) |
 | ingress tunnel  | Native | Exposes local webhook endpoint           | -              |
 | opencode server | Native | Agent execution backend                  | 4096           |
 
@@ -198,7 +198,7 @@ Create `~/Library/LaunchAgents/com.opencode-linear-agent.server.plist`:
   <string>com.opencode-linear-agent.server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/you/.local/bin/opencode-linear-agent-server</string>
+    <string>/Users/you/.local/bin/opencode-linear-agent</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -230,7 +230,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/opencode-linear-agent-server
+ExecStart=%h/.local/bin/opencode-linear-agent
 Restart=always
 RestartSec=5
 
@@ -292,6 +292,7 @@ opencode-linear-agent/
 - Tagged releases (`v*`) publish to npm `stable` via `.github/workflows/release.yml`.
 - Plugin package: `@opencode-linear-agent/plugin`.
 - Server package: `@opencode-linear-agent/server`.
+- Server npm installs pull a platform binary with no Bun runtime dependency.
 - Server standalone binaries are also published via GitHub Releases.
 
 ## References
