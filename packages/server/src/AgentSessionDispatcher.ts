@@ -2,6 +2,7 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import {
   LinearEventProcessor,
+  LinearForbiddenError,
   Log,
   findRepoLabel,
   parseRepoLabel,
@@ -411,13 +412,16 @@ async function handleRepoSelectionPrompt(
     return;
   }
 
-  await sessionRepository.deletePendingRepoSelection(linearSessionId);
-
   const setLabelResult = await linear.setIssueRepoLabel(
     pendingSelection.issueId,
     selectedLabel,
   );
   if (Result.isError(setLabelResult)) {
+    const noteBody =
+      setLabelResult.error instanceof LinearForbiddenError
+        ? `Warning: couldn't sync issue repo label to Linear because this agent can't update labels, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed.`
+        : `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`;
+
     log.error("Failed to set selected repo label", {
       labelValue: selectedLabel,
       error: setLabelResult.error.message,
@@ -426,7 +430,7 @@ async function handleRepoSelectionPrompt(
 
     const note = await linear.postActivity(linearSessionId, {
       type: "response",
-      body: `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`,
+      body: noteBody,
     });
 
     if (Result.isError(note)) {
@@ -447,6 +451,8 @@ async function handleRepoSelectionPrompt(
     config,
     processWithResolvedRepo,
   );
+
+  await sessionRepository.deletePendingRepoSelection(linearSessionId);
 }
 
 export async function dispatchAgentSessionEvent(

@@ -68,6 +68,7 @@ export { handleWebhook } from "./webhook";
 export { Log } from "./logger";
 
 // Errors
+export { LinearForbiddenError } from "./errors/linear";
 export type { LinearServiceError } from "./errors/linear";
 
 // Zod schemas for runtime validation

@@ -5,13 +5,13 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
 import {
+  LinearForbiddenError,
   OpencodeService,
   type LinearService,
   type PendingRepoSelection,
   type SessionRepository,
   type SessionState,
 } from "@opencode-linear-agent/core";
-import { LinearForbiddenError } from "../../core/src/errors/linear";
 import { dispatchAgentSessionEvent } from "../src/AgentSessionDispatcher";
 
 const TEST_DIR = join(import.meta.dir, ".test-agent-dispatcher");
@@ -437,9 +437,84 @@ describe("dispatchAgentSessionEvent", () => {
       },
     );
 
+    expect(calls.repoLabels).toEqual([
+      { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
+    ]);
     expect(repo.deletedSelections).toEqual(["session-1"]);
     expect(processed).toEqual([join(TEST_DIR, "opencode-linear-agent")]);
     expect(calls.errors).toEqual([]);
+    expect(calls.activities).toEqual([
+      {
+        sessionId: "session-1",
+        type: "response",
+        body: expect.stringContaining(
+          "couldn't sync issue repo label to Linear",
+        ),
+      },
+    ]);
+  });
+
+  test("keeps pending selection when startup fails after label sync warning", async () => {
+    const calls: LinearCallState = {
+      activities: [],
+      elicitations: [],
+      errors: [],
+      repoLabels: [],
+    };
+    const repo: RepoState = {
+      state: null,
+      pendingSelection: {
+        linearSessionId: "session-1",
+        issueId: "issue-1",
+        options: [
+          {
+            label: "opencode-linear-agent",
+            labelValue: "repo:opencode-linear-agent",
+            aliases: ["repo:opencode-linear-agent", "opencode-linear-agent"],
+          },
+        ],
+        promptContext: "<issue>saved</issue>",
+        createdAt: Date.now(),
+      },
+      savedSelections: [],
+      deletedSelections: [],
+    };
+
+    const err = await dispatchAgentSessionEvent(
+      createEvent("prompted", "repo:opencode-linear-agent"),
+      createLinear([], calls, undefined, async (issueId, labelName) => {
+        calls.repoLabels.push({ issueId, labelName });
+        return Result.err(
+          new LinearForbiddenError({
+            resource: "issue label",
+            action: "update",
+          }),
+        );
+      }),
+      createOpencode(),
+      createSessionRepository(repo),
+      {
+        organizationId: "org-1",
+        projectsPath: TEST_DIR,
+      },
+      async () => {
+        throw new Error("startup failed");
+      },
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(Error);
+    if (err instanceof Error) {
+      expect(err.message).toBe("startup failed");
+    }
+
+    expect(calls.repoLabels).toEqual([
+      { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
+    ]);
+    expect(repo.pendingSelection?.issueId).toBe("issue-1");
+    expect(repo.deletedSelections).toEqual([]);
     expect(calls.activities).toEqual([
       {
         sessionId: "session-1",
