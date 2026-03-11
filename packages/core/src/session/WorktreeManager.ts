@@ -298,15 +298,15 @@ export class WorktreeManager {
     issue: WorktreeIssue,
     linearSessionId: string,
   ): string {
+    const shortLinearSessionId = linearSessionId.slice(0, 8).toLowerCase();
     if (issue.branchName) {
-      return `${linearSessionId}/${issue.branchName}`;
+      return `${shortLinearSessionId}-${issue.branchName}`;
     }
 
     const safeIssue = issue.identifier
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-");
-    const sessionSuffix = linearSessionId.slice(0, 8).toLowerCase();
-    return `${safeIssue}-${sessionSuffix}`;
+    return `${safeIssue}-${shortLinearSessionId}`;
   }
 
   private async validateSessionState(
