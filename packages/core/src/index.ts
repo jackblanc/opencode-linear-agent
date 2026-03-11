@@ -71,6 +71,10 @@ export { Log } from "./logger";
 export { LinearForbiddenError } from "./errors/linear";
 export type { LinearServiceError } from "./errors/linear";
 
+// Paths
+export { getAppPaths } from "./paths";
+export type { PathEnvironment } from "./paths";
+
 // Zod schemas for runtime validation
 export { parseStoreData } from "./schemas";
 export type { StoredValue, StoreData } from "./schemas";

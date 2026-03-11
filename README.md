@@ -24,7 +24,7 @@ Global npm install pulls a native platform binary. Bun and Node are not required
 npm i -g @opencode-linear-agent/server
 ```
 
-Add plugin to OpenCode config (`~/.config/opencode/opencode.json`):
+Add plugin to OpenCode config (`$XDG_CONFIG_HOME/opencode/opencode.json`, default `~/.config/opencode/opencode.json`):
 
 ```json
 {
@@ -43,7 +43,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    npm i -g @opencode-linear-agent/server
    ```
 
-2. Create configuration file at `~/.config/opencode-linear-agent/config.json`:
+2. Create configuration file at `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`):
 
    ```json
    {
@@ -89,7 +89,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    - `write`
    - `app:mentionable`
    - `app:assignable`
-4. Save values into `~/.config/opencode-linear-agent/config.json`:
+4. Save values into `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`):
    - Client ID -> `linearClientId`
    - Client Secret -> `linearClientSecret`
 
@@ -110,7 +110,7 @@ Use `organization.id` as `linearOrganizationId` if you want to restrict webhooks
 2. Set:
    - URL: `https://<public-hostname>/api/webhook/linear`
    - Events: `AgentSessionEvent` and `Issue`
-3. Copy webhook secret to `linearWebhookSecret` in `~/.config/opencode-linear-agent/config.json`
+3. Copy webhook secret to `linearWebhookSecret` in `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`)
 
 ### 3) OpenCode server
 
@@ -120,11 +120,11 @@ Run OpenCode locally so this agent can create sessions:
 opencode serve --port 4096 --hostname 127.0.0.1
 ```
 
-Set `opencodeServerUrl` to `http://localhost:4096` in `~/.config/opencode-linear-agent/config.json`.
+Set `opencodeServerUrl` to `http://localhost:4096` in `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`).
 
 ### 4) Plugin installation (required)
 
-Set plugin in `~/.config/opencode/opencode.json`:
+Set plugin in `$XDG_CONFIG_HOME/opencode/opencode.json` (default `~/.config/opencode/opencode.json`):
 
 ```json
 {
@@ -141,7 +141,7 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 
 - Plugin and webhook server are separate artifacts and separate release channels.
 - Runtime users do not need to clone this repo.
-- Current architecture expects plugin + server to share local state file when running on one machine.
+- Current architecture expects plugin + server to share local state file at `$XDG_STATE_HOME/opencode-linear-agent/store.json` (default `~/.local/state/opencode-linear-agent/store.json`) when running on one machine.
 - Split-host/cloud deployments need extra work to replace shared file-state with a network API.
 
 ## Ingress Options

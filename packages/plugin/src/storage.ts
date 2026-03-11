@@ -4,16 +4,16 @@
  * Uses the same JSON file format as the server's FileStore.
  * Implements file locking to prevent race conditions during concurrent writes.
  *
- * The store path follows XDG Base Directory specification:
- * ~/.local/share/opencode-linear-agent/store.json
+ * The store path follows the shared XDG helper.
  */
 
 import { open, mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname } from "node:path";
 import { Result } from "better-result";
 import {
+  getAppPaths,
   parseStoreData,
+  type PathEnvironment,
   type StoreData,
   type PendingQuestion,
   type PendingPermission,
@@ -30,10 +30,11 @@ export interface LinearContext {
  * Both Docker (via bind mount) and host use the same path.
  * Can be overridden in tests via setStorePath().
  */
-let storePath = join(
-  homedir(),
-  ".local/share/opencode-linear-agent/store.json",
-);
+export function getDefaultStorePath(env?: PathEnvironment): string {
+  return getAppPaths(env).storeFile;
+}
+
+let storePath = getDefaultStorePath();
 
 export function setStorePath(path: string): void {
   storePath = path;
@@ -184,11 +185,7 @@ async function readStoreSafe(
  * Write JSON data to the shared store file (assumes lock is held)
  */
 async function writeStore(filePath: string, data: StoreData): Promise<void> {
-  const lastSlash = filePath.lastIndexOf("/");
-  if (lastSlash > 0) {
-    const dir = filePath.slice(0, lastSlash);
-    await mkdir(dir, { recursive: true });
-  }
+  await mkdir(dirname(filePath), { recursive: true });
   await Bun.write(filePath, JSON.stringify(data, null, 2));
 }
 

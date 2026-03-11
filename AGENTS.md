@@ -35,13 +35,13 @@ You need two always-on services:
 
 ### Key Paths
 
-| Path                                               | Purpose                                              |
-| -------------------------------------------------- | ---------------------------------------------------- |
-| `~/.local/share/opencode-linear-agent/store.json`  | Session state, tokens, pending questions/permissions |
-| `~/.local/share/opencode-linear-agent/launchd.log` | Webhook server stdout                                |
-| `~/.local/share/opencode-linear-agent/launchd.err` | Webhook server stderr                                |
-| `~/.local/share/opencode/worktree/`                | Git worktrees created by OpenCode                    |
-| `~/.config/opencode/plugin/linear.js`              | Optional built plugin file                           |
+| Path                                                | Purpose                                              |
+| --------------------------------------------------- | ---------------------------------------------------- |
+| `$XDG_STATE_HOME/opencode-linear-agent/store.json`  | Session state, tokens, pending questions/permissions |
+| `$XDG_STATE_HOME/opencode-linear-agent/launchd.log` | Webhook server stdout                                |
+| `$XDG_STATE_HOME/opencode-linear-agent/launchd.err` | Webhook server stderr                                |
+| `~/.local/share/opencode/worktree/`                 | Git worktrees created by OpenCode                    |
+| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`        | Optional built plugin file                           |
 
 ### Plugin Development
 
@@ -50,8 +50,8 @@ You need two always-on services:
 bun run --filter @opencode-linear-agent/plugin build
 
 # Install plugin for local OpenCode
-mkdir -p ~/.config/opencode/plugin
-cp packages/plugin/dist/index.js ~/.config/opencode/plugin/linear.js
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/plugin"
+cp packages/plugin/dist/index.js "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/plugin/linear.js"
 ```
 
 Restart OpenCode after plugin changes.
@@ -243,25 +243,25 @@ if (Result.isError(activityResult)) {
 **Webhooks not triggering:**
 
 - Re-delegating to same agent does not emit a new webhook
-- Check webhook logs in `~/.local/share/opencode-linear-agent/launchd.err`
+- Check webhook logs in `$XDG_STATE_HOME/opencode-linear-agent/launchd.err` (default `~/.local/state/opencode-linear-agent/launchd.err`)
 - Verify tunnel process is running
 
 **Session not resuming:**
 
-- Check if session exists in `~/.local/share/opencode-linear-agent/store.json`
+- Check if session exists in `$XDG_STATE_HOME/opencode-linear-agent/store.json` (default `~/.local/state/opencode-linear-agent/store.json`)
 - Verify OpenCode web UI is reachable at `http://localhost:4096`
 
 ### Debugging Commands
 
 ```bash
 # Watch webhook server logs
-tail -f ~/.local/share/opencode-linear-agent/launchd.err
+tail -f "${XDG_STATE_HOME:-$HOME/.local/state}/opencode-linear-agent/launchd.err"
 
 # Check for stale OpenCode processes
 lsof -i :4096 -P -n
 
 # View pending questions/permissions
-cat ~/.local/share/opencode-linear-agent/store.json | grep -E '"question:|"permission:'
+cat "${XDG_STATE_HOME:-$HOME/.local/state}/opencode-linear-agent/store.json" | grep -E '"question:|"permission:'
 
 # Test OpenCode API directly
 curl -X POST "http://localhost:4096/experimental/worktree?directory=/path/to/repo" \

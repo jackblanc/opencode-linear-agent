@@ -13,15 +13,14 @@
  */
 
 import { mkdir, writeFile, readFile, exists } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import {
+  getAppPaths,
   parseStoreData,
   type KeyValueStore,
   type StoreData,
   type StoredValue,
 } from "@opencode-linear-agent/core";
-import { xdgData } from "xdg-basedir";
-import { APPLICATION_DIRECTORY } from "../config";
 
 /**
  * File-based KeyValueStore implementation
@@ -32,13 +31,7 @@ export class FileStore implements KeyValueStore {
   private filePath: string;
 
   constructor() {
-    if (!xdgData) {
-      throw new Error(
-        "Failed to find directory for data storage. Please ensure HOME or XDG_DATA_HOME environment variable is set.",
-      );
-    }
-    const dataDir = join(xdgData, APPLICATION_DIRECTORY, "store.json");
-    this.filePath = dataDir;
+    this.filePath = getAppPaths().storeFile;
   }
 
   /**

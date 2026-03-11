@@ -50,7 +50,6 @@
         "@opencode-ai/sdk": "catalog:",
         "@opencode-linear-agent/core": "workspace:*",
         "better-result": "catalog:",
-        "xdg-basedir": "catalog:",
         "zod": "catalog:",
       },
       "optionalDependencies": {
@@ -70,7 +69,6 @@
     "@opencode-ai/sdk": "1.2.19",
     "@types/node": "^24.3.1",
     "better-result": "^2.7.0",
-    "xdg-basedir": "^5.1.0",
     "zod": "^4.3.6",
   },
   "packages": {
@@ -273,8 +271,6 @@
     "undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "walk-up-path": ["walk-up-path@4.0.0", "", {}, "sha512-3hu+tD8YzSLGuFYtPRb48vdhKMi0KQV5sn+uWr8+7dMEq/2G/dtLrdDinkLjqq5TIbIBjYJ4Ax/n3YiaW7QM8A=="],
-
-    "xdg-basedir": ["xdg-basedir@5.1.0", "", {}, "sha512-GCPAHLvrIH13+c0SuacwvRYj2SxJXQ4kaVTT5xgL3kPrz56XxkF21IGhjSE1+W0aw7gpBWRGXLCPnPby6lSpmQ=="],
 
     "zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
 

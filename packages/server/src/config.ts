@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
-import path, { resolve } from "node:path";
+import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
-import { xdgConfig } from "xdg-basedir";
-import { existsSync, readFileSync } from "node:fs";
+import { getAppPaths, type PathEnvironment } from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -22,29 +22,44 @@ const ConfigFileSchema = z.object({
   linearWebhookIps: z.array(z.string()).min(1).default(DEFAULT_WEBHOOK_IPS),
   linearOrganizationId: z.string().optional(),
 
-  projectsPath: z
-    .string()
-    .min(1)
-    .transform((projectsPath) => {
-      if (projectsPath.startsWith("~/")) {
-        return resolve(homedir(), projectsPath.slice(2));
-      }
-      return projectsPath;
-    }),
+  projectsPath: z.string().min(1),
 });
 
 export type Config = z.infer<typeof ConfigFileSchema>;
 
-export const APPLICATION_DIRECTORY = "opencode-linear-agent";
-
-export function loadConfig(): Config {
-  if (!xdgConfig) {
-    throw new Error(
-      "Failed to find directory for config storage. Please ensure HOME or XDG_CONFIG_HOME environment variable is set.",
-    );
+function resolveHome(env: PathEnvironment): string {
+  if (env.HOME) {
+    return env.HOME;
   }
+  return homedir();
+}
 
-  const configPath = path.join(xdgConfig, APPLICATION_DIRECTORY, "config.json");
+function resolveProjectsPath(
+  projectsPath: string,
+  env: PathEnvironment,
+): string {
+  if (!projectsPath.startsWith("~/")) {
+    return projectsPath;
+  }
+  return resolve(resolveHome(env), projectsPath.slice(2));
+}
+
+export interface LoadConfigOptions {
+  configPath?: string;
+  env?: PathEnvironment;
+}
+
+export function loadConfig(options: LoadConfigOptions = {}): Config {
+  const env = options.env ?? {
+    HOME: process.env.HOME,
+    XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+    XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    XDG_DATA_HOME: process.env.XDG_DATA_HOME,
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+    XDG_STATE_HOME: process.env.XDG_STATE_HOME,
+  };
+  const configPath = options.configPath ?? getAppPaths(env).configFile;
+
   if (!existsSync(configPath)) {
     throw new Error(
       `Config file not found at ${configPath}. Please create a config file with the necessary configuration values.`,
@@ -70,5 +85,8 @@ export function loadConfig(): Config {
     throw new Error(`Invalid configuration:\n${issues}`);
   }
 
-  return result.data;
+  return {
+    ...result.data,
+    projectsPath: resolveProjectsPath(result.data.projectsPath, env),
+  };
 }
