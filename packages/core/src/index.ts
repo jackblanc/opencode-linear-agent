@@ -73,7 +73,6 @@ export type { LinearServiceError } from "./errors/linear";
 
 // Paths
 export { getConfigPath, getStorePath } from "./paths";
-export type { AppPathOptions } from "./paths";
 
 // Zod schemas for runtime validation
 export { parseStoreData } from "./schemas";

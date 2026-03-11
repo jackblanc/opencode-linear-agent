@@ -6,7 +6,6 @@ import { LinearClient } from "@linear/sdk";
 import type { KeyValueStore, TokenStore, RefreshTokenData } from "../storage";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../logger";
-import { getConfigPath } from "../paths";
 import {
   parseTokenResponse as parseTokenResponseJson,
   type TokenResponse,
@@ -80,7 +79,6 @@ async function exchangeCodeForToken(
  * Generate the success HTML page after OAuth callback
  */
 function generateSuccessHtml(result: OAuthCallbackResult): string {
-  const configPath = getConfigPath();
   return `
 <!DOCTYPE html>
 <html>
@@ -118,7 +116,7 @@ function generateSuccessHtml(result: OAuthCallbackResult): string {
     
     <h2>Next Steps:</h2>
     <ul>
-      <li><strong>Optional:</strong> set <code>linearOrganizationId</code> in <code>${configPath}</code> to restrict to one org:
+      <li><strong>Optional:</strong> set <code>linearOrganizationId</code> in <code>$XDG_CONFIG_HOME/opencode-linear-agent/config.json</code> (default <code>~/.config/opencode-linear-agent/config.json</code>) to restrict to one org:
         <br><code>${result.organizationId}</code>
       </li>
       <li>Make sure your webhook URL is configured in Linear:

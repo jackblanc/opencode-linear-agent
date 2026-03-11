@@ -3,7 +3,6 @@ import { mkdir, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
 import {
-  getDefaultStorePath,
   readAccessToken,
   readAccessTokenSafe,
   readAnyAccessTokenSafe,
@@ -14,7 +13,6 @@ import {
   type PendingQuestion,
   type PendingPermission,
 } from "../src/storage";
-import { getStorePath } from "@opencode-linear-agent/core";
 
 const TEST_DIR = join(import.meta.dir, ".test-storage");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
@@ -30,14 +28,6 @@ describe("storage", () => {
   });
 
   describe("readAccessToken", () => {
-    test("default store path matches shared helper", () => {
-      const options = {
-        dataHome: "/tmp/data",
-      };
-
-      expect(getDefaultStorePath(options)).toBe(getStorePath(options));
-    });
-
     test("should return token when it exists", async () => {
       const storeData = {
         "token:access:org123": {

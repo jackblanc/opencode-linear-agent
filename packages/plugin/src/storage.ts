@@ -13,7 +13,6 @@ import { Result } from "better-result";
 import {
   getStorePath,
   parseStoreData,
-  type AppPathOptions,
   type StoreData,
   type PendingQuestion,
   type PendingPermission,
@@ -25,16 +24,7 @@ export interface LinearContext {
   workdir: string;
 }
 
-/**
- * XDG-compliant path to the shared store file.
- * Both Docker (via bind mount) and host use the same path.
- * Can be overridden in tests via setStorePath().
- */
-export function getDefaultStorePath(options?: AppPathOptions): string {
-  return getStorePath(options);
-}
-
-let storePath = getDefaultStorePath();
+let storePath = getStorePath();
 
 export function setStorePath(path: string): void {
   storePath = path;

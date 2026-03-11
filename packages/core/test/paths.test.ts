@@ -16,20 +16,6 @@ describe("getAppPaths", () => {
     );
   });
 
-  test("exports focused helpers", () => {
-    const options = {
-      configHome: "/tmp/config",
-      dataHome: "/tmp/data",
-    };
-
-    expect(getConfigPath(options)).toBe(
-      "/tmp/config/opencode-linear-agent/config.json",
-    );
-    expect(getStorePath(options)).toBe(
-      "/tmp/data/opencode-linear-agent/store.json",
-    );
-  });
-
   test("allows partial overrides", () => {
     expect(getConfigPath({ configHome: "/tmp/config" })).toBe(
       "/tmp/config/opencode-linear-agent/config.json",
