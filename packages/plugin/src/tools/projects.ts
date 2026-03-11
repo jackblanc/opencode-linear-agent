@@ -24,7 +24,7 @@ const z = tool.schema;
 export const projectTools = {
   linear_list_projects: tool({
     description:
-      "List Linear projects in the workspace. Returns summary info only — use linear_get_project for full details.",
+      "List Linear projects in the workspace. Returns summary fields only, including the short API `description` field but not full markdown `content` — use linear_get_project for full details.",
     args: {
       team: z.string().optional().describe("Filter by team name or key"),
       state: z
@@ -153,7 +153,8 @@ export const projectTools = {
   }),
 
   linear_get_project: tool({
-    description: "Get full details of a Linear project by ID or name",
+    description:
+      "Get full details of a Linear project by ID or name, including both the short API `description` field and full markdown `content`",
     args: {
       id: z.string().describe("Project ID or name"),
       includeMilestones: z
@@ -194,6 +195,7 @@ export const projectTools = {
             name: project.name,
             state: project.state,
             description: project.description,
+            content: project.content,
             lead: lead ? { id: lead.id, name: lead.name } : null,
             teams: teams.nodes.map((t) => ({ key: t.key, name: t.name })),
             members: members.nodes.map((m) => ({ id: m.id, name: m.name })),
@@ -227,14 +229,13 @@ export const projectTools = {
   }),
 
   linear_create_project: tool({
-    description: "Create a new Linear project",
+    description:
+      "Create a new Linear project. Set short summary in `description` and full markdown body in `content`",
     args: {
       name: z.string().describe("Project name"),
       team: z.string().describe("Team name, key, or ID"),
-      description: z
-        .string()
-        .optional()
-        .describe("Project description (markdown)"),
+      description: z.string().optional().describe("Project description"),
+      content: z.string().optional().describe("Project content (markdown)"),
       lead: z
         .string()
         .optional()
@@ -290,6 +291,7 @@ export const projectTools = {
             name: args.name,
             teamIds: [teamId],
             description: args.description,
+            content: args.content,
             priority: args.priority,
             startDate: args.startDate,
             targetDate: args.targetDate,
@@ -317,14 +319,13 @@ export const projectTools = {
   }),
 
   linear_update_project: tool({
-    description: "Update an existing Linear project",
+    description:
+      "Update an existing Linear project. `description` is the short summary; `content` is the full markdown body",
     args: {
       id: z.string().describe("Project ID"),
       name: z.string().optional().describe("Project name"),
-      description: z
-        .string()
-        .optional()
-        .describe("Project description (markdown)"),
+      description: z.string().optional().describe("Project description"),
+      content: z.string().optional().describe("Project content (markdown)"),
       lead: z
         .string()
         .optional()
@@ -383,6 +384,7 @@ export const projectTools = {
           await client.updateProject(args.id, {
             name: args.name,
             description: args.description,
+            content: args.content,
             priority: args.priority,
             startDate: args.startDate,
             targetDate: args.targetDate,
