@@ -19,3 +19,7 @@ pre-commit:
     - name: knip
       glob: "*.{ts,tsx}"
       run: bun run knip
+
+    - name: test
+      glob: "*.{ts,tsx,js,jsx,json}"
+      run: bun test

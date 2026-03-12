@@ -310,7 +310,7 @@ describe("WorktreeManager.resolveWorktree", () => {
     );
 
     const result = await manager.resolveWorktree(
-      "linear-session-1",
+      "123e4567-e89b-12d3-a456-426614174000",
       {
         identifier: "CODE-3",
         branchName: "jack/code-3-linear-branch",
@@ -320,6 +320,6 @@ describe("WorktreeManager.resolveWorktree", () => {
     );
 
     expect(Result.isOk(result)).toBe(true);
-    expect(names).toEqual(["linear-session-1/jack/code-3-linear-branch"]);
+    expect(names).toEqual(["123e4567-jack/code-3-linear-branch"]);
   });
 });
