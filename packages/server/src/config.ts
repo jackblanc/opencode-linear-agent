@@ -22,17 +22,18 @@ const ConfigFileSchema = z.object({
   linearWebhookIps: z.array(z.string()).min(1).default(DEFAULT_WEBHOOK_IPS),
   linearOrganizationId: z.string().optional(),
 
-  projectsPath: z.string().min(1),
+  projectsPath: z
+    .string()
+    .min(1)
+    .transform((projectsPath) => {
+      if (!projectsPath.startsWith("~/")) {
+        return projectsPath;
+      }
+      return resolve(homedir(), projectsPath.slice(2));
+    }),
 });
 
 export type Config = z.infer<typeof ConfigFileSchema>;
-
-function resolveProjectsPath(projectsPath: string): string {
-  if (!projectsPath.startsWith("~/")) {
-    return projectsPath;
-  }
-  return resolve(homedir(), projectsPath.slice(2));
-}
 
 export interface LoadConfigOptions {
   configPath?: string;
@@ -66,8 +67,5 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
     throw new Error(`Invalid configuration:\n${issues}`);
   }
 
-  return {
-    ...result.data,
-    projectsPath: resolveProjectsPath(result.data.projectsPath),
-  };
+  return result.data;
 }

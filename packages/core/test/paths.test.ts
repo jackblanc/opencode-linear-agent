@@ -1,27 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { getConfigPath, getStorePath } from "../src/paths";
+import { describe, expect, mock, test } from "bun:test";
+
+void mock.module("xdg-basedir", () => ({
+  xdgConfig: "/tmp/config",
+  xdgData: "/tmp/data",
+}));
+
+const { getConfigPath, getStorePath } = await import("../src/paths");
 
 describe("getAppPaths", () => {
-  test("builds app paths from explicit roots", () => {
-    const options = {
-      configHome: "/tmp/config",
-      dataHome: "/tmp/data",
-    };
-
-    expect(getConfigPath(options)).toBe(
+  test("builds config path from xdg config root", () => {
+    expect(getConfigPath()).toBe(
       "/tmp/config/opencode-linear-agent/config.json",
-    );
-    expect(getStorePath(options)).toBe(
-      "/tmp/data/opencode-linear-agent/store.json",
     );
   });
 
-  test("allows partial overrides", () => {
-    expect(getConfigPath({ configHome: "/tmp/config" })).toBe(
-      "/tmp/config/opencode-linear-agent/config.json",
-    );
-    expect(getStorePath({ dataHome: "/tmp/data" })).toBe(
-      "/tmp/data/opencode-linear-agent/store.json",
-    );
+  test("builds store path from xdg data root", () => {
+    expect(getStorePath()).toBe("/tmp/data/opencode-linear-agent/store.json");
   });
 });
