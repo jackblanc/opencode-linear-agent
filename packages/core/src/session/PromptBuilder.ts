@@ -30,6 +30,7 @@ Do not make file changes, run write commands, or change git state.
 Your operational mode is build.
 You are permitted to make file changes, run shell commands, and utilize your arsenal of tools as needed.
 </system-reminder>`;
+}
 
 function readPromptContext(event: AgentSessionEventWebhookPayload): string {
   if (

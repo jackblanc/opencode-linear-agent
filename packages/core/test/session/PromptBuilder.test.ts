@@ -57,9 +57,7 @@ describe("PromptBuilder", () => {
     const prompt = b.buildCreatedPrompt(buildEvent(raw), ctx, "build");
 
     expect(prompt).toContain("<system-reminder>");
-    expect(prompt).toContain(
-      "Your operational mode has changed from plan to build.",
-    );
+    expect(prompt).toContain("Your operational mode is build.");
     expect(prompt).toContain(raw);
     expect(prompt.trim().endsWith("</primary-directive-thread>")).toBeTrue();
   });
