@@ -20,6 +20,7 @@ import type {
 import {
   IssueEventHandler,
   WorktreeManager,
+  createFileLogSink,
   handleAuthorize,
   handleCallback,
   handleWebhook,
@@ -29,6 +30,7 @@ import {
   Log,
   type EventDispatcher,
   type KeyValueStore,
+  type LogSink,
   type OAuthConfig,
   type TokenStore,
 } from "@opencode-linear-agent/core";
@@ -41,6 +43,35 @@ import {
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
 import { mkdir } from "node:fs/promises";
+
+export interface ServerLoggingRuntime {
+  log: ReturnType<typeof Log.create>;
+  logPath: string;
+  sink: LogSink;
+}
+
+let serverLoggingRuntime: ServerLoggingRuntime | null = null;
+
+export async function initializeServerLogging(): Promise<ServerLoggingRuntime> {
+  if (serverLoggingRuntime) {
+    return serverLoggingRuntime;
+  }
+
+  const logDir = getLogDir();
+  await mkdir(logDir, { recursive: true });
+
+  const logPath = createServerLogPath();
+  const sink = await createFileLogSink(logPath);
+  Log.init({ sink });
+
+  serverLoggingRuntime = {
+    log: Log.create({ service: "startup" }),
+    logPath,
+    sink,
+  };
+
+  return serverLoggingRuntime;
+}
 
 /**
  * Extract client IP from request headers
@@ -284,11 +315,9 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
-  await mkdir(getLogDir(), { recursive: true });
-  const logPath = createServerLogPath();
-  Log.init({ filePath: logPath });
-
-  const log = Log.create({ service: "startup" });
+  const logging = await initializeServerLogging();
+  const log = logging.log;
+  const logPath = logging.logPath;
   log.info("Starting Linear OpenCode Agent (Local)");
 
   // Load configuration

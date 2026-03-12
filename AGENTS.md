@@ -38,7 +38,7 @@ You need two always-on services:
 | Path                                              | Purpose                                              |
 | ------------------------------------------------- | ---------------------------------------------------- |
 | `$XDG_DATA_HOME/opencode-linear-agent/store.json` | Session state, tokens, pending questions/permissions |
-| `$XDG_DATA_HOME/opencode-linear-agent/log/`       | Webhook server per-start structured logs             |
+| `$XDG_DATA_HOME/opencode-linear-agent/log/`       | Webhook server per-start pretty log files            |
 | `$XDG_DATA_HOME/opencode/log/`                    | OpenCode app + plugin logs                           |
 | `~/.local/share/opencode/worktree/`               | Git worktrees created by OpenCode                    |
 | `$XDG_CONFIG_HOME/opencode/plugin/linear.js`      | Optional built plugin file                           |

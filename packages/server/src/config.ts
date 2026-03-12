@@ -75,14 +75,21 @@ function getDataDir(): string {
 }
 
 function formatLogTimestamp(now: Date): string {
-  const head = now.toISOString().split(".")[0];
-  return head ? `${head.replaceAll("-", "").replaceAll(":", "")}Z` : "unknown";
+  const [head, tail] = now.toISOString().split(".");
+  const ms = tail?.slice(0, 3);
+  if (!head || !ms) {
+    return "unknown";
+  }
+  return `${head.replaceAll("-", "").replaceAll(":", "")}.${ms}Z`;
 }
 
 export function getLogDir(): string {
   return join(getDataDir(), "log");
 }
 
-export function createServerLogPath(now = new Date()): string {
-  return join(getLogDir(), `server-${formatLogTimestamp(now)}.log`);
+export function createServerLogPath(
+  now = new Date(),
+  pid = process.pid,
+): string {
+  return join(getLogDir(), `server-${formatLogTimestamp(now)}-p${pid}.log`);
 }

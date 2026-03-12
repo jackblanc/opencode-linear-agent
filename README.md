@@ -147,7 +147,7 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 ## Logs
 
 - Plugin logs live under OpenCode's log dir: `~/.local/share/opencode/log/` on macOS/Linux.
-- Webhook server structured logs go to stderr and per-start files under the agent data dir: `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/server-*.log`.
+- Webhook server logs are always pretty-printed, mirrored to `stderr`, and written to per-start files under the agent data dir: `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/server-*.log`.
 - The startup banner still prints to stdout.
 - Extra stdout/stderr capture still depends on how you run the server, ex: launchd, systemd, Docker, or a terminal.
 
@@ -253,7 +253,7 @@ systemctl --user enable --now opencode-linear-agent.service
 journalctl --user -u opencode-linear-agent.service -f
 ```
 
-The app-managed webhook logs still land in `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/`. `StandardOutPath`, `StandardErrorPath`, `journalctl`, or terminal output only control extra stdout/stderr capture.
+The app-managed webhook logs still land in `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/` as per-start files like `server-20260306T215717.187Z-p3210.log`. `StandardOutPath`, `StandardErrorPath`, `journalctl`, or terminal output only control extra stdout/stderr capture.
 
 ## Usage
 

@@ -176,7 +176,7 @@ describe("loadConfig", () => {
         [
           'import { createServerLogPath } from "./packages/server/src/config";',
           "process.stdout.write(JSON.stringify({",
-          '  logPath: createServerLogPath(new Date("2026-03-06T21:57:17.187Z")),',
+          '  logPath: createServerLogPath(new Date("2026-03-06T21:57:17.187Z"), 3210),',
           "}));",
         ].join("\n"),
       ],
@@ -204,7 +204,7 @@ describe("loadConfig", () => {
         "/tmp/opencode-data",
         "opencode-linear-agent",
         "log",
-        "server-20260306T215717Z.log",
+        "server-20260306T215717.187Z-p3210.log",
       ),
     );
   });
