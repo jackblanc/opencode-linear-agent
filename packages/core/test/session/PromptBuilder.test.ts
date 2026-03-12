@@ -78,7 +78,6 @@ describe("PromptBuilder", () => {
       "Keep it short.",
       ctx,
       "plan",
-      undefined,
       "## Previous Session Context\n\nOld context.",
     );
 

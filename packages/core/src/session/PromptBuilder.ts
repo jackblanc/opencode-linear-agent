@@ -7,7 +7,8 @@ export interface PromptContext {
   workdir: string;
 }
 
-function buildFrontmatter(issueId: string, ctx: PromptContext): string {
+// TODO (CODE-244): Remove this, replace with a more robust system for tracking session and issue context across prompt interactions
+function getFrontmatter(issueId: string, ctx: PromptContext): string {
   return `---
 linear_session: ${ctx.linearSessionId}
 linear_issue: ${issueId}
@@ -16,7 +17,7 @@ workdir: ${ctx.workdir}
 ---`;
 }
 
-function buildModeReminder(mode: AgentMode): string {
+function getSystemDirective(mode: AgentMode): string {
   if (mode === "plan") {
     return `<system-reminder>
 Your operational mode is plan.
@@ -52,14 +53,13 @@ export class PromptBuilder {
     event: AgentSessionEventWebhookPayload,
     ctx: PromptContext,
     mode: AgentMode,
-    _previousIssueContext?: unknown,
     previousContext?: string,
   ): string {
     const issueId = event.agentSession.issue?.identifier ?? "unknown";
 
     return joinSections([
-      buildFrontmatter(issueId, ctx),
-      buildModeReminder(mode),
+      getFrontmatter(issueId, ctx),
+      getSystemDirective(mode),
       ...(previousContext ? [previousContext] : []),
       readPromptContext(event),
     ]);
@@ -70,7 +70,6 @@ export class PromptBuilder {
     userResponse: string,
     ctx: PromptContext,
     mode: AgentMode,
-    _previousIssueContext?: unknown,
     previousContext?: string,
   ): string {
     if (!previousContext) {
@@ -80,8 +79,8 @@ export class PromptBuilder {
     const issueId = event.agentSession.issue?.identifier ?? "unknown";
 
     return joinSections([
-      buildFrontmatter(issueId, ctx),
-      buildModeReminder(mode),
+      getFrontmatter(issueId, ctx),
+      getSystemDirective(mode),
       previousContext,
       userResponse,
     ]);
@@ -99,8 +98,8 @@ export class PromptBuilder {
     }
 
     return joinSections([
-      buildFrontmatter(issueId, ctx),
-      buildModeReminder(mode),
+      getFrontmatter(issueId, ctx),
+      getSystemDirective(mode),
       previousContext,
       userResponse,
     ]);
