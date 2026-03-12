@@ -1,10 +1,15 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { z } from "zod";
 import { loadConfig } from "../src/config";
 
 const TEST_DIR = join(import.meta.dir, ".test-config");
+const ConfigResultSchema = z.object({
+  projectsPath: z.string(),
+  webhookServerPort: z.number(),
+});
 
 beforeEach(async () => {
   await rm(TEST_DIR, { recursive: true, force: true });
@@ -12,7 +17,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  mock.restore();
   await rm(TEST_DIR, { recursive: true, force: true });
 });
 
@@ -42,8 +46,11 @@ describe("loadConfig", () => {
   });
 
   test("loads config from default shared path", async () => {
-    const configPath = join(TEST_DIR, "shared-default-config.json");
+    const configHome = join(TEST_DIR, "config-home");
+    const configDir = join(configHome, "opencode-linear-agent");
+    const configPath = join(configDir, "config.json");
 
+    await mkdir(configDir, { recursive: true });
     await Bun.write(
       configPath,
       JSON.stringify({
@@ -55,14 +62,31 @@ describe("loadConfig", () => {
       }),
     );
 
-    void mock.module("@opencode-linear-agent/core", () => ({
-      getConfigPath: (): string => configPath,
-    }));
+    const proc = Bun.spawn({
+      cmd: [
+        "bun",
+        "-e",
+        [
+          'import { loadConfig } from "./packages/server/src/config";',
+          "process.stdout.write(JSON.stringify(loadConfig()));",
+        ].join("\n"),
+      ],
+      cwd: join(import.meta.dir, "..", "..", ".."),
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: configHome,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
 
-    const { loadConfig: loadConfigWithMock } = await import(
-      `../src/config?default-path=${Date.now()}`
-    );
-    const config = loadConfigWithMock();
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+
+    const config = ConfigResultSchema.parse(JSON.parse(stdout));
 
     expect(config.projectsPath).toBe("/tmp/projects");
     expect(config.webhookServerPort).toBe(3210);
