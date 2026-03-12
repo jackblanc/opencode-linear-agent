@@ -70,7 +70,7 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
   return result.data;
 }
 
-export function getDataDir(): string {
+function getDataDir(): string {
   return dirname(getStorePath());
 }
 

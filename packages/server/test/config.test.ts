@@ -3,12 +3,15 @@ import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { createServerLogPath, getDataDir, loadConfig } from "../src/config";
+import { loadConfig } from "../src/config";
 
 const TEST_DIR = join(import.meta.dir, ".test-config");
 const ConfigResultSchema = z.object({
   projectsPath: z.string(),
   webhookServerPort: z.number(),
+});
+const PathResultSchema = z.object({
+  logPath: z.string(),
 });
 
 beforeEach(async () => {
@@ -129,16 +132,74 @@ describe("loadConfig", () => {
     );
   });
 
-  test("uses XDG data dir when set", () => {
-    process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
+  test("uses XDG data dir when set", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        "bun",
+        "-e",
+        [
+          'import { createServerLogPath } from "./packages/server/src/config";',
+          "process.stdout.write(JSON.stringify({",
+          '  logPath: createServerLogPath(new Date("2026-03-06T21:57:17.187Z")),',
+          "}));",
+        ].join("\n"),
+      ],
+      cwd: join(import.meta.dir, "..", "..", ".."),
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: "/tmp/opencode-data",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
 
-    expect(getDataDir()).toBe("/tmp/opencode-data/opencode-linear-agent");
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+
+    const paths = PathResultSchema.parse(JSON.parse(stdout));
+    expect(
+      paths.logPath.startsWith("/tmp/opencode-data/opencode-linear-agent/"),
+    ).toBe(true);
   });
 
-  test("creates per-start server log path", () => {
-    process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
+  test("creates per-start server log path", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        "bun",
+        "-e",
+        [
+          'import { createServerLogPath } from "./packages/server/src/config";',
+          "process.stdout.write(JSON.stringify({",
+          '  logPath: createServerLogPath(new Date("2026-03-06T21:57:17.187Z")),',
+          "}));",
+        ].join("\n"),
+      ],
+      cwd: join(import.meta.dir, "..", "..", ".."),
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: "/tmp/opencode-data",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
 
-    expect(createServerLogPath(new Date("2026-03-06T21:57:17.187Z"))).toBe(
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+
+    const paths = PathResultSchema.parse(JSON.parse(stdout));
+    expect(paths.logPath).toBe(
       join(
         "/tmp/opencode-data",
         "opencode-linear-agent",
