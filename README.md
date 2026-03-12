@@ -269,8 +269,8 @@ journalctl --user -u opencode-linear-agent.service -f
 - Mode is selected from Linear issue **state type**:
   - `triage` or `backlog` -> `plan` mode
   - everything else (`unstarted`, `started`, `completed`, `canceled`) -> `build` mode
-- `plan` mode: agent analyzes and updates issue with an implementation plan; no code changes/PR expected.
-- `build` mode: agent implements changes and is instructed to create a PR when work is complete.
+- `plan` mode: agent analyzes and rewrites the issue into one concise unified plan; no code changes expected.
+- `build` mode: agent prioritizes the latest user directive, makes surgical changes, and pushes the branch when work is complete.
 - In `build` mode only, the issue is moved to **In Progress** when processing starts.
 
 ## Project Structure

@@ -29,6 +29,20 @@ export interface LinearIssue {
   title: string;
   description?: string;
   url: string;
+  relations?: LinearIssueRelations;
+}
+
+export interface LinearIssueRelation {
+  id: string;
+  identifier: string;
+  title: string;
+}
+
+export interface LinearIssueRelations {
+  blocks: LinearIssueRelation[];
+  blockedBy: LinearIssueRelation[];
+  related: LinearIssueRelation[];
+  duplicate: LinearIssueRelation[];
 }
 
 /**
@@ -127,7 +141,10 @@ export interface LinearService {
   /**
    * Get an issue by ID
    */
-  getIssue(issueId: string): Promise<Result<LinearIssue, LinearServiceError>>;
+  getIssue(
+    issueId: string,
+    includeRelations?: boolean,
+  ): Promise<Result<LinearIssue, LinearServiceError>>;
 
   /**
    * Get labels for an issue

@@ -177,6 +177,7 @@ describe("LinearEventProcessor prompted handling", () => {
       "/tmp/workdir",
       "build",
       undefined,
+      undefined,
       createLog(),
     ]);
 
@@ -185,28 +186,36 @@ describe("LinearEventProcessor prompted handling", () => {
 
   test("uses Linear issue branch name when webhook omits it", async () => {
     const calls: Array<{ linearSessionId: string; issue: unknown }> = [];
+    let includeRelations = false;
     const processor = Object.create(LinearEventProcessor.prototype);
 
     processor.linear = {
-      getIssue: async (): Promise<
+      getIssue: async (
+        _issueId: string,
+        shouldIncludeRelations?: boolean,
+      ): Promise<
         Result<
           {
             id: string;
             identifier: string;
             branchName: string;
             title: string;
+            description?: string;
             url: string;
           },
           never
         >
-      > =>
-        Result.ok({
+      > => {
+        includeRelations = shouldIncludeRelations ?? false;
+        return Result.ok({
           id: "issue-1",
           identifier: "CODE-1",
           branchName: "jack/code-1-from-linear",
           title: "x",
+          description: "desc",
           url: "https://linear.app",
-        }),
+        });
+      },
       postError: async (): Promise<Result<void, never>> => Result.ok(undefined),
     };
     processor.worktreeManager = {
@@ -255,6 +264,7 @@ describe("LinearEventProcessor prompted handling", () => {
 
     await processor.process(event);
 
+    expect(includeRelations).toBeTrue();
     expect(calls).toEqual([
       {
         linearSessionId: "linear-session-1",

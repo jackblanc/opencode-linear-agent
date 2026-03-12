@@ -1,216 +1,214 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type {
+  LinearIssue,
+  LinearIssueRelation,
+  LinearIssueRelations,
+} from "../linear/LinearService";
 import type { AgentMode } from "./AgentMode";
 
-/**
- * Context for building prompts with Linear integration
- */
 export interface PromptContext {
   linearSessionId: string;
   organizationId: string;
   workdir: string;
 }
 
-/**
- * Build YAML frontmatter for the plugin to parse
- */
 function buildFrontmatter(issueId: string, ctx: PromptContext): string {
   return `---
 linear_session: ${ctx.linearSessionId}
 linear_issue: ${issueId}
 linear_organization: ${ctx.organizationId}
 workdir: ${ctx.workdir}
----
-
-`;
+---`;
 }
 
-/**
- * Build mode instructions - agent implements the issue and creates a PR
- */
-const BUILD_MODE_INSTRUCTIONS = `
-## Important: Always Create a Pull Request
+const BUILD_MODE_INSTRUCTIONS = `## Build Mode
 
-When you complete work on an issue, you MUST create a pull request. Follow these rules:
+You are in BUILD MODE.
 
-1. **Always push your changes and create a PR** when the work is complete
-2. **If you're uncertain** about the implementation or need clarification, ask the user BEFORE pushing - but still plan to create a PR after getting answers
-3. **Never say "done" or "completed"** without having created and pushed a PR
-4. Use \`gh pr create\` to create the pull request with a clear title and description
+- Treat the latest user directive as the highest-priority instruction. It can narrow, question, or override earlier issue framing.
+- Default to the smallest change that resolves the request. Avoid speculative cleanup, refactors, or extra abstractions.
+- If the latest user message is asking whether work is worth doing, answer that first. Do not implement unless the user clearly wants implementation.
+- When work is complete, push the current branch. Create a PR only when the user asks or review clearly needs one.`;
 
-The PR is how your work gets reviewed and merged. An issue is not complete until there's a PR.
+const PLAN_MODE_INSTRUCTIONS = `## Plan Mode
 
----
+You are in PLAN MODE. Investigate and update the Linear issue with one concise unified plan. Do not implement.
 
-`;
+- Overwrite prior agent-written plan text instead of appending another full plan.
+- Preserve user intent from the existing description and comments, but rewrite it into one short precise plan.
+- Keep the plan conceptual and brief. Do not list file paths unless truly necessary.
+- Remove stale or duplicated plan content when updating the issue.
+- Treat the latest user directive as highest priority if it narrows or reframes the work.
+- Do not create code changes, commits, branches, or pull requests.`;
 
-/**
- * Plan mode instructions - agent analyzes issue and writes implementation plan
- */
-const PLAN_MODE_INSTRUCTIONS = `
-## Important: Write an Implementation Plan
-
-You are in PLANNING MODE. Analyze this issue and write a detailed implementation plan - do NOT implement it.
-
-### Your Tasks:
-1. Analyze the issue requirements and explore the codebase
-2. Write a clear, actionable implementation plan
-3. Update the issue using Linear MCP tools:
-   - Append your plan to the description (preserve existing content)
-   - Set priority if not already set
-   - Add \`repo:*\` label if missing
-
-### Do NOT:
-- Create any code changes, branches, or commits
-- Create pull requests
-- Move the issue to a different status
-
-### Plan Format:
-Append to the issue description with this structure:
-
----
-
-## Implementation Plan
-
-### Summary
-1-2 sentences describing the change
-
-### Files to Modify
-- \`path/to/file.ts\` - Brief description of changes
-
-### Implementation Steps
-1. Step one
-2. Step two
-...
-
-### Edge Cases
-- Potential issues to watch for
-
-### Testing
-- How to verify the change works
-
----
-
-Once you've written the plan and updated the issue, you're done.
-
----
-
-`;
-
-/**
- * Get the appropriate instructions for the given agent mode
- */
 function getInstructionsForMode(mode: AgentMode): string {
   return mode === "plan" ? PLAN_MODE_INSTRUCTIONS : BUILD_MODE_INSTRUCTIONS;
 }
 
-/**
- * Remove previous session threads from Linear promptContext.
- */
-function stripOtherThreads(promptContext: string): string {
-  return promptContext.replace(
-    /<other-thread[^>]*>[\s\S]*?<\/other-thread>/g,
-    "",
+function compactMarkdown(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function stripTags(text: string): string {
+  return text.replace(/<[^>]+>/g, " ");
+}
+
+function extractPrimaryDirective(promptContext: unknown): string | null {
+  if (typeof promptContext !== "string") {
+    return null;
+  }
+
+  const match = promptContext.match(
+    /<primary-directive-thread\b[^>]*>([\s\S]*?)<\/primary-directive-thread>/i,
+  );
+  const body = match?.[1];
+  if (!body) {
+    return null;
+  }
+
+  const text = compactMarkdown(stripTags(body).replace(/\s+/g, " "));
+  return text.length > 0 ? text : null;
+}
+
+function buildRelationGroup(
+  label: string,
+  items: LinearIssueRelation[],
+): string[] {
+  if (items.length === 0) {
+    return [];
+  }
+
+  return items.map((item, i) =>
+    i === 0
+      ? `- ${label}: ${item.identifier} - ${item.title}`
+      : `- ${item.identifier} - ${item.title}`,
   );
 }
 
-/**
- * Builds prompts for OpenCode sessions.
- *
- * Extracted from LinearEventProcessor to isolate prompt construction logic:
- * - Building issue context headers
- * - Injecting system instructions
- * - Combining previous context with new prompts
- */
-export class PromptBuilder {
-  /**
-   * Build issue context header from webhook payload
-   */
-  buildIssueContext(event: AgentSessionEventWebhookPayload): string {
-    const issue = event.agentSession.issue;
-    if (!issue) {
-      return "";
-    }
-
-    const parts: string[] = [
-      `# Linear Issue: ${issue.identifier}`,
-      "",
-      `**Title:** ${issue.title}`,
-    ];
-
-    if (issue.url) {
-      parts.push(`**URL:** ${issue.url}`);
-    }
-
-    parts.push("", "---", "");
-
-    return parts.join("\n");
+function buildRelations(relations?: LinearIssueRelations): string {
+  if (!relations) {
+    return "";
   }
 
-  /**
-   * Build prompt for new session creation
-   *
-   * @param event - The webhook payload
-   * @param ctx - Context for Linear integration (session, org, paths)
-   * @param mode - The agent mode (plan or build)
-   * @param previousContext - Optional context from a previous session
-   * @returns The complete prompt with frontmatter, system instructions and context
-   */
+  const lines = [
+    ...buildRelationGroup("Related", relations.related),
+    ...buildRelationGroup("Blocks", relations.blocks),
+    ...buildRelationGroup("Blocked by", relations.blockedBy),
+    ...buildRelationGroup("Duplicate", relations.duplicate),
+  ];
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return `## Related Issues\n\n${lines.join("\n")}`;
+}
+
+function resolveIssue(
+  event: AgentSessionEventWebhookPayload,
+  issue?: LinearIssue,
+): LinearIssue | null {
+  if (issue) {
+    return issue;
+  }
+
+  const current = event.agentSession.issue;
+  if (!current) {
+    return null;
+  }
+
+  return {
+    id: current.id,
+    identifier: current.identifier,
+    title: current.title,
+    url: current.url,
+  };
+}
+
+function buildIssueSummary(issue: LinearIssue | null): string {
+  if (!issue) {
+    return "";
+  }
+
+  const parts = [
+    "# Issue",
+    "",
+    `- ${issue.identifier}: ${issue.title}`,
+    `- URL: ${issue.url}`,
+  ];
+
+  const desc = issue.description ? compactMarkdown(issue.description) : "";
+  if (desc) {
+    parts.push("", "## Description", "", desc);
+  }
+
+  const relations = buildRelations(issue.relations);
+  if (relations) {
+    parts.push("", relations);
+  }
+
+  return parts.join("\n");
+}
+
+function buildLatestDirective(text: string): string {
+  return `## Latest User Directive\n\n${text}`;
+}
+
+function joinSections(parts: Array<string | undefined>): string {
+  return parts
+    .filter(
+      (part): part is string => typeof part === "string" && part.length > 0,
+    )
+    .join("\n\n");
+}
+
+export class PromptBuilder {
   buildCreatedPrompt(
     event: AgentSessionEventWebhookPayload,
     ctx: PromptContext,
     mode: AgentMode,
+    issue?: LinearIssue,
     previousContext?: string,
   ): string {
     const issueId = event.agentSession.issue?.identifier ?? "unknown";
-    const frontmatter = buildFrontmatter(issueId, ctx);
-    const instructions = getInstructionsForMode(mode);
-    const issueContext = this.buildIssueContext(event);
-    const rawPrompt = event.promptContext ?? "Please help with this issue.";
-    const filteredPrompt = stripOtherThreads(rawPrompt).trim();
-    const basePrompt = filteredPrompt || "Please help with this issue.";
-    return `${frontmatter}${instructions}${issueContext}${previousContext ?? ""}${basePrompt}`;
+    const directive =
+      extractPrimaryDirective(event.promptContext) ??
+      "Please help with this issue.";
+
+    return joinSections([
+      buildFrontmatter(issueId, ctx),
+      getInstructionsForMode(mode),
+      buildIssueSummary(resolveIssue(event, issue)),
+      previousContext,
+      buildLatestDirective(directive),
+    ]);
   }
 
-  /**
-   * Build prompt for follow-up message
-   *
-   * If session was recreated (has previousContext), inject frontmatter, system instructions
-   * and issue context. Otherwise, just use the user response (frontmatter already in session).
-   *
-   * @param event - The webhook payload
-   * @param userResponse - The user's follow-up message
-   * @param ctx - Context for Linear integration
-   * @param mode - The agent mode (plan or build)
-   * @param previousContext - Optional context from a previous session
-   * @returns The prompt to send
-   */
   buildFollowUpPrompt(
     event: AgentSessionEventWebhookPayload,
     userResponse: string,
     ctx: PromptContext,
     mode: AgentMode,
+    issue?: LinearIssue,
     previousContext?: string,
   ): string {
-    if (previousContext) {
-      const issueId = event.agentSession.issue?.identifier ?? "unknown";
-      const frontmatter = buildFrontmatter(issueId, ctx);
-      const instructions = getInstructionsForMode(mode);
-      const issueContext = this.buildIssueContext(event);
-      return `${frontmatter}${instructions}${issueContext}${previousContext}${userResponse}`;
+    if (!previousContext) {
+      return userResponse;
     }
-    return userResponse;
+
+    const issueId = event.agentSession.issue?.identifier ?? "unknown";
+    return joinSections([
+      buildFrontmatter(issueId, ctx),
+      getInstructionsForMode(mode),
+      buildIssueSummary(resolveIssue(event, issue)),
+      previousContext,
+      buildLatestDirective(userResponse),
+    ]);
   }
 
-  /**
-   * Build prompt for follow-up when ignoring a pending question
-   *
-   * @param userResponse - The user's message
-   * @param issueId - The issue identifier (e.g., "CODE-123")
-   * @param ctx - Context for Linear integration
-   * @param mode - The agent mode (plan or build)
-   * @param previousContext - Optional context from a previous session
-   * @returns The prompt to send
-   */
   buildFollowUpWithoutEvent(
     userResponse: string,
     issueId: string,
@@ -218,11 +216,15 @@ export class PromptBuilder {
     mode: AgentMode,
     previousContext?: string,
   ): string {
-    if (previousContext) {
-      const frontmatter = buildFrontmatter(issueId, ctx);
-      const instructions = getInstructionsForMode(mode);
-      return `${frontmatter}${instructions}${previousContext}${userResponse}`;
+    if (!previousContext) {
+      return userResponse;
     }
-    return userResponse;
+
+    return joinSections([
+      buildFrontmatter(issueId, ctx),
+      getInstructionsForMode(mode),
+      previousContext,
+      buildLatestDirective(userResponse),
+    ]);
   }
 }
