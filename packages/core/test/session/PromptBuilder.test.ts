@@ -48,74 +48,42 @@ function buildEvent(promptContext: string): AgentSessionEventWebhookPayload {
 }
 
 describe("PromptBuilder", () => {
-  test("builds compact prompt with latest directive last", () => {
+  test("prepends build reminder and preserves raw Linear prompt", () => {
     const b = new PromptBuilder();
-    const event = buildEvent(`
-<issue>details</issue>
-<primary-directive-thread comment-id="1"><comment author="Jack">is this worth doing?</comment></primary-directive-thread>
-<other-thread comment-id="2">old session details</other-thread>`);
+    const raw = `<issue identifier="ENG-123"><title>Fix accessibility on checkout page</title></issue>
 
-    const prompt = b.buildCreatedPrompt(
-      event,
-      ctx,
-      "build",
-      {
-        id: "issue-1",
-        identifier: "CODE-141",
-        title: "Prompt filter",
-        description: "Keep prompts short.\n\nRemove duplicates.",
-        url: "https://linear.app/example/CODE-141",
-        relations: {
-          related: [
-            { id: "issue-2", identifier: "CODE-215", title: "Earlier work" },
-          ],
-          blocks: [],
-          blockedBy: [],
-          duplicate: [],
-        },
-      },
-      "## Previous Session Context\n\nOld context.",
+<primary-directive-thread comment-id="1"><comment>Please implement this</comment></primary-directive-thread>`;
+
+    const prompt = b.buildCreatedPrompt(buildEvent(raw), ctx, "build");
+
+    expect(prompt).toContain("<system-reminder>");
+    expect(prompt).toContain(
+      "Your operational mode has changed from plan to build.",
     );
-
-    expect(prompt).toContain("## Build Mode");
-    expect(prompt).toContain("# Issue");
-    expect(prompt).toContain("## Description");
-    expect(prompt).toContain("## Related Issues");
-    expect(prompt).toContain("CODE-215 - Earlier work");
-    expect(prompt).toContain("## Previous Session Context");
-    expect(prompt).not.toContain("<primary-directive-thread");
-    expect(prompt).not.toContain("<other-thread");
-    expect(prompt.trim().endsWith("is this worth doing?")).toBeTrue();
+    expect(prompt).toContain(raw);
+    expect(prompt.trim().endsWith("</primary-directive-thread>")).toBeTrue();
   });
 
-  test("falls back when primary directive is missing", () => {
+  test("uses fallback text when Linear prompt missing", () => {
     const b = new PromptBuilder();
-    const event = buildEvent(
-      '<other-thread comment-id="2">old session details</other-thread>',
-    );
-
-    const prompt = b.buildCreatedPrompt(event, ctx, "build");
+    const prompt = b.buildCreatedPrompt(buildEvent(""), ctx, "build");
 
     expect(prompt).toContain("Please help with this issue.");
-    expect(prompt).not.toContain("<other-thread");
   });
 
-  test("recreated follow-up keeps latest user response last", () => {
+  test("recreated follow-up prepends plan reminder and previous context", () => {
     const b = new PromptBuilder();
-    const event = buildEvent("ignored");
-
     const prompt = b.buildFollowUpPrompt(
-      event,
-      "Please keep the change minimal.",
+      buildEvent("ignored"),
+      "Keep it short.",
       ctx,
-      "build",
+      "plan",
       undefined,
       "## Previous Session Context\n\nOld context.",
     );
 
-    expect(prompt).toContain("## Latest User Directive");
-    expect(
-      prompt.trim().endsWith("Please keep the change minimal."),
-    ).toBeTrue();
+    expect(prompt).toContain("Your operational mode is plan.");
+    expect(prompt).toContain("## Previous Session Context");
+    expect(prompt.trim().endsWith("Keep it short.")).toBeTrue();
   });
 });

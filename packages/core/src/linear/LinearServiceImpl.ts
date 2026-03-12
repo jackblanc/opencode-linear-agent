@@ -3,8 +3,6 @@ import { Result } from "better-result";
 import type {
   LinearService,
   LinearIssue,
-  LinearIssueRelation,
-  LinearIssueRelations,
   LinearLabel,
   LinearAttachment,
   ElicitationSignal,
@@ -131,104 +129,6 @@ function mapElicitationSignal(
     default:
       return undefined;
   }
-}
-
-function pushRelation(
-  list: LinearIssueRelation[],
-  item: LinearIssueRelation,
-): void {
-  if (list.some((entry) => entry.id === item.id)) {
-    return;
-  }
-  list.push(item);
-}
-
-async function collectIssueRelations(issue: {
-  relations: () => Promise<{
-    nodes: Array<{
-      type: string;
-      relatedIssue?: Promise<{
-        id: string;
-        identifier: string;
-        title: string;
-      } | null>;
-    }>;
-  }>;
-  inverseRelations: () => Promise<{
-    nodes: Array<{
-      type: string;
-      issue?: Promise<{
-        id: string;
-        identifier: string;
-        title: string;
-      } | null>;
-    }>;
-  }>;
-}): Promise<LinearIssueRelations> {
-  const [relations, inverseRelations] = await Promise.all([
-    issue.relations(),
-    issue.inverseRelations(),
-  ]);
-  const data: LinearIssueRelations = {
-    blocks: [],
-    blockedBy: [],
-    related: [],
-    duplicate: [],
-  };
-
-  for (const rel of relations.nodes) {
-    if (!rel.relatedIssue) {
-      continue;
-    }
-    const target = await rel.relatedIssue;
-    if (!target) {
-      continue;
-    }
-    const entry = {
-      id: target.id,
-      identifier: target.identifier,
-      title: target.title,
-    };
-    switch (rel.type) {
-      case "blocks":
-        pushRelation(data.blocks, entry);
-        break;
-      case "duplicate":
-        pushRelation(data.duplicate, entry);
-        break;
-      case "related":
-        pushRelation(data.related, entry);
-        break;
-    }
-  }
-
-  for (const rel of inverseRelations.nodes) {
-    if (!rel.issue) {
-      continue;
-    }
-    const source = await rel.issue;
-    if (!source) {
-      continue;
-    }
-    const entry = {
-      id: source.id,
-      identifier: source.identifier,
-      title: source.title,
-    };
-    switch (rel.type) {
-      case "blocks":
-        pushRelation(data.blockedBy, entry);
-        break;
-      case "duplicate":
-        pushRelation(data.duplicate, entry);
-        break;
-      case "related":
-        pushRelation(data.related, entry);
-        break;
-    }
-  }
-
-  return data;
 }
 
 /**
@@ -435,14 +335,10 @@ export class LinearServiceImpl implements LinearService {
 
   async getIssue(
     issueId: string,
-    includeRelations = false,
   ): Promise<Result<LinearIssue, LinearServiceError>> {
     const result = await Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
-        const relations = includeRelations
-          ? await collectIssueRelations(issue)
-          : undefined;
         return {
           id: issue.id,
           identifier: issue.identifier,
@@ -450,7 +346,6 @@ export class LinearServiceImpl implements LinearService {
           title: issue.title,
           description: issue.description ?? undefined,
           url: issue.url,
-          relations,
         };
       },
       catch: mapLinearError,

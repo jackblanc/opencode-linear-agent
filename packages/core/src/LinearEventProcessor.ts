@@ -1,6 +1,6 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
-import type { LinearIssue, LinearService } from "./linear/LinearService";
+import type { LinearService } from "./linear/LinearService";
 import type {
   SessionRepository,
   PendingQuestion,
@@ -226,12 +226,9 @@ export class LinearEventProcessor {
       branchName:
         readStringField(event.agentSession.issue, "branchName") ?? undefined,
     };
-    let promptIssue: LinearIssue | undefined;
-
     if (issueId) {
-      const issueResult = await this.linear.getIssue(issueId, true);
+      const issueResult = await this.linear.getIssue(issueId);
       if (Result.isOk(issueResult)) {
-        promptIssue = issueResult.value;
         issue = {
           identifier: issueResult.value.identifier,
           branchName: issueResult.value.branchName,
@@ -356,7 +353,6 @@ export class LinearEventProcessor {
           linearSessionId,
           workdir,
           mode,
-          promptIssue,
           session.previousContext,
           log,
         );
@@ -368,7 +364,6 @@ export class LinearEventProcessor {
           linearSessionId,
           workdir,
           mode,
-          promptIssue,
           session.previousContext,
           log,
         );
@@ -435,7 +430,6 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    issue: LinearIssue | undefined,
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
@@ -475,7 +469,6 @@ export class LinearEventProcessor {
       event,
       promptCtx,
       mode,
-      issue,
       previousContext,
     );
 
@@ -505,7 +498,6 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    issue: LinearIssue | undefined,
     previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
@@ -590,7 +582,6 @@ export class LinearEventProcessor {
       userResponse,
       promptCtx,
       mode,
-      issue,
       previousContext,
     );
 
