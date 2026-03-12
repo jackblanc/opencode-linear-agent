@@ -48,28 +48,39 @@ function buildEvent(promptContext: string): AgentSessionEventWebhookPayload {
 }
 
 describe("PromptBuilder", () => {
-  test("removes other-thread content from created prompt", () => {
+  test("prepends build reminder and preserves raw Linear prompt", () => {
     const b = new PromptBuilder();
-    const event = buildEvent(`<issue>details</issue>
-<primary-directive-thread comment-id="1">build it</primary-directive-thread>
-<other-thread comment-id="2">old session details</other-thread>`);
+    const raw = `<issue identifier="ENG-123"><title>Fix accessibility on checkout page</title></issue>
 
-    const prompt = b.buildCreatedPrompt(event, ctx, "build");
+<primary-directive-thread comment-id="1"><comment>Please implement this</comment></primary-directive-thread>`;
 
-    expect(prompt).toContain("<primary-directive-thread");
-    expect(prompt).not.toContain("<other-thread");
-    expect(prompt).not.toContain("old session details");
+    const prompt = b.buildCreatedPrompt(buildEvent(raw), ctx, "build");
+
+    expect(prompt).toContain("<system-reminder>");
+    expect(prompt).toContain("Your operational mode is build.");
+    expect(prompt).toContain(raw);
+    expect(prompt.trim().endsWith("</primary-directive-thread>")).toBeTrue();
   });
 
-  test("falls back when filtered prompt is empty", () => {
+  test("uses fallback text when Linear prompt missing", () => {
     const b = new PromptBuilder();
-    const event = buildEvent(
-      `<other-thread comment-id="2">old session details</other-thread>`,
-    );
-
-    const prompt = b.buildCreatedPrompt(event, ctx, "build");
+    const prompt = b.buildCreatedPrompt(buildEvent(""), ctx, "build");
 
     expect(prompt).toContain("Please help with this issue.");
-    expect(prompt).not.toContain("<other-thread");
+  });
+
+  test("recreated follow-up prepends plan reminder and previous context", () => {
+    const b = new PromptBuilder();
+    const prompt = b.buildFollowUpPrompt(
+      buildEvent("ignored"),
+      "Keep it short.",
+      ctx,
+      "plan",
+      "## Previous Session Context\n\nOld context.",
+    );
+
+    expect(prompt).toContain("Your operational mode is plan.");
+    expect(prompt).toContain("## Previous Session Context");
+    expect(prompt.trim().endsWith("Keep it short.")).toBeTrue();
   });
 });
