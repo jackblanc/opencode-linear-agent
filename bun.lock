@@ -22,6 +22,7 @@
         "@linear/sdk": "catalog:",
         "@opencode-ai/sdk": "catalog:",
         "better-result": "catalog:",
+        "xdg-basedir": "catalog:",
         "zod": "catalog:",
       },
     },
@@ -50,7 +51,6 @@
         "@opencode-ai/sdk": "catalog:",
         "@opencode-linear-agent/core": "workspace:*",
         "better-result": "catalog:",
-        "xdg-basedir": "catalog:",
         "zod": "catalog:",
       },
       "optionalDependencies": {

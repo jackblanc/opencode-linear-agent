@@ -18,7 +18,7 @@
   },
   "scripts": {
     "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify --packages=bundle",
-    "dev": "bun build ./src/index.ts --outfile=$HOME/.config/opencode/plugin/linear.js --target=bun --packages=bundle",
+    "dev": "OUTFILE=\"${XDG_CONFIG_HOME:-$HOME/.config}/opencode/plugin/linear.js\" && mkdir -p \"$(dirname \"$OUTFILE\")\" && bun build ./src/index.ts --outfile=\"$OUTFILE\" --target=bun --packages=bundle",
     "prepublishOnly": "bun run build && test -f dist/index.js"
   },
   "dependencies": {},

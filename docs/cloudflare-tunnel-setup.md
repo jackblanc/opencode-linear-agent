@@ -64,7 +64,7 @@ cloudflared service install
 
 ## 6) Update app config
 
-Set these keys in `~/.config/opencode-linear-agent/config.json`:
+Set these keys in `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`):
 
 - `webhookServerPublicHostname`: `linear-webhook.yourdomain.com`
 - `linearWebhookSecret`: your Linear webhook secret
@@ -109,7 +109,7 @@ cloudflared tunnel list
 ## Security Notes
 
 - Keep `~/.cloudflared/<TUNNEL_ID>.json` private
-- Keep `~/.config/opencode-linear-agent/config.json` and webhook secrets private
+- Keep `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`) and webhook secrets private
 - Webhook signatures are still verified by the server
 
 ## References

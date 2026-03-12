@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
-import path, { resolve } from "node:path";
+import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
-import { xdgConfig } from "xdg-basedir";
-import { existsSync, readFileSync } from "node:fs";
+import { getConfigPath } from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -26,25 +26,22 @@ const ConfigFileSchema = z.object({
     .string()
     .min(1)
     .transform((projectsPath) => {
-      if (projectsPath.startsWith("~/")) {
-        return resolve(homedir(), projectsPath.slice(2));
+      if (!projectsPath.startsWith("~/")) {
+        return projectsPath;
       }
-      return projectsPath;
+      return resolve(homedir(), projectsPath.slice(2));
     }),
 });
 
 export type Config = z.infer<typeof ConfigFileSchema>;
 
-export const APPLICATION_DIRECTORY = "opencode-linear-agent";
+export interface LoadConfigOptions {
+  configPath?: string;
+}
 
-export function loadConfig(): Config {
-  if (!xdgConfig) {
-    throw new Error(
-      "Failed to find directory for config storage. Please ensure HOME or XDG_CONFIG_HOME environment variable is set.",
-    );
-  }
+export function loadConfig(options: LoadConfigOptions = {}): Config {
+  const configPath = options.configPath ?? getConfigPath();
 
-  const configPath = path.join(xdgConfig, APPLICATION_DIRECTORY, "config.json");
   if (!existsSync(configPath)) {
     throw new Error(
       `Config file not found at ${configPath}. Please create a config file with the necessary configuration values.`,

@@ -4,15 +4,14 @@
  * Uses the same JSON file format as the server's FileStore.
  * Implements file locking to prevent race conditions during concurrent writes.
  *
- * The store path follows XDG Base Directory specification:
- * ~/.local/share/opencode-linear-agent/store.json
+ * The store path follows the shared XDG helper.
  */
 
 import { open, mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname } from "node:path";
 import { Result } from "better-result";
 import {
+  getStorePath,
   parseStoreData,
   type StoreData,
   type PendingQuestion,
@@ -25,15 +24,16 @@ export interface LinearContext {
   workdir: string;
 }
 
-/**
- * XDG-compliant path to the shared store file.
- * Both Docker (via bind mount) and host use the same path.
- * Can be overridden in tests via setStorePath().
- */
-let storePath = join(
-  homedir(),
-  ".local/share/opencode-linear-agent/store.json",
-);
+let storePath: string | null = null;
+
+function getEffectiveStorePath(): string {
+  if (storePath) {
+    return storePath;
+  }
+  const path = getStorePath();
+  storePath = path;
+  return path;
+}
 
 export function setStorePath(path: string): void {
   storePath = path;
@@ -184,11 +184,7 @@ async function readStoreSafe(
  * Write JSON data to the shared store file (assumes lock is held)
  */
 async function writeStore(filePath: string, data: StoreData): Promise<void> {
-  const lastSlash = filePath.lastIndexOf("/");
-  if (lastSlash > 0) {
-    const dir = filePath.slice(0, lastSlash);
-    await mkdir(dir, { recursive: true });
-  }
+  await mkdir(dirname(filePath), { recursive: true });
   await Bun.write(filePath, JSON.stringify(data, null, 2));
 }
 
@@ -233,7 +229,8 @@ export async function readAccessToken(
 export async function readAccessTokenSafe(
   organizationId: string,
 ): Promise<Result<string | null, StoreReadError>> {
-  const dataResult = await readStoreSafe(storePath);
+  const path = getEffectiveStorePath();
+  const dataResult = await readStoreSafe(path);
   if (Result.isError(dataResult)) {
     return Result.err(dataResult.error);
   }
@@ -248,7 +245,8 @@ export async function readAccessTokenSafe(
 export async function readAnyAccessTokenSafe(): Promise<
   Result<string | null, StoreReadError>
 > {
-  const dataResult = await readStoreSafe(storePath);
+  const path = getEffectiveStorePath();
+  const dataResult = await readStoreSafe(path);
   if (Result.isError(dataResult)) {
     return Result.err(dataResult.error);
   }
@@ -269,7 +267,7 @@ async function readAnyAccessTokenWithOrg(): Promise<{
   token: string;
   organizationId: string;
 } | null> {
-  const data = await readStore(storePath);
+  const data = await readStore(getEffectiveStorePath());
   for (const key of Object.keys(data)) {
     if (key.startsWith(ACCESS_TOKEN_PREFIX)) {
       const token = getValue<string>(data, key);
@@ -289,7 +287,7 @@ async function readAnyAccessTokenWithOrg(): Promise<{
 export async function savePendingQuestion(
   question: PendingQuestion,
 ): Promise<void> {
-  await modifyStore(storePath, (data) => {
+  await modifyStore(getEffectiveStorePath(), (data) => {
     const key = `${PENDING_QUESTION_PREFIX}${question.linearSessionId}`;
     return { ...data, [key]: { value: question } };
   });
@@ -302,7 +300,7 @@ export async function savePendingQuestion(
 export async function savePendingPermission(
   permission: PendingPermission,
 ): Promise<void> {
-  await modifyStore(storePath, (data) => {
+  await modifyStore(getEffectiveStorePath(), (data) => {
     const key = `${PENDING_PERMISSION_PREFIX}${permission.linearSessionId}`;
     return { ...data, [key]: { value: permission } };
   });
@@ -327,7 +325,7 @@ interface StoredSession {
 async function readSessionByWorkdir(
   workdir: string,
 ): Promise<StoredSession | null> {
-  const data = await readStore(storePath);
+  const data = await readStore(getEffectiveStorePath());
   let latest: StoredSession | null = null;
 
   for (const key of Object.keys(data)) {
@@ -370,6 +368,6 @@ export async function getSessionAsyncSafe(
 ): Promise<Result<LinearContext | null, StoreReadError>> {
   return Result.tryPromise({
     try: async () => getSessionAsync(workdir),
-    catch: (e) => toStoreReadError(e, storePath),
+    catch: (e) => toStoreReadError(e, getEffectiveStorePath()),
   });
 }

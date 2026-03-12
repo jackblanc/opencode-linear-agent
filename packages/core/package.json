@@ -10,6 +10,7 @@
     "@linear/sdk": "catalog:",
     "@opencode-ai/sdk": "catalog:",
     "better-result": "catalog:",
+    "xdg-basedir": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {}
