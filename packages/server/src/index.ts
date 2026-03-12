@@ -5,9 +5,9 @@
  * - Linear OAuth flow
  * - Linear webhooks (exposed publicly via Cloudflare Tunnel)
  * - Event processing (directly, no queue)
+ * - launchd-aware setup/status/service commands on macOS
  *
  * Prerequisites:
- * - OpenCode running separately via `opencode serve`
  * - Configuration file at XDG config directory with necessary values (see README)
  * - Local repository at the configured projects path
  */
@@ -35,6 +35,7 @@ import {
 import { loadConfig, type Config } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
+import { runCli } from "./commands";
 
 /**
  * Extract client IP from request headers
@@ -277,7 +278,9 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
 /**
  * Main entry point
  */
-async function main(): Promise<ReturnType<typeof Bun.serve>> {
+export async function startServerRuntime(): Promise<
+  ReturnType<typeof Bun.serve>
+> {
   const log = Log.create({ service: "startup" });
   log.info("Starting Linear OpenCode Agent (Local)");
 
@@ -326,19 +329,28 @@ Linear OpenCode Agent (Local) running!
   Webhook URL: ${webhookServerUrl}/api/webhook/linear
   OAuth URL:   ${webhookServerUrl}/api/oauth/authorize
 
-Make sure OpenCode is running: opencode serve
+Use 'opencode-linear-agent status' to inspect OpenCode + launchd state.
 `);
 
   return server;
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
-    const log = Log.create({ service: "startup" });
-    log.error("Failed to start server", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+  runCli(Bun.argv.slice(2), {
+    startServer: startServerRuntime,
+    loadConfig,
+  })
+    .then((code) => {
+      if (code !== 0) {
+        process.exit(code);
+      }
+    })
+    .catch((error) => {
+      const log = Log.create({ service: "startup" });
+      log.error("Failed to run command", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      process.exit(1);
     });
-    process.exit(1);
-  });
 }

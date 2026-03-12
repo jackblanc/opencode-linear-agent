@@ -25,6 +25,10 @@ export function getConfigPath(): string {
   return join(requireConfigHome(), APPLICATION_DIRECTORY, "config.json");
 }
 
+export function getDataDir(): string {
+  return join(requireDataHome(), APPLICATION_DIRECTORY);
+}
+
 export function getStorePath(): string {
-  return join(requireDataHome(), APPLICATION_DIRECTORY, "store.json");
+  return join(getDataDir(), "store.json");
 }

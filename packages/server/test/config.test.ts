@@ -3,7 +3,11 @@ import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { loadConfig } from "../src/config";
+import {
+  getAppPaths,
+  getManagedOpencodeHostAndPort,
+  loadConfig,
+} from "../src/config";
 
 const TEST_DIR = join(import.meta.dir, ".test-config");
 const ConfigResultSchema = z.object({
@@ -112,6 +116,56 @@ describe("loadConfig", () => {
 
     expect(config.webhookServerPort).toBe(3210);
     expect(config.projectsPath).toBe("/tmp/projects");
+  });
+
+  test("returns canonical app paths", () => {
+    const paths = getAppPaths();
+
+    expect(
+      paths.webhookServicePlistPath.endsWith(
+        "/Library/LaunchAgents/com.opencode-linear-agent.server.plist",
+      ),
+    ).toBe(true);
+    expect(
+      paths.opencodeServicePlistPath.endsWith(
+        "/Library/LaunchAgents/com.opencode-linear-agent.opencode.plist",
+      ),
+    ).toBe(true);
+    expect(
+      paths.webhookLogPath.endsWith("/opencode-linear-agent/launchd.log"),
+    ).toBe(true);
+    expect(
+      paths.opencodeErrorLogPath.endsWith(
+        "/opencode-linear-agent/opencode.launchd.err",
+      ),
+    ).toBe(true);
+  });
+
+  test("normalizes managed OpenCode host and port", () => {
+    const local = getManagedOpencodeHostAndPort({
+      webhookServerPublicHostname: "example.com",
+      webhookServerPort: 3210,
+      opencodeServerUrl: "http://localhost:4123",
+      linearClientId: "client",
+      linearClientSecret: "secret",
+      linearWebhookSecret: "webhook",
+      linearWebhookIps: ["1.1.1.1"],
+      projectsPath: "/tmp/projects",
+    });
+
+    const remote = getManagedOpencodeHostAndPort({
+      webhookServerPublicHostname: "example.com",
+      webhookServerPort: 3210,
+      opencodeServerUrl: "https://opencode.example.com",
+      linearClientId: "client",
+      linearClientSecret: "secret",
+      linearWebhookSecret: "webhook",
+      linearWebhookIps: ["1.1.1.1"],
+      projectsPath: "/tmp/projects",
+    });
+
+    expect(local).toEqual({ hostname: "127.0.0.1", port: 4123 });
+    expect(remote).toEqual({ hostname: "127.0.0.1", port: 4096 });
   });
 
   test("fails clearly when config file is missing", () => {
