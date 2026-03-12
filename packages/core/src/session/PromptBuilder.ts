@@ -35,7 +35,7 @@ You are permitted to make file changes, run shell commands, and utilize your ars
 function readPromptContext(event: AgentSessionEventWebhookPayload): string {
   if (
     typeof event.promptContext === "string" &&
-    event.promptContext.length > 0
+    event.promptContext.trim().length > 0
   ) {
     return event.promptContext;
   }
