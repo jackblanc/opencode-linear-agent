@@ -30,18 +30,32 @@ bun run fix                    # lint:fix + format:fix
 
 You need two always-on services:
 
-- webhook server (`bun run start`)
+- webhook server (`bun run start` or `opencode-linear-agent serve`)
 - OpenCode server (`opencode serve --port 4096 --hostname 127.0.0.1`)
+
+macOS can install/manage both with:
+
+```bash
+opencode-linear-agent setup
+opencode-linear-agent setup --manage-opencode
+opencode-linear-agent status
+```
 
 ### Key Paths
 
-| Path                                              | Purpose                                              |
-| ------------------------------------------------- | ---------------------------------------------------- |
-| `$XDG_DATA_HOME/opencode-linear-agent/store.json` | Session state, tokens, pending questions/permissions |
-| `$XDG_DATA_HOME/opencode-linear-agent/log/`       | Webhook server per-start pretty log files            |
-| `$XDG_DATA_HOME/opencode/log/`                    | OpenCode app + plugin logs                           |
-| `~/.local/share/opencode/worktree/`               | Git worktrees created by OpenCode                    |
-| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`      | Optional built plugin file                           |
+| Path                                                              | Purpose                                              |
+| ----------------------------------------------------------------- | ---------------------------------------------------- |
+| `$XDG_DATA_HOME/opencode-linear-agent/store.json`                 | Session state, tokens, pending questions/permissions |
+| `$XDG_DATA_HOME/opencode-linear-agent/log/`                       | Webhook server per-start pretty log files            |
+| `$XDG_DATA_HOME/opencode-linear-agent/launchd.log`                | Webhook server stdout                                |
+| `$XDG_DATA_HOME/opencode-linear-agent/launchd.err`                | Webhook server stderr                                |
+| `$XDG_DATA_HOME/opencode/log/`                                    | OpenCode app + plugin logs                           |
+| `$XDG_DATA_HOME/opencode-linear-agent/opencode.launchd.log`       | Managed OpenCode stdout                              |
+| `$XDG_DATA_HOME/opencode-linear-agent/opencode.launchd.err`       | Managed OpenCode stderr                              |
+| `~/Library/LaunchAgents/com.opencode-linear-agent.server.plist`   | Managed webhook launchd plist                        |
+| `~/Library/LaunchAgents/com.opencode-linear-agent.opencode.plist` | Managed OpenCode launchd plist                       |
+| `~/.local/share/opencode/worktree/`                               | Git worktrees created by OpenCode                    |
+| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`                      | Optional built plugin file                           |
 
 ### Plugin Development
 
@@ -244,6 +258,8 @@ if (Result.isError(activityResult)) {
 
 - Re-delegating to same agent does not emit a new webhook
 - Check webhook logs in `$XDG_DATA_HOME/opencode-linear-agent/log/` (default `~/.local/share/opencode-linear-agent/log/`)
+- Check service state with `opencode-linear-agent status`
+- Check launchd stderr in `$XDG_DATA_HOME/opencode-linear-agent/launchd.err` when startup fails before pretty logger init
 - Verify tunnel process is running
 
 **Session not resuming:**
@@ -256,6 +272,10 @@ if (Result.isError(activityResult)) {
 ```bash
 # Watch webhook server logs
 tail -f "$(ls -t "${XDG_DATA_HOME:-$HOME/.local/share}"/opencode-linear-agent/log/server-*.log | head -n 1)"
+
+# Inspect managed services
+opencode-linear-agent status
+opencode-linear-agent service status webhook
 
 # Check for stale OpenCode processes
 lsof -i :4096 -P -n

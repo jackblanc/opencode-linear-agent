@@ -61,19 +61,21 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    - `linearOrganizationId`: restrict webhook processing to one Linear org
    - `linearWebhookIps`: override the default Linear webhook IP allowlist
 
-3. Run OpenCode server:
-
-   ```bash
-   opencode serve --port 4096 --hostname 127.0.0.1
-   ```
-
-4. Start webhook server binary:
+3. Start services:
 
    ```bash
    opencode-linear-agent
    ```
 
-5. Complete setup:
+   macOS managed-service path:
+
+   ```bash
+   opencode-linear-agent setup
+   ```
+
+   Add `--manage-opencode` if `opencode-linear-agent status` reports OpenCode as absent and you want this package to install a per-user OpenCode launchd service too.
+
+4. Complete setup:
    - Configure OAuth app + webhook in Linear (see [Setup Guide](#setup-guide))
    - Expose local port `3210` (or your configured `webhookServerPort`) with [Ingress Options](#ingress-options)
    - Restart OpenCode after plugin config changes
@@ -114,7 +116,7 @@ Use `organization.id` as `linearOrganizationId` if you want to restrict webhooks
 
 ### 3) OpenCode server
 
-Run OpenCode locally so this agent can create sessions:
+Run OpenCode locally so this agent can create sessions, or let `opencode-linear-agent setup --manage-opencode` install a managed macOS launchd service when none is already running:
 
 ```bash
 opencode serve --port 4096 --hostname 127.0.0.1
@@ -190,43 +192,50 @@ Linear API                    OpenCode Server (:4096)
 | ingress tunnel  | Native | Exposes local webhook endpoint           | -              |
 | opencode server | Native | Agent execution backend                  | 4096           |
 
-## Running as a Background Service
+## Background Services
 
-### Option A: launchd (macOS)
+### macOS launchd (default path)
 
-Create `~/Library/LaunchAgents/com.opencode-linear-agent.server.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.opencode-linear-agent.server</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/you/.local/bin/opencode-linear-agent</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>/tmp/opencode-linear-agent.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/opencode-linear-agent.log</string>
-</dict>
-</plist>
-```
-
-Load and start:
+Use the built-in service manager instead of editing plist files by hand:
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.opencode-linear-agent.server.plist
-launchctl start com.opencode-linear-agent.server
+# Install/start webhook service
+opencode-linear-agent setup
+
+# Install/start webhook + managed OpenCode service, but only if OpenCode is absent
+opencode-linear-agent setup --manage-opencode
+
+# Inspect launchd + OpenCode reuse state
+opencode-linear-agent status
+
+# Inspect one service
+opencode-linear-agent service status webhook
+
+# Stop or remove one service
+opencode-linear-agent service stop webhook
+opencode-linear-agent service uninstall webhook
 ```
 
-### Option B: systemd (Linux)
+Behavior:
+
+- `setup` always installs/starts the per-user webhook launchd service on macOS.
+- `setup` first probes `opencodeServerUrl`, then launchd labels, then local `127.0.0.1:4096`; if any signal is positive, it reuses that OpenCode instance.
+- Managed OpenCode launchd install is only attempted when OpenCode looks absent and you pass `--manage-opencode`.
+- Generated plist files live in `~/Library/LaunchAgents`.
+- Service logs live in `$XDG_DATA_HOME/opencode-linear-agent/` (default `~/.local/share/opencode-linear-agent/`).
+
+Managed files:
+
+- `~/Library/LaunchAgents/com.opencode-linear-agent.server.plist`
+- `~/Library/LaunchAgents/com.opencode-linear-agent.opencode.plist`
+- `$XDG_DATA_HOME/opencode-linear-agent/launchd.log`
+- `$XDG_DATA_HOME/opencode-linear-agent/launchd.err`
+- `$XDG_DATA_HOME/opencode-linear-agent/opencode.launchd.log`
+- `$XDG_DATA_HOME/opencode-linear-agent/opencode.launchd.err`
+
+### Linux systemd (manual for now)
+
+Linux automation is not built in yet. Use manual `systemd` if you want background startup:
 
 Create `~/.config/systemd/user/opencode-linear-agent.service`:
 

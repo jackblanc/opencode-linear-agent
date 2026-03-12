@@ -5,14 +5,15 @@
  * - Linear OAuth flow
  * - Linear webhooks (exposed publicly via Cloudflare Tunnel)
  * - Event processing (directly, no queue)
+ * - launchd-aware setup/status/service commands on macOS
  *
  * Prerequisites:
- * - OpenCode running separately via `opencode serve`
  * - Configuration file at XDG config directory with necessary values (see README)
  * - Local repository at the configured projects path
  */
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
+import { mkdir } from "node:fs/promises";
 import type {
   AgentSessionEventWebhookPayload,
   EntityWebhookPayloadWithIssueData,
@@ -42,7 +43,7 @@ import {
 } from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
-import { mkdir } from "node:fs/promises";
+import { runCli } from "./commands";
 
 export interface ServerLoggingRuntime {
   log: ReturnType<typeof Log.create>;
@@ -362,7 +363,9 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
 /**
  * Main entry point
  */
-async function main(): Promise<ReturnType<typeof Bun.serve>> {
+export async function startServerRuntime(): Promise<
+  ReturnType<typeof Bun.serve>
+> {
   const logging = await initializeServerLogging();
   const log = logging.log;
   const logPath = logging.logPath;
@@ -416,24 +419,39 @@ Linear OpenCode Agent (Local) running!
   Webhook URL: ${webhookServerUrl}/api/webhook/linear
   OAuth URL:   ${webhookServerUrl}/api/oauth/authorize
 
-Make sure OpenCode is running: opencode serve
+Use 'opencode-linear-agent status' to inspect OpenCode + launchd state.
 `);
 
   return server;
 }
 
 if (import.meta.main) {
-  void main().catch(async (error: unknown) => {
-    const log = Log.create({ service: "startup" });
-    log.error("Failed to start server", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+  const command = Bun.argv[2] ?? "serve";
+  runCli(Bun.argv.slice(2), {
+    startServer: startServerRuntime,
+    loadConfig,
+  })
+    .then((code) => {
+      if (code !== 0) {
+        process.exit(code);
+      }
+    })
+    .catch((error) => {
+      const log = Log.create({ service: "startup" });
+      log.error(
+        command === "serve"
+          ? "Failed to start server"
+          : "Failed to run command",
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      );
+      const shutdown = serverLoggingRuntime
+        ? Log.shutdown()
+        : Promise.resolve();
+      void shutdown.finally(() => {
+        process.exit(1);
+      });
     });
-
-    if (serverLoggingRuntime) {
-      await Log.shutdown();
-    }
-
-    process.exit(1);
-  });
 }
