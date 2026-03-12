@@ -218,30 +218,26 @@ export class LinearEventProcessor {
     const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
     const fallbackIssueIdentifier =
       event.agentSession.issue?.identifier ?? issueId ?? "unknown";
-    const log = Log.create({ service: "processor" })
-      .tag("issue", fallbackIssueIdentifier)
-      .tag("sessionId", linearSessionId);
     let issue: WorktreeIssue = {
       identifier: fallbackIssueIdentifier,
       branchName:
         readStringField(event.agentSession.issue, "branchName") ?? undefined,
     };
-    if (issueId) {
+
+    if (issueId && !issue.branchName) {
       const issueResult = await this.linear.getIssue(issueId);
       if (Result.isOk(issueResult)) {
         issue = {
           identifier: issueResult.value.identifier,
           branchName: issueResult.value.branchName,
         };
-      } else {
-        log.warn("Failed to get issue details", {
-          error: issueResult.error.message,
-          errorType: issueResult.error._tag,
-        });
       }
     }
 
-    log.tag("issue", issue.identifier);
+    // Create a tagged logger for this processing context
+    const log = Log.create({ service: "processor" })
+      .tag("issue", issue.identifier)
+      .tag("sessionId", linearSessionId);
 
     log.info("Processing event", { action: event.action });
 
