@@ -30,8 +30,8 @@ export class FileStore implements KeyValueStore {
   private loaded = false;
   private filePath: string;
 
-  constructor() {
-    this.filePath = getStorePath();
+  constructor(filePath = getStorePath()) {
+    this.filePath = filePath;
   }
 
   /**

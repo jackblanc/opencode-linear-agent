@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,11 +12,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  mock.restore();
   await rm(TEST_DIR, { recursive: true, force: true });
 });
 
 describe("loadConfig", () => {
-  test("loads config from shared default path", async () => {
+  test("resolves tilde in projectsPath", async () => {
     const configDir = join(TEST_DIR, "config-home", "opencode-linear-agent");
     const configPath = join(configDir, "config.json");
 
@@ -38,6 +39,33 @@ describe("loadConfig", () => {
 
     expect(config.projectsPath).toBe(resolve(homedir(), "projects"));
     expect(config.linearWebhookIps).toHaveLength(3);
+  });
+
+  test("loads config from default shared path", async () => {
+    const configPath = join(TEST_DIR, "shared-default-config.json");
+
+    await Bun.write(
+      configPath,
+      JSON.stringify({
+        webhookServerPublicHostname: "example.com",
+        linearClientId: "client",
+        linearClientSecret: "secret",
+        linearWebhookSecret: "webhook",
+        projectsPath: "/tmp/projects",
+      }),
+    );
+
+    void mock.module("@opencode-linear-agent/core", () => ({
+      getConfigPath: (): string => configPath,
+    }));
+
+    const { loadConfig: loadConfigWithMock } = await import(
+      `../src/config?default-path=${Date.now()}`
+    );
+    const config = loadConfigWithMock();
+
+    expect(config.projectsPath).toBe("/tmp/projects");
+    expect(config.webhookServerPort).toBe(3210);
   });
 
   test("loads explicit config path", async () => {
