@@ -51,26 +51,75 @@ export interface ServerLoggingRuntime {
 }
 
 let serverLoggingRuntime: ServerLoggingRuntime | null = null;
+let serverLoggingRuntimePromise: Promise<ServerLoggingRuntime> | null = null;
+
+async function createServerLoggingRuntime(): Promise<ServerLoggingRuntime> {
+  const logDir = getLogDir();
+  const logPath = createServerLogPath();
+
+  await mkdir(logDir, { recursive: true });
+
+  const sink = await createFileLogSink(logPath);
+  Log.init({ sink });
+
+  const runtime = {
+    log: Log.create({ service: "startup" }),
+    logPath,
+    sink,
+  } satisfies ServerLoggingRuntime;
+
+  serverLoggingRuntime = runtime;
+  return runtime;
+}
 
 export async function initializeServerLogging(): Promise<ServerLoggingRuntime> {
   if (serverLoggingRuntime) {
     return serverLoggingRuntime;
   }
 
-  const logDir = getLogDir();
-  await mkdir(logDir, { recursive: true });
+  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch(
+    async (error: unknown) => {
+      serverLoggingRuntimePromise = null;
+      throw error;
+    },
+  );
 
-  const logPath = createServerLogPath();
-  const sink = await createFileLogSink(logPath);
-  Log.init({ sink });
+  return serverLoggingRuntimePromise;
+}
 
-  serverLoggingRuntime = {
-    log: Log.create({ service: "startup" }),
-    logPath,
-    sink,
+export async function shutdownServerLogging(
+  logging: ServerLoggingRuntime,
+  signal: string,
+): Promise<void> {
+  logging.log.info("Shutting down", { signal });
+  await Log.flush();
+  await logging.sink.close();
+}
+
+function registerShutdownHandlers(
+  server: ReturnType<typeof Bun.serve>,
+  logging: ServerLoggingRuntime,
+): void {
+  let shutdown: Promise<void> | null = null;
+
+  const run = (signal: string): void => {
+    shutdown ??= shutdownServerLogging(logging, signal).then(
+      () => {
+        void server.stop(true);
+        process.exit(0);
+      },
+      (error: unknown) => {
+        void server.stop(true);
+        process.stderr.write(
+          `shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+        process.exit(1);
+      },
+    );
   };
 
-  return serverLoggingRuntime;
+  process.once("SIGINT", () => run("SIGINT"));
+  process.once("SIGTERM", () => run("SIGTERM"));
 }
 
 /**
@@ -348,6 +397,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 
   // Start server
   const server = createServer(config, kv, tokenStore, dispatcher);
+  registerShutdownHandlers(server, logging);
 
   const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;
   log.info("Server started", {

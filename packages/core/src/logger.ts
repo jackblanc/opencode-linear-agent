@@ -238,10 +238,20 @@ function createLogger(tags: Record<string, unknown> = {}): Logger {
 }
 
 function initLogger(options: LogInitOptions = {}): void {
+  const sink = options.sink === undefined ? runtime.sink : options.sink;
+  const oldSink = sink !== runtime.sink ? runtime.sink : null;
+
   runtime = createRuntime({
     level: options.level ?? runtime.level,
-    sink: options.sink === undefined ? runtime.sink : options.sink,
+    sink,
   });
+
+  if (oldSink) {
+    void oldSink.close().then(
+      () => undefined,
+      () => undefined,
+    );
+  }
 }
 
 async function flushRuntime(): Promise<void> {

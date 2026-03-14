@@ -126,4 +126,53 @@ describe("server logging", () => {
     expect(out.firstPath.startsWith(out.logDir)).toBe(true);
     expect(out.text).toContain("service=startup ok=true boot");
   });
+
+  test("concurrent startup initialization shares one runtime", async () => {
+    const dataHome = await createDataHome();
+    const result = await run(
+      [
+        'import { initializeServerLogging } from "./packages/server/src/index";',
+        "const [a, b] = await Promise.all([initializeServerLogging(), initializeServerLogging()]);",
+        "process.stdout.write(JSON.stringify({",
+        "  sameObject: a === b,",
+        "  samePath: a.logPath === b.logPath,",
+        "}));",
+      ].join("\n"),
+      dataHome,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+
+    expect(JSON.parse(result.stdout)).toEqual({
+      sameObject: true,
+      samePath: true,
+    });
+  });
+
+  test("shutdown flushes and closes the log sink", async () => {
+    const dataHome = await createDataHome();
+    const result = await run(
+      [
+        'import { readFile } from "node:fs/promises";',
+        'import { initializeServerLogging, shutdownServerLogging } from "./packages/server/src/index";',
+        "const logging = await initializeServerLogging();",
+        'logging.log.info("before shutdown", { ok: true });',
+        'await shutdownServerLogging(logging, "SIGTERM");',
+        'const text = await readFile(logging.logPath, "utf8");',
+        "process.stdout.write(JSON.stringify({ text }));",
+      ].join("\n"),
+      dataHome,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("service=startup ok=true before shutdown");
+    expect(result.stderr).toContain(
+      "service=startup signal=SIGTERM Shutting down",
+    );
+
+    const out: { text: string } = JSON.parse(result.stdout);
+    expect(out.text).toContain("service=startup ok=true before shutdown");
+    expect(out.text).toContain("service=startup signal=SIGTERM Shutting down");
+  });
 });

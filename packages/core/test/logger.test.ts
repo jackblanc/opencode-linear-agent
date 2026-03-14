@@ -112,4 +112,37 @@ describe("Log", () => {
     expect(lines.join("")).toContain("service=server count=1 hello");
     expect(text).toContain("service=server count=1 hello");
   });
+
+  test("Log.init closes replaced sink", async () => {
+    let closes = 0;
+    const a = {
+      write(): void {
+        return;
+      },
+      async flush(): Promise<void> {
+        return;
+      },
+      async close(): Promise<void> {
+        closes += 1;
+        return;
+      },
+    };
+    const b = {
+      write(): void {
+        return;
+      },
+      async flush(): Promise<void> {
+        return;
+      },
+      async close(): Promise<void> {
+        return;
+      },
+    };
+
+    Log.init({ sink: a });
+    Log.init({ sink: b });
+    await Promise.resolve();
+
+    expect(closes).toBe(1);
+  });
 });
