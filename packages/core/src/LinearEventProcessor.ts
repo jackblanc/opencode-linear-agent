@@ -324,10 +324,11 @@ export class LinearEventProcessor {
     const opencodeSessionId = session.opencodeSessionId;
 
     // Add OpenCode session ID to logger context
-    log.tag("opcodeSession", opencodeSessionId.slice(0, 8));
-    log.tag("opencodeSessionId", opencodeSessionId);
+    const sessionLog = log
+      .tag("opencodeSession", opencodeSessionId.slice(0, 8))
+      .tag("opencodeSessionId", opencodeSessionId);
 
-    log.info("OpenCode session ready", {
+    sessionLog.info("OpenCode session ready", {
       workdir,
       isNewSession: session.isNewSession,
       hasPreviousContext: !!session.previousContext,
@@ -350,7 +351,7 @@ export class LinearEventProcessor {
           workdir,
           mode,
           session.previousContext,
-          log,
+          sessionLog,
         );
         return;
       case "prompted":
@@ -361,7 +362,7 @@ export class LinearEventProcessor {
           workdir,
           mode,
           session.previousContext,
-          log,
+          sessionLog,
         );
         return;
     }

@@ -1,12 +1,6 @@
-/**
- * Centralized logging module with hybrid output format.
- *
- * Pretty format (dev): INFO  2024-01-10T12:00:00 +15ms service=webhook issue=CODE-123 Message
- * JSON format (prod):  {"level":"INFO","service":"webhook","issue":"CODE-123","issueId":"uuid","message":"Message"}
- */
+import { createWriteStream, type WriteStream } from "node:fs";
 
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
-type LogFormat = "pretty" | "json";
 
 const levelPriority: Record<LogLevel, number> = {
   DEBUG: 0,
@@ -15,7 +9,6 @@ const levelPriority: Record<LogLevel, number> = {
   ERROR: 3,
 };
 
-// Keys that contain UUIDs - omitted from pretty format, included in JSON
 const UUID_KEYS = new Set([
   "issueId",
   "sessionId",
@@ -24,25 +17,152 @@ const UUID_KEYS = new Set([
   "opencodeSessionId",
 ]);
 
-let currentLevel: LogLevel = "INFO";
-let currentFormat: LogFormat = "pretty";
-let lastLogTime = Date.now();
+export interface LogSink {
+  write(line: string): void;
+  flush(): Promise<void>;
+  close(): Promise<void>;
+}
+
+type Runtime = Readonly<{
+  level: LogLevel;
+  sink: LogSink | null;
+}>;
+
+export interface Logger {
+  debug(message: string, extra?: Record<string, unknown>): void;
+  info(message: string, extra?: Record<string, unknown>): void;
+  warn(message: string, extra?: Record<string, unknown>): void;
+  error(message: string, extra?: Record<string, unknown>): void;
+  tag(key: string, value: unknown): Logger;
+  time(
+    operation: string,
+    extra?: Record<string, unknown>,
+  ): (extra?: Record<string, unknown>) => void;
+}
+
+interface LogInitOptions {
+  level?: LogLevel;
+  sink?: LogSink | null;
+}
+
+function parseLevel(value: string | undefined): LogLevel | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const upper = value.toUpperCase();
+  switch (upper) {
+    case "DEBUG":
+    case "INFO":
+    case "WARN":
+    case "ERROR":
+      return upper;
+    default:
+      return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function createRuntime(options: LogInitOptions = {}): Runtime {
+  return {
+    level: options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO",
+    sink: options.sink ?? null,
+  };
+}
+
+let runtime = createRuntime();
 
 function shouldLog(level: LogLevel): boolean {
-  return levelPriority[level] >= levelPriority[currentLevel];
+  return levelPriority[level] >= levelPriority[runtime.level];
 }
 
-function formatError(error: Error, depth = 0): string {
-  const result = error.message;
-  return error.cause instanceof Error && depth < 10
-    ? result + " Caused by: " + formatError(error.cause, depth + 1)
-    : result;
+function quote(value: string): string {
+  return JSON.stringify(value);
 }
 
-function formatValue(value: unknown): string {
-  if (value instanceof Error) return formatError(value);
-  if (typeof value === "object" && value !== null) return JSON.stringify(value);
-  return String(value);
+function formatError(value: Error, seen: WeakSet<object>): string {
+  seen.add(value);
+
+  const parts = [`${value.name}: ${value.message}`];
+  if (typeof value.stack === "string" && value.stack.length > 0) {
+    parts.push(value.stack);
+  }
+
+  const cause = value.cause;
+  if (cause instanceof Error && !seen.has(cause)) {
+    parts.push(`cause=${formatError(cause, seen)}`);
+  } else if (cause !== undefined) {
+    parts.push(`cause=${formatValue(cause, seen)}`);
+  }
+
+  return quote(parts.join(" | "));
+}
+
+function formatArray(value: unknown[], seen: WeakSet<object>): string {
+  const items: string[] = [];
+  for (const item of value) {
+    items.push(formatValue(item, seen));
+  }
+  return `[${items.join(",")}]`;
+}
+
+function formatObject(
+  value: Record<string, unknown>,
+  seen: WeakSet<object>,
+): string {
+  const items: string[] = [];
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined) {
+      continue;
+    }
+    items.push(`${quote(key)}:${formatValue(item, seen)}`);
+  }
+  return `{${items.join(",")}}`;
+}
+
+function formatValue(value: unknown, seen = new WeakSet<object>()): string {
+  switch (typeof value) {
+    case "string":
+      return /\s/.test(value) ? quote(value) : value;
+    case "number":
+    case "boolean":
+      return String(value);
+    case "bigint":
+      return `${value}n`;
+    case "undefined":
+      return "undefined";
+    case "symbol":
+      return quote(String(value));
+    case "function":
+      return quote(`[Function ${value.name || "anonymous"}]`);
+    case "object": {
+      if (value === null) {
+        return "null";
+      }
+
+      if (value instanceof Error) {
+        return formatError(value, seen);
+      }
+
+      if (value instanceof Date) {
+        return quote(value.toISOString());
+      }
+
+      if (seen.has(value)) {
+        return quote("[Circular]");
+      }
+
+      seen.add(value);
+      if (Array.isArray(value)) {
+        return formatArray(value, seen);
+      }
+
+      return formatObject(isRecord(value) ? value : {}, seen);
+    }
+  }
 }
 
 function buildPretty(
@@ -51,8 +171,8 @@ function buildPretty(
   tags: Record<string, unknown>,
   extra?: Record<string, unknown>,
 ): string {
-  const allTags = { ...tags, ...extra };
-  const prefix = Object.entries(allTags)
+  const fields = { ...tags, ...extra };
+  const prefix = Object.entries(fields)
     .filter(
       ([key, value]) =>
         value !== undefined && value !== null && !UUID_KEYS.has(key),
@@ -60,156 +180,142 @@ function buildPretty(
     .map(([key, value]) => `${key}=${formatValue(value)}`)
     .join(" ");
 
-  const now = new Date();
-  const diff = now.getTime() - lastLogTime;
-  lastLogTime = now.getTime();
-
-  const timestamp = now.toISOString().split(".")[0];
-  const levelPadded = level.padEnd(5);
-
-  return [levelPadded, timestamp, `+${diff}ms`, prefix, message]
+  return [level.padEnd(5), new Date().toISOString(), prefix, message]
     .filter(Boolean)
     .join(" ");
 }
 
-function buildJson(
-  level: LogLevel,
-  message: string,
-  tags: Record<string, unknown>,
-  extra?: Record<string, unknown>,
-): string {
-  return JSON.stringify({
-    level,
-    timestamp: new Date().toISOString(),
-    ...tags,
-    ...extra,
-    message,
-  });
+function write(line: string): void {
+  const text = `${line}\n`;
+  process.stderr.write(text);
+  runtime.sink?.write(text);
 }
 
-function write(output: string): void {
-  process.stderr.write(output + "\n");
-}
-
-export interface Logger {
-  debug(message: string, extra?: Record<string, unknown>): void;
-  info(message: string, extra?: Record<string, unknown>): void;
-  warn(message: string, extra?: Record<string, unknown>): void;
-  error(message: string, extra?: Record<string, unknown>): void;
-  /** Add a persistent tag to this logger instance */
-  tag(key: string, value: unknown): Logger;
-  /** Create a child logger with inherited tags */
-  clone(): Logger;
-}
-
-const loggers = new Map<string, Logger>();
-
-function createLogger(tags?: Record<string, unknown>): Logger {
-  const loggerTags: Record<string, unknown> = { ...tags };
-
-  const service = loggerTags["service"];
-  if (service && typeof service === "string") {
-    const cached = loggers.get(service);
-    if (cached) return cached;
-  }
-
+function createLogger(tags: Record<string, unknown> = {}): Logger {
   function log(
     level: LogLevel,
     message: string,
     extra?: Record<string, unknown>,
   ): void {
-    if (!shouldLog(level)) return;
+    if (!shouldLog(level)) {
+      return;
+    }
 
-    const output =
-      currentFormat === "pretty"
-        ? buildPretty(level, message, loggerTags, extra)
-        : buildJson(level, message, loggerTags, extra);
-
-    write(output);
+    write(buildPretty(level, message, tags, extra));
   }
 
-  const logger: Logger = {
-    debug(message: string, extra?: Record<string, unknown>) {
+  return {
+    debug(message: string, extra?: Record<string, unknown>): void {
       log("DEBUG", message, extra);
     },
-    info(message: string, extra?: Record<string, unknown>) {
+    info(message: string, extra?: Record<string, unknown>): void {
       log("INFO", message, extra);
     },
-    warn(message: string, extra?: Record<string, unknown>) {
+    warn(message: string, extra?: Record<string, unknown>): void {
       log("WARN", message, extra);
     },
-    error(message: string, extra?: Record<string, unknown>) {
+    error(message: string, extra?: Record<string, unknown>): void {
       log("ERROR", message, extra);
     },
-    tag(key: string, value: unknown) {
-      loggerTags[key] = value;
-      return logger;
+    tag(key: string, value: unknown): Logger {
+      return createLogger({ ...tags, [key]: value });
     },
-    clone() {
-      return createLogger({ ...loggerTags });
+    time(
+      operation: string,
+      extra: Record<string, unknown> = {},
+    ): (extra?: Record<string, unknown>) => void {
+      const start = performance.now();
+      const child = createLogger({ ...tags, ...extra, operation });
+
+      return (doneExtra: Record<string, unknown> = {}): void => {
+        child.info("completed", {
+          ...doneExtra,
+          durationMs: Math.round(performance.now() - start),
+        });
+      };
     },
   };
-
-  if (service && typeof service === "string") {
-    loggers.set(service, logger);
-  }
-
-  return logger;
-}
-
-function detectFormat(): LogFormat {
-  // 1. Explicit env var
-  const envFormat = process.env["LOG_FORMAT"];
-  if (envFormat === "pretty" || envFormat === "json") {
-    return envFormat;
-  }
-
-  // 2. Production defaults to JSON
-  if (process.env["NODE_ENV"] === "production") {
-    return "json";
-  }
-
-  // 3. Default to pretty (works in Docker, terminal, etc.)
-  return "pretty";
-}
-
-function parseLevel(value: string | undefined): LogLevel | undefined {
-  if (!value) return undefined;
-  const upper = value.toUpperCase();
-  if (
-    upper === "DEBUG" ||
-    upper === "INFO" ||
-    upper === "WARN" ||
-    upper === "ERROR"
-  ) {
-    return upper;
-  }
-  return undefined;
-}
-
-interface LogInitOptions {
-  level?: LogLevel;
-  format?: LogFormat;
 }
 
 function initLogger(options: LogInitOptions = {}): void {
-  currentLevel =
-    options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO";
-  currentFormat = options.format ?? detectFormat();
+  const sink = options.sink === undefined ? runtime.sink : options.sink;
+  const oldSink = sink !== runtime.sink ? runtime.sink : null;
+
+  runtime = createRuntime({
+    level: options.level ?? runtime.level,
+    sink,
+  });
+
+  if (oldSink) {
+    void oldSink.close().then(
+      () => undefined,
+      () => undefined,
+    );
+  }
 }
 
-// Default logger for simple usage
+async function flushRuntime(): Promise<void> {
+  return runtime.sink?.flush() ?? Promise.resolve();
+}
+
+async function waitForOpen(stream: WriteStream): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const open = (): void => {
+      stream.off("error", fail);
+      resolve();
+    };
+
+    const fail = (error: Error): void => {
+      stream.off("open", open);
+      reject(error);
+    };
+
+    stream.once("open", open);
+    stream.once("error", fail);
+  });
+}
+
+export async function createFileLogSink(path: string): Promise<LogSink> {
+  const stream = createWriteStream(path, { flags: "ax" });
+  await waitForOpen(stream);
+
+  let broken = false;
+  stream.on("error", () => {
+    broken = true;
+  });
+
+  return {
+    write(line: string): void {
+      if (!broken) {
+        stream.write(line);
+      }
+    },
+    async flush(): Promise<void> {
+      if (broken) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        stream.write("", () => resolve());
+      });
+    },
+    async close(): Promise<void> {
+      if (broken) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        stream.end(() => resolve());
+      });
+    },
+  };
+}
+
 const defaultLogger = createLogger({ service: "default" });
 
-// Initialize with defaults on module load
-initLogger();
-
-/**
- * Log namespace for convenient access to logger creation.
- * Provides a familiar API: Log.create({ service: "name" })
- */
 export const Log = {
   create: createLogger,
   init: initLogger,
+  flush: flushRuntime,
   Default: defaultLogger,
 } as const;

@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
-import { getConfigPath } from "@opencode-linear-agent/core";
+import { getConfigPath, getStorePath } from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -68,4 +68,28 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
   }
 
   return result.data;
+}
+
+function getDataDir(): string {
+  return dirname(getStorePath());
+}
+
+function formatLogTimestamp(now: Date): string {
+  const [head, tail] = now.toISOString().split(".");
+  const ms = tail?.slice(0, 3);
+  if (!head || !ms) {
+    return "unknown";
+  }
+  return `${head.replaceAll("-", "").replaceAll(":", "")}.${ms}Z`;
+}
+
+export function getLogDir(): string {
+  return join(getDataDir(), "log");
+}
+
+export function createServerLogPath(
+  now = new Date(),
+  pid = process.pid,
+): string {
+  return join(getLogDir(), `server-${formatLogTimestamp(now)}-p${pid}.log`);
 }

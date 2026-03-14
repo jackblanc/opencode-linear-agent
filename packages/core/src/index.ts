@@ -65,7 +65,8 @@ export type { EventDispatcher } from "./webhook";
 export { handleWebhook } from "./webhook";
 
 // Logging
-export { Log } from "./logger";
+export { Log, createFileLogSink } from "./logger";
+export type { LogSink } from "./logger";
 
 // Errors
 export { LinearForbiddenError } from "./errors/linear";
