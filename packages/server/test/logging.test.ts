@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,7 @@ const dirs: string[] = [];
 async function run(
   code: string,
   dataHome: string,
+  extraEnv: Record<string, string> = {},
 ): Promise<{
   exitCode: number;
   stdout: string;
@@ -20,6 +21,7 @@ async function run(
     env: {
       ...process.env,
       XDG_DATA_HOME: dataHome,
+      ...extraEnv,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -174,5 +176,40 @@ describe("server logging", () => {
     const out: { text: string } = JSON.parse(result.stdout);
     expect(out.text).toContain("service=startup ok=true before shutdown");
     expect(out.text).toContain("service=startup signal=SIGTERM Shutting down");
+  });
+
+  test("startup failure flushes fatal log to file", async () => {
+    const dataHome = await createDataHome();
+    const configHome = await createDataHome();
+    const proc = Bun.spawn({
+      cmd: ["bun", "packages/server/src/index.ts"],
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: configHome,
+        XDG_DATA_HOME: dataHome,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("Failed to start server");
+
+    const logDir = join(dataHome, "opencode-linear-agent", "log");
+    const files = await readdir(logDir);
+    expect(files).toHaveLength(1);
+
+    const text = await readFile(join(logDir, files[0] ?? ""), "utf8");
+    expect(text).toContain("Starting Linear OpenCode Agent (Local)");
+    expect(text).toContain("Failed to start server");
+    expect(text).toContain("Config file not found");
   });
 });

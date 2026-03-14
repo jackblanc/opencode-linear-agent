@@ -424,12 +424,18 @@ Make sure OpenCode is running: opencode serve
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
+  void main().catch(async (error: unknown) => {
     const log = Log.create({ service: "startup" });
     log.error("Failed to start server", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
+
+    if (serverLoggingRuntime) {
+      await Log.flush();
+      await serverLoggingRuntime.sink.close();
+    }
+
     process.exit(1);
   });
 }
