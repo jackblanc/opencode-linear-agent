@@ -32,6 +32,8 @@ export class FileTokenStore implements TokenStore {
     const lockPath = `${this.filePath}.lock`;
     const startedAt = Date.now();
 
+    await mkdir(dirname(this.filePath), { recursive: true });
+
     while (true) {
       const handle = await open(lockPath, "wx").then(
         (h) => h,
@@ -43,6 +45,7 @@ export class FileTokenStore implements TokenStore {
             Date.now() - startedAt > 5000
           ) {
             await unlink(lockPath).catch(() => {});
+            await Bun.sleep(50);
             return null;
           }
           if (e instanceof Error && "code" in e && e.code === "EEXIST") {
