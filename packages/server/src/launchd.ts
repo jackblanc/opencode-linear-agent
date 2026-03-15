@@ -329,7 +329,7 @@ export async function installLaunchdService(
       ok: false,
       reason: "launchctl_failed",
       status: await getLaunchdServiceStatus(service, runner, platform),
-      stdout: `${bootout.stdout}${absent ? "" : `\n${bootout.stdout}`}`,
+      stdout: `${bootout.stdout}${absent ? "" : `\n${bootstrap.stdout}`}`,
       stderr: `${bootout.stderr}\n${bootstrap.stderr}`.trim(),
     };
   }
