@@ -26,6 +26,31 @@ export const StoreDataSchema = z.record(z.string(), StoredValueSchema);
 
 export type StoreData = z.infer<typeof StoreDataSchema>;
 
+const RefreshTokenDataSchema = z.object({
+  refreshToken: z.string(),
+  appId: z.string(),
+  organizationId: z.string(),
+  installedAt: z.string(),
+  workspaceName: z.string().optional(),
+});
+
+const AuthAccessTokenSchema = z.object({
+  value: z.string(),
+  expiresAt: z.number(),
+});
+
+const AuthOrganizationSchema = z.object({
+  accessToken: AuthAccessTokenSchema.optional(),
+  refreshToken: RefreshTokenDataSchema.optional(),
+});
+
+export const AuthDataSchema = z.object({
+  version: z.literal(1),
+  organizations: z.record(z.string(), AuthOrganizationSchema),
+});
+
+export type AuthData = z.infer<typeof AuthDataSchema>;
+
 /**
  * Schema for OAuth token response from Linear
  */
@@ -47,6 +72,17 @@ export function parseStoreData(data: unknown): StoreData {
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
     throw new Error(`Invalid store data:\n${issues}`);
+  }
+  return result.data;
+}
+
+export function parseAuthData(data: unknown): AuthData {
+  const result = AuthDataSchema.safeParse(data);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid auth data:\n${issues}`);
   }
   return result.data;
 }

@@ -7,10 +7,11 @@ import type { LinearService } from "@opencode-linear-agent/core";
 import type { ActivityContent, IssueState } from "../../core/src/linear/types";
 import { Result } from "better-result";
 import { handleEvent } from "../src/orchestrator";
-import { setStorePath } from "../src/storage";
+import { setAuthPath, setStorePath } from "../src/storage";
 
 const TEST_DIR = join(import.meta.dir, ".test-orchestrator");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const TEST_AUTH_PATH = join(TEST_DIR, "auth.json");
 
 interface Call {
   sessionId: string;
@@ -72,7 +73,6 @@ function createLinear(calls: Call[]): LinearService {
 
 async function seedStore(workdir: string): Promise<void> {
   const store = {
-    "token:access:org-1": { value: "token-1" },
     "session:lin-1": {
       value: {
         opencodeSessionId: "oc-1",
@@ -85,6 +85,20 @@ async function seedStore(workdir: string): Promise<void> {
     },
   };
   await Bun.write(TEST_STORE_PATH, JSON.stringify(store));
+  await Bun.write(
+    TEST_AUTH_PATH,
+    JSON.stringify({
+      version: 1,
+      organizations: {
+        "org-1": {
+          accessToken: {
+            value: "token-1",
+            expiresAt: Date.now() + 60000,
+          },
+        },
+      },
+    }),
+  );
 }
 
 function reasoningPart(text: string, complete = true): ReasoningPart {
@@ -129,6 +143,7 @@ describe("handleEvent", () => {
   beforeEach(async () => {
     await mkdir(TEST_DIR, { recursive: true });
     setStorePath(TEST_STORE_PATH);
+    setAuthPath(TEST_AUTH_PATH);
     await seedStore(workdir);
   });
 

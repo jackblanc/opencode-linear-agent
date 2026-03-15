@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
-import { setStorePath } from "../../src/storage";
+import { setAuthPath, setStorePath } from "../../src/storage";
 import {
   parseDateFilter,
   withWarnings,
@@ -14,10 +14,12 @@ import {
 
 const TEST_DIR = join(import.meta.dir, "..", ".test-tools-utils");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const TEST_AUTH_PATH = join(TEST_DIR, "auth.json");
 
 beforeEach(async () => {
   await mkdir(TEST_DIR, { recursive: true });
   setStorePath(TEST_STORE_PATH);
+  setAuthPath(TEST_AUTH_PATH);
   resetClientCacheForTest();
 });
 
@@ -154,27 +156,30 @@ describe("errorJson", () => {
 });
 
 describe("getClient", () => {
-  test("returns structured corruption error for invalid JSON store", async () => {
-    await Bun.write(TEST_STORE_PATH, "{broken");
+  test("returns structured corruption error for invalid JSON auth file", async () => {
+    await Bun.write(TEST_AUTH_PATH, "{broken");
 
     const result = await getClient();
 
     expect(Result.isError(result)).toBe(true);
     if (Result.isError(result)) {
-      expect(result.error).toContain("Linear store read failed");
-      expect(result.error).toContain(TEST_STORE_PATH);
+      expect(result.error).toContain("Linear auth read failed");
+      expect(result.error).toContain(TEST_AUTH_PATH);
       expect(result.error).toContain("Recovery:");
     }
   });
 
-  test("returns missing token error for empty store", async () => {
-    await Bun.write(TEST_STORE_PATH, JSON.stringify({}));
+  test("returns missing token error for empty auth file", async () => {
+    await Bun.write(
+      TEST_AUTH_PATH,
+      JSON.stringify({ version: 1, organizations: {} }),
+    );
 
     const result = await getClient();
 
     expect(Result.isError(result)).toBe(true);
     if (Result.isError(result)) {
-      expect(result.error).toContain("No Linear access token found");
+      expect(result.error).toContain("No unique Linear access token found");
     }
   });
 });

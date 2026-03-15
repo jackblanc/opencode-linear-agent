@@ -9,6 +9,7 @@ import {
   getSessionAsync,
   savePendingQuestion,
   savePendingPermission,
+  setAuthPath,
   setStorePath,
   type PendingQuestion,
   type PendingPermission,
@@ -16,11 +17,13 @@ import {
 
 const TEST_DIR = join(import.meta.dir, ".test-storage");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const TEST_AUTH_PATH = join(TEST_DIR, "auth.json");
 
 describe("storage", () => {
   beforeEach(async () => {
     await mkdir(TEST_DIR, { recursive: true });
     setStorePath(TEST_STORE_PATH);
+    setAuthPath(TEST_AUTH_PATH);
   });
 
   afterEach(async () => {
@@ -30,11 +33,17 @@ describe("storage", () => {
   describe("readAccessToken", () => {
     test("should return token when it exists", async () => {
       const storeData = {
-        "token:access:org123": {
-          value: "test-token-abc",
+        version: 1,
+        organizations: {
+          org123: {
+            accessToken: {
+              value: "test-token-abc",
+              expiresAt: Date.now() + 60000,
+            },
+          },
         },
       };
-      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(TEST_AUTH_PATH, JSON.stringify(storeData));
 
       const token = await readAccessToken("org123");
 
@@ -42,8 +51,10 @@ describe("storage", () => {
     });
 
     test("should return null when token does not exist", async () => {
-      const storeData = {};
-      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(
+        TEST_AUTH_PATH,
+        JSON.stringify({ version: 1, organizations: {} }),
+      );
 
       const token = await readAccessToken("org123");
 
@@ -58,12 +69,17 @@ describe("storage", () => {
 
     test("should return null when token is expired", async () => {
       const storeData = {
-        "token:access:org123": {
-          value: "expired-token",
-          expires: Date.now() - 1000, // Expired 1 second ago
+        version: 1,
+        organizations: {
+          org123: {
+            accessToken: {
+              value: "expired-token",
+              expiresAt: Date.now() - 1000,
+            },
+          },
         },
       };
-      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(TEST_AUTH_PATH, JSON.stringify(storeData));
 
       const token = await readAccessToken("org123");
 
@@ -72,12 +88,17 @@ describe("storage", () => {
 
     test("should return token when expiration is in the future", async () => {
       const storeData = {
-        "token:access:org123": {
-          value: "valid-token",
-          expires: Date.now() + 60000, // Expires in 1 minute
+        version: 1,
+        organizations: {
+          org123: {
+            accessToken: {
+              value: "valid-token",
+              expiresAt: Date.now() + 60000,
+            },
+          },
         },
       };
-      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(TEST_AUTH_PATH, JSON.stringify(storeData));
 
       const token = await readAccessToken("org123");
 
@@ -86,10 +107,23 @@ describe("storage", () => {
 
     test("should return token for correct organization only", async () => {
       const storeData = {
-        "token:access:org123": { value: "token-org123" },
-        "token:access:org456": { value: "token-org456" },
+        version: 1,
+        organizations: {
+          org123: {
+            accessToken: {
+              value: "token-org123",
+              expiresAt: Date.now() + 60000,
+            },
+          },
+          org456: {
+            accessToken: {
+              value: "token-org456",
+              expiresAt: Date.now() + 60000,
+            },
+          },
+        },
       };
-      await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(TEST_AUTH_PATH, JSON.stringify(storeData));
 
       const token123 = await readAccessToken("org123");
       const token456 = await readAccessToken("org456");
@@ -101,34 +135,61 @@ describe("storage", () => {
     });
 
     test("readAccessTokenSafe should return parse_error for invalid JSON", async () => {
-      await Bun.write(TEST_STORE_PATH, "{ invalid");
+      await Bun.write(TEST_AUTH_PATH, "{ invalid");
 
       const result = await readAccessTokenSafe("org123");
 
       expect(Result.isError(result)).toBe(true);
       if (Result.isError(result)) {
         expect(result.error.kind).toBe("parse_error");
-        expect(result.error.path).toBe(TEST_STORE_PATH);
+        expect(result.error.path).toBe(TEST_AUTH_PATH);
       }
     });
 
     test("readAnyAccessTokenSafe should return schema_error for invalid shape", async () => {
-      await Bun.write(TEST_STORE_PATH, JSON.stringify(["not-an-object"]));
+      await Bun.write(TEST_AUTH_PATH, JSON.stringify(["not-an-object"]));
 
       const result = await readAnyAccessTokenSafe();
 
       expect(Result.isError(result)).toBe(true);
       if (Result.isError(result)) {
         expect(result.error.kind).toBe("schema_error");
-        expect(result.error.path).toBe(TEST_STORE_PATH);
+        expect(result.error.path).toBe(TEST_AUTH_PATH);
       }
+    });
+
+    test("readAnyAccessTokenSafe should return null when multiple org tokens exist", async () => {
+      await Bun.write(
+        TEST_AUTH_PATH,
+        JSON.stringify({
+          version: 1,
+          organizations: {
+            org123: {
+              accessToken: {
+                value: "token-org123",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+            org456: {
+              accessToken: {
+                value: "token-org456",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+          },
+        }),
+      );
+
+      const result = await readAnyAccessTokenSafe();
+
+      expect(Result.isError(result)).toBe(false);
+      expect(Result.isError(result) ? "unexpected" : result.value).toBeNull();
     });
   });
 
   describe("getSessionAsync", () => {
     test("should resolve session by workdir", async () => {
       const storeData = {
-        "token:access:org123": { value: "test-token-abc" },
         "session:lin-1": {
           value: {
             opencodeSessionId: "oc-1",
@@ -141,6 +202,20 @@ describe("storage", () => {
         },
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(
+        TEST_AUTH_PATH,
+        JSON.stringify({
+          version: 1,
+          organizations: {
+            org123: {
+              accessToken: {
+                value: "test-token-abc",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+          },
+        }),
+      );
 
       const session = await getSessionAsync("/tmp/workdir-a");
 
@@ -154,7 +229,6 @@ describe("storage", () => {
 
     test("should pick latest session for same workdir", async () => {
       const storeData = {
-        "token:access:org123": { value: "test-token-abc" },
         "session:lin-old": {
           value: {
             opencodeSessionId: "oc-old",
@@ -177,6 +251,20 @@ describe("storage", () => {
         },
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
+      await Bun.write(
+        TEST_AUTH_PATH,
+        JSON.stringify({
+          version: 1,
+          organizations: {
+            org123: {
+              accessToken: {
+                value: "test-token-abc",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+          },
+        }),
+      );
 
       const session = await getSessionAsync("/tmp/workdir-a");
 
@@ -244,7 +332,7 @@ describe("storage", () => {
 
     test("should preserve existing data when saving", async () => {
       const existingData = {
-        "token:access:org123": { value: "existing-token" },
+        "session:existing": { value: { workdir: "/tmp" } },
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(existingData));
 
@@ -262,7 +350,7 @@ describe("storage", () => {
       await savePendingQuestion(question);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
-      expect(stored["token:access:org123"]).toBeDefined();
+      expect(stored["session:existing"]).toBeDefined();
       expect(stored["question:linear-789"]).toBeDefined();
     });
 
@@ -338,7 +426,6 @@ describe("storage", () => {
 
     test("should preserve existing data when saving", async () => {
       const existingData = {
-        "token:access:org123": { value: "existing-token" },
         "question:linear-123": {
           value: { requestId: "q-123" },
         },
@@ -360,7 +447,6 @@ describe("storage", () => {
       await savePendingPermission(permission);
 
       const stored = JSON.parse(await readFile(TEST_STORE_PATH, "utf-8"));
-      expect(stored["token:access:org123"]).toBeDefined();
       expect(stored["question:linear-123"]).toBeDefined();
       expect(stored["permission:linear-789"]).toBeDefined();
     });

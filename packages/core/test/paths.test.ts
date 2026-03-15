@@ -3,9 +3,11 @@ import { describe, expect, mock, test } from "bun:test";
 void mock.module("xdg-basedir", () => ({
   xdgConfig: "/tmp/config",
   xdgData: "/tmp/data",
+  xdgState: "/tmp/state",
 }));
 
-const { getConfigPath, getStorePath } = await import("../src/paths");
+const { getAuthPath, getConfigPath, getStorePath } =
+  await import("../src/paths");
 
 describe("getAppPaths", () => {
   test("builds config path from xdg config root", () => {
@@ -16,5 +18,9 @@ describe("getAppPaths", () => {
 
   test("builds store path from xdg data root", () => {
     expect(getStorePath()).toBe("/tmp/data/opencode-linear-agent/store.json");
+  });
+
+  test("builds auth path from xdg state root", () => {
+    expect(getAuthPath()).toBe("/tmp/state/opencode-linear-agent/auth.json");
   });
 });

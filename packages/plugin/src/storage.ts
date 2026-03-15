@@ -1,18 +1,21 @@
 /**
  * File-based storage for sharing state between plugin and server.
  *
- * Uses the same JSON file format as the server's FileStore.
+ * Uses `store.json` for session/pending state and `auth.json` for OAuth state.
  * Implements file locking to prevent race conditions during concurrent writes.
  *
- * The store path follows the shared XDG helper.
+ * The file paths follow the shared XDG helpers.
  */
 
 import { open, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Result } from "better-result";
 import {
+  getAuthPath,
   getStorePath,
+  parseAuthData,
   parseStoreData,
+  type AuthData,
   type StoreData,
   type PendingQuestion,
   type PendingPermission,
@@ -25,6 +28,7 @@ export interface LinearContext {
 }
 
 let storePath: string | null = null;
+let authPath: string | null = null;
 
 function getEffectiveStorePath(): string {
   if (storePath) {
@@ -39,18 +43,38 @@ export function setStorePath(path: string): void {
   storePath = path;
 }
 
+function getEffectiveAuthPath(): string {
+  if (authPath) {
+    return authPath;
+  }
+  const path = getAuthPath();
+  authPath = path;
+  return path;
+}
+
+export function setAuthPath(path: string): void {
+  authPath = path;
+}
+
 type StoreReadErrorKind = "parse_error" | "schema_error" | "io_error";
 
-export interface StoreReadError {
+interface BaseReadError {
   kind: StoreReadErrorKind;
   path: string;
   message: string;
 }
 
+export interface StoreReadError extends BaseReadError {
+  fileType: "store";
+}
+
+export interface AuthReadError extends BaseReadError {
+  fileType: "auth";
+}
+
 /**
- * Key prefixes matching the server's storage format
+ * Key prefixes matching the server's store format
  */
-const ACCESS_TOKEN_PREFIX = "token:access:";
 const PENDING_QUESTION_PREFIX = "question:";
 const PENDING_PERMISSION_PREFIX = "permission:";
 const SESSION_PREFIX = "session:";
@@ -127,12 +151,37 @@ async function readStore(filePath: string): Promise<StoreData> {
 }
 
 function toStoreReadError(error: unknown, filePath: string): StoreReadError {
+  return toReadError(error, filePath, "store");
+}
+
+function toAuthReadError(error: unknown, filePath: string): AuthReadError {
+  return toReadError(error, filePath, "auth");
+}
+
+function toReadError(
+  error: unknown,
+  filePath: string,
+  fileType: "store",
+): StoreReadError;
+function toReadError(
+  error: unknown,
+  filePath: string,
+  fileType: "auth",
+): AuthReadError;
+function toReadError(
+  error: unknown,
+  filePath: string,
+  fileType: "store" | "auth",
+): StoreReadError | AuthReadError {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith("Invalid store data:")) {
+  const schemaPrefix =
+    fileType === "store" ? "Invalid store data:" : "Invalid auth data:";
+  if (message.startsWith(schemaPrefix)) {
     return {
       kind: "schema_error",
       path: filePath,
       message,
+      fileType,
     };
   }
   if (error instanceof SyntaxError || message.includes("parse JSON")) {
@@ -140,43 +189,73 @@ function toStoreReadError(error: unknown, filePath: string): StoreReadError {
       kind: "parse_error",
       path: filePath,
       message,
+      fileType,
     };
   }
   return {
     kind: "io_error",
     path: filePath,
     message,
+    fileType,
   };
 }
 
 export function formatStoreReadError(error: StoreReadError): string {
+  return formatReadError(error);
+}
+
+export function formatAuthReadError(error: AuthReadError): string {
+  return formatReadError(error);
+}
+
+function formatReadError(error: StoreReadError | AuthReadError): string {
   const reason =
     error.kind === "parse_error"
       ? "invalid JSON"
       : error.kind === "schema_error"
-        ? "invalid store schema"
-        : "store read failure";
+        ? `invalid ${error.fileType} schema`
+        : `${error.fileType} read failure`;
+  const fileLabel = error.fileType === "auth" ? "Linear auth" : "Linear store";
+  const recovery =
+    error.fileType === "auth"
+      ? "Recovery: 1) Fix or restore auth.json, 2) restart agent server, 3) re-run Linear auth if token data was lost."
+      : "Recovery: 1) Fix or restore store.json, 2) restart agent server, 3) retry the action after session state is healthy.";
   return [
-    `Linear store read failed (${reason}) at ${error.path}.`,
+    `${fileLabel} read failed (${reason}) at ${error.path}.`,
     `Cause: ${error.message}`,
-    "Recovery: 1) Fix or restore store.json, 2) restart agent server, 3) re-run Linear auth if token data was lost.",
+    recovery,
   ].join(" ");
 }
 
-async function readStoreSafe(
-  filePath: string,
-): Promise<Result<StoreData, StoreReadError>> {
+async function readAuth(filePath: string): Promise<AuthData> {
   const file = Bun.file(filePath);
   if (!(await file.exists())) {
-    return Result.ok({});
+    return {
+      version: 1,
+      organizations: {},
+    };
+  }
+  const json: unknown = await file.json();
+  return parseAuthData(json);
+}
+
+async function readAuthSafe(
+  filePath: string,
+): Promise<Result<AuthData, AuthReadError>> {
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    return Result.ok({
+      version: 1,
+      organizations: {},
+    });
   }
 
   return Result.tryPromise({
     try: async () => {
       const json: unknown = await file.json();
-      return parseStoreData(json);
+      return parseAuthData(json);
     },
-    catch: (e) => toStoreReadError(e, filePath),
+    catch: (e) => toAuthReadError(e, filePath),
   });
 }
 
@@ -213,8 +292,52 @@ function getValue<T>(data: StoreData, key: string): T | null {
   return stored.value as T;
 }
 
+function getAuthAccessToken(
+  data: AuthData,
+  organizationId: string,
+): string | null {
+  const accessToken = data.organizations[organizationId]?.accessToken;
+  if (!accessToken) {
+    return null;
+  }
+  if (Date.now() > accessToken.expiresAt) {
+    return null;
+  }
+  return accessToken.value;
+}
+
+type AccessTokenSelection =
+  | { kind: "missing" }
+  | { kind: "ambiguous" }
+  | { kind: "found"; token: string; organizationId: string };
+
+function selectAnyAccessToken(data: AuthData): AccessTokenSelection {
+  const found: Array<{ token: string; organizationId: string }> = [];
+  for (const organizationId of Object.keys(data.organizations)) {
+    const token = getAuthAccessToken(data, organizationId);
+    if (token) {
+      found.push({ token, organizationId });
+    }
+  }
+  if (found.length === 0) {
+    return { kind: "missing" };
+  }
+  if (found.length > 1) {
+    return { kind: "ambiguous" };
+  }
+  const token = found[0];
+  if (!token) {
+    return { kind: "missing" };
+  }
+  return {
+    kind: "found",
+    token: token.token,
+    organizationId: token.organizationId,
+  };
+}
+
 /**
- * Read the OAuth access token from the shared store file.
+ * Read the OAuth access token from auth.json.
  */
 export async function readAccessToken(
   organizationId: string,
@@ -228,35 +351,28 @@ export async function readAccessToken(
 
 export async function readAccessTokenSafe(
   organizationId: string,
-): Promise<Result<string | null, StoreReadError>> {
-  const path = getEffectiveStorePath();
-  const dataResult = await readStoreSafe(path);
+): Promise<Result<string | null, AuthReadError>> {
+  const path = getEffectiveAuthPath();
+  const dataResult = await readAuthSafe(path);
   if (Result.isError(dataResult)) {
     return Result.err(dataResult.error);
   }
-  return Result.ok(
-    getValue<string>(
-      dataResult.value,
-      `${ACCESS_TOKEN_PREFIX}${organizationId}`,
-    ),
-  );
+  return Result.ok(getAuthAccessToken(dataResult.value, organizationId));
 }
 
 export async function readAnyAccessTokenSafe(): Promise<
-  Result<string | null, StoreReadError>
+  Result<string | null, AuthReadError>
 > {
-  const path = getEffectiveStorePath();
-  const dataResult = await readStoreSafe(path);
+  const path = getEffectiveAuthPath();
+  const dataResult = await readAuthSafe(path);
   if (Result.isError(dataResult)) {
     return Result.err(dataResult.error);
   }
-  for (const key of Object.keys(dataResult.value)) {
-    if (key.startsWith(ACCESS_TOKEN_PREFIX)) {
-      const token = getValue<string>(dataResult.value, key);
-      if (token) return Result.ok(token);
-    }
+  const selection = selectAnyAccessToken(dataResult.value);
+  if (selection.kind !== "found") {
+    return Result.ok(null);
   }
-  return Result.ok(null);
+  return Result.ok(selection.token);
 }
 
 /**
@@ -267,17 +383,15 @@ async function readAnyAccessTokenWithOrg(): Promise<{
   token: string;
   organizationId: string;
 } | null> {
-  const data = await readStore(getEffectiveStorePath());
-  for (const key of Object.keys(data)) {
-    if (key.startsWith(ACCESS_TOKEN_PREFIX)) {
-      const token = getValue<string>(data, key);
-      if (token) {
-        const organizationId = key.slice(ACCESS_TOKEN_PREFIX.length);
-        return { token, organizationId };
-      }
-    }
+  const data = await readAuth(getEffectiveAuthPath());
+  const selection = selectAnyAccessToken(data);
+  if (selection.kind !== "found") {
+    return null;
   }
-  return null;
+  return {
+    token: selection.token,
+    organizationId: selection.organizationId,
+  };
 }
 
 /**
@@ -365,9 +479,19 @@ export async function getSessionAsync(
 
 export async function getSessionAsyncSafe(
   workdir: string,
-): Promise<Result<LinearContext | null, StoreReadError>> {
+): Promise<Result<LinearContext | null, StoreReadError | AuthReadError>> {
   return Result.tryPromise({
     try: async () => getSessionAsync(workdir),
-    catch: (e) => toStoreReadError(e, getEffectiveStorePath()),
+    catch: (e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      if (
+        e instanceof SyntaxError ||
+        message.includes("Invalid auth data:") ||
+        message.includes("parse JSON")
+      ) {
+        return toAuthReadError(e, getEffectiveAuthPath());
+      }
+      return toStoreReadError(e, getEffectiveStorePath());
+    },
   });
 }

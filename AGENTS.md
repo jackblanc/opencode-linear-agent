@@ -35,13 +35,14 @@ You need two always-on services:
 
 ### Key Paths
 
-| Path                                              | Purpose                                              |
-| ------------------------------------------------- | ---------------------------------------------------- |
-| `$XDG_DATA_HOME/opencode-linear-agent/store.json` | Session state, tokens, pending questions/permissions |
-| `$XDG_DATA_HOME/opencode-linear-agent/log/`       | Webhook server per-start pretty log files            |
-| `$XDG_DATA_HOME/opencode/log/`                    | OpenCode app + plugin logs                           |
-| `~/.local/share/opencode/worktree/`               | Git worktrees created by OpenCode                    |
-| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`      | Optional built plugin file                           |
+| Path                                              | Purpose                                      |
+| ------------------------------------------------- | -------------------------------------------- |
+| `$XDG_DATA_HOME/opencode-linear-agent/store.json` | Session state, pending questions/permissions |
+| `$XDG_STATE_HOME/opencode-linear-agent/auth.json` | Durable OAuth access + refresh token state   |
+| `$XDG_DATA_HOME/opencode-linear-agent/log/`       | Webhook server per-start pretty log files    |
+| `$XDG_DATA_HOME/opencode/log/`                    | OpenCode app + plugin logs                   |
+| `~/.local/share/opencode/worktree/`               | Git worktrees created by OpenCode            |
+| `$XDG_CONFIG_HOME/opencode/plugin/linear.js`      | Optional built plugin file                   |
 
 ### Plugin Development
 
@@ -249,6 +250,7 @@ if (Result.isError(activityResult)) {
 **Session not resuming:**
 
 - Check if session exists in `$XDG_DATA_HOME/opencode-linear-agent/store.json` (default `~/.local/share/opencode-linear-agent/store.json`)
+- Check if auth exists in `$XDG_STATE_HOME/opencode-linear-agent/auth.json` (default `~/.local/state/opencode-linear-agent/auth.json`)
 - Verify OpenCode web UI is reachable at `http://localhost:4096`
 
 ### Debugging Commands

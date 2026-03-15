@@ -2,7 +2,7 @@
  * OpenCode plugin for Linear integration.
  *
  * Streams OpenCode events to Linear issues as activities.
- * Reads session state and OAuth token from shared store file.
+ * Reads session state from store.json and OAuth state from auth.json.
  */
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
@@ -12,6 +12,7 @@ import { createLinearService } from "./linear";
 import {
   readAccessTokenSafe,
   getSessionAsyncSafe,
+  formatAuthReadError,
   formatStoreReadError,
 } from "./storage";
 import { handleUserMessage } from "./handlers";
@@ -46,7 +47,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     });
   };
 
-  info("Linear plugin initialized (reads session state from file store)");
+  info("Linear plugin initialized (reads session state from store.json)");
 
   const readTokenForHook = async (
     organizationId: string,
@@ -54,7 +55,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
   ): Promise<string | null> => {
     const tokenResult = await readAccessTokenSafe(organizationId);
     if (Result.isError(tokenResult)) {
-      log(`${hook}: ${formatStoreReadError(tokenResult.error)}`);
+      log(`${hook}: ${formatAuthReadError(tokenResult.error)}`);
       return null;
     }
     return tokenResult.value;
@@ -131,9 +132,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
       const sessionResult = await getSessionAsyncSafe(workdir);
       if (Result.isError(sessionResult)) {
-        log(
-          `permission.ask session read failed: ${formatStoreReadError(sessionResult.error)}`,
-        );
+        const errorMessage =
+          sessionResult.error.fileType === "auth"
+            ? formatAuthReadError(sessionResult.error)
+            : formatStoreReadError(sessionResult.error);
+        log(`permission.ask session read failed: ${errorMessage}`);
         return;
       }
 

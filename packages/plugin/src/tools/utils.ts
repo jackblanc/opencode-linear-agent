@@ -4,19 +4,19 @@
 
 import { LinearClient } from "@linear/sdk";
 import { Result } from "better-result";
-import { readAnyAccessTokenSafe, formatStoreReadError } from "../storage";
+import { readAnyAccessTokenSafe, formatAuthReadError } from "../storage";
 
 let cachedClient: { token: string; client: LinearClient } | null = null;
 
 export async function getClient(): Promise<Result<LinearClient, string>> {
   const tokenResult = await readAnyAccessTokenSafe();
   if (Result.isError(tokenResult)) {
-    return Result.err(formatStoreReadError(tokenResult.error));
+    return Result.err(formatAuthReadError(tokenResult.error));
   }
   const token = tokenResult.value;
   if (!token) {
     return Result.err(
-      "No Linear access token found in store. Ensure the agent server has authenticated.",
+      "No unique Linear access token found in auth.json. Ensure the agent server has authenticated exactly one org.",
     );
   }
   if (cachedClient && cachedClient.token === token) {

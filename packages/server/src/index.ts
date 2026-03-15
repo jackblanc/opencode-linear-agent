@@ -325,7 +325,7 @@ function createServer(
 
 /**
  * Proactively refresh the access token on a timer so the plugin
- * always has a valid token in the shared store.
+ * always has a valid token in auth.json.
  * Token TTL is 23 hours; we refresh every 20 hours for a 3-hour buffer.
  */
 function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
@@ -379,7 +379,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   });
 
   const kv = new FileStore();
-  const tokenStore = new FileTokenStore(kv);
+  const tokenStore = new FileTokenStore();
   const sessionRepository = new FileSessionRepository(kv);
 
   log.info("Storage initialized", { logPath });

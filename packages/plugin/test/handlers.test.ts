@@ -5,10 +5,11 @@ import type { Part } from "@opencode-ai/sdk";
 import type { LinearService } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { handleUserMessage } from "../src/handlers";
-import { setStorePath } from "../src/storage";
+import { setAuthPath, setStorePath } from "../src/storage";
 
 const TEST_DIR = join(import.meta.dir, ".test-handlers");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const TEST_AUTH_PATH = join(TEST_DIR, "auth.json");
 
 function createLinear(
   calls: Array<{ sessionId: string; body: string }>,
@@ -63,7 +64,6 @@ async function seedStore(
   workdir = "/tmp/workdir",
 ): Promise<void> {
   const store = {
-    "token:access:org-1": { value: "token-1" },
     [`session:${linearSessionId}`]: {
       value: {
         opencodeSessionId,
@@ -76,12 +76,27 @@ async function seedStore(
     },
   };
   await Bun.write(TEST_STORE_PATH, JSON.stringify(store));
+  await Bun.write(
+    TEST_AUTH_PATH,
+    JSON.stringify({
+      version: 1,
+      organizations: {
+        "org-1": {
+          accessToken: {
+            value: "token-1",
+            expiresAt: Date.now() + 60000,
+          },
+        },
+      },
+    }),
+  );
 }
 
 describe("handleUserMessage", () => {
   beforeEach(async () => {
     await mkdir(TEST_DIR, { recursive: true });
     setStorePath(TEST_STORE_PATH);
+    setAuthPath(TEST_AUTH_PATH);
   });
 
   afterEach(async () => {

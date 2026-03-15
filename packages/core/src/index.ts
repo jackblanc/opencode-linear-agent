@@ -73,11 +73,11 @@ export { LinearForbiddenError } from "./errors/linear";
 export type { LinearServiceError } from "./errors/linear";
 
 // Paths
-export { getConfigPath, getStorePath } from "./paths";
+export { getAuthPath, getConfigPath, getStorePath } from "./paths";
 
 // Zod schemas for runtime validation
-export { parseStoreData } from "./schemas";
-export type { StoredValue, StoreData } from "./schemas";
+export { parseAuthData, parseStoreData } from "./schemas";
+export type { AuthData, StoredValue, StoreData } from "./schemas";
 
 // OpenCode service wrapper (consumed by server)
 export { OpencodeService } from "./opencode";

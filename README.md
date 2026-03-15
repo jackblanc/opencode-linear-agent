@@ -141,7 +141,7 @@ Without the plugin, session activity sync and Linear tool integration do not wor
 
 - Plugin and webhook server are separate artifacts and separate release channels.
 - Runtime users do not need to clone this repo.
-- Current architecture expects plugin + server to share local state file at `$XDG_DATA_HOME/opencode-linear-agent/store.json` (default `~/.local/share/opencode-linear-agent/store.json`) when running on one machine.
+- Current architecture expects plugin + server to share `store.json` at `$XDG_DATA_HOME/opencode-linear-agent/store.json` for session state and `auth.json` at `$XDG_STATE_HOME/opencode-linear-agent/auth.json` for durable OAuth state when running on one machine.
 - Split-host/cloud deployments need extra work to replace shared file-state with a network API.
 
 ## Logs
