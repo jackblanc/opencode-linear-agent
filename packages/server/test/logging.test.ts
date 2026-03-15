@@ -157,10 +157,12 @@ describe("server logging", () => {
     const result = await run(
       [
         'import { readFile } from "node:fs/promises";',
+        'import { Log } from "./packages/core/src/logger";',
         'import { initializeServerLogging, shutdownServerLogging } from "./packages/server/src/index";',
         "const logging = await initializeServerLogging();",
         'logging.log.info("before shutdown", { ok: true });',
         'await shutdownServerLogging(logging, "SIGTERM");',
+        'Log.create({ service: "startup" }).info("after shutdown", { ok: false });',
         'const text = await readFile(logging.logPath, "utf8");',
         "process.stdout.write(JSON.stringify({ text }));",
       ].join("\n"),
@@ -176,6 +178,7 @@ describe("server logging", () => {
     const out: { text: string } = JSON.parse(result.stdout);
     expect(out.text).toContain("service=startup ok=true before shutdown");
     expect(out.text).toContain("service=startup signal=SIGTERM Shutting down");
+    expect(out.text).not.toContain("after shutdown");
   });
 
   test("startup failure flushes fatal log to file", async () => {

@@ -92,8 +92,7 @@ export async function shutdownServerLogging(
   signal: string,
 ): Promise<void> {
   logging.log.info("Shutting down", { signal });
-  await Log.flush();
-  await logging.sink.close();
+  await Log.shutdown();
 }
 
 function registerShutdownHandlers(
@@ -432,8 +431,7 @@ if (import.meta.main) {
     });
 
     if (serverLoggingRuntime) {
-      await Log.flush();
-      await serverLoggingRuntime.sink.close();
+      await Log.shutdown();
     }
 
     process.exit(1);

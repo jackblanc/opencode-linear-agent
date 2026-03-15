@@ -258,6 +258,18 @@ async function flushRuntime(): Promise<void> {
   return runtime.sink?.flush() ?? Promise.resolve();
 }
 
+async function shutdownRuntime(): Promise<void> {
+  const sink = runtime.sink;
+
+  runtime = createRuntime({
+    level: runtime.level,
+    sink: null,
+  });
+
+  await sink?.flush();
+  await sink?.close();
+}
+
 async function waitForOpen(stream: WriteStream): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const open = (): void => {
@@ -317,5 +329,6 @@ export const Log = {
   create: createLogger,
   init: initLogger,
   flush: flushRuntime,
+  shutdown: shutdownRuntime,
   Default: defaultLogger,
 } as const;
