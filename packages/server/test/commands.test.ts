@@ -251,4 +251,73 @@ describe("runCli", () => {
     expect(code).toBe(0);
     expect(calls).toBe(1);
   });
+
+  test("service status exits nonzero when absent", async () => {
+    const stdout = createBuffer();
+
+    const code = await runCli(["service", "status", "webhook"], {
+      startServer: async () => undefined,
+      loadConfig: () => config,
+      platform: "darwin",
+      stdout: stdout.stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => "/usr/local/bin/opencode",
+      runner: createRunner({
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
+          exitCode: 1,
+          stdout: "",
+          stderr: "Could not find service",
+        },
+      }),
+    });
+
+    expect(code).toBe(1);
+    expect(stdout.lines.join("")).toContain("webhook: absent/stopped");
+  });
+
+  test("service install supports json output", async () => {
+    const stdout = createBuffer();
+
+    const code = await runCli(["service", "install", "webhook", "--json"], {
+      startServer: async () => undefined,
+      loadConfig: () => config,
+      platform: "darwin",
+      stdout: stdout.stream,
+      stderr: createBuffer().stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => "/usr/local/bin/opencode",
+      runner: createRunner({
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 11\nlast exit code = 0\n",
+          stderr: "",
+        },
+      }),
+    });
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout.lines.join(""))).toMatchObject({
+      ok: true,
+      reason: "ok",
+      status: { name: "webhook", runtimeState: "running" },
+    });
+  });
 });

@@ -51,6 +51,14 @@ interface StatusReport {
   opencode: OpenCodeDetectionStatus;
 }
 
+interface ServiceJsonResult {
+  ok: boolean;
+  reason: string;
+  status: ManagedServiceStatus;
+  stdout?: string;
+  stderr?: string;
+}
+
 function writeLine(stream: Output, line: string): void {
   stream.write(`${line}\n`);
 }
@@ -161,6 +169,13 @@ function isManageOpencodeFlag(args: string[]): boolean {
   return args.includes("--manage-opencode");
 }
 
+function getServiceStatusExitCode(status: ManagedServiceStatus): number {
+  if (status.installState === "unsupported") {
+    return 2;
+  }
+  return status.runtimeState === "running" ? 0 : 1;
+}
+
 function getServiceName(value: string | undefined): ManagedServiceName | null {
   if (value === "webhook" || value === "opencode") {
     return value;
@@ -256,7 +271,7 @@ async function handleService(args: string[], deps: CliDeps): Promise<number> {
     } else {
       writeLine(stdout, formatServiceStatus(status));
     }
-    return status.installState === "unsupported" ? 1 : 0;
+    return getServiceStatusExitCode(status);
   }
   const result =
     action === "install"
@@ -272,7 +287,18 @@ async function handleService(args: string[], deps: CliDeps): Promise<number> {
     printHelp(stderr);
     return 1;
   }
-  writeLine(stdout, formatServiceStatus(result.status));
+  if (isJsonFlag(args)) {
+    const output: ServiceJsonResult = {
+      ok: result.ok,
+      reason: result.reason,
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+    writeLine(stdout, JSON.stringify(output, null, 2));
+  } else {
+    writeLine(stdout, formatServiceStatus(result.status));
+  }
   if (result.stderr) {
     writeLine(stderr, result.stderr.trim());
   }

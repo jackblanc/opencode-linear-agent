@@ -16,6 +16,7 @@ const DEFAULT_OPENCODE_SERVER_PORT = 4096;
 export const DEFAULT_OPENCODE_SERVER_URL = `http://${DEFAULT_OPENCODE_SERVER_HOSTNAME}:${DEFAULT_OPENCODE_SERVER_PORT}`;
 export const WEBHOOK_SERVICE_LABEL = "com.opencode-linear-agent.server";
 export const OPENCODE_SERVICE_LABEL = "com.opencode-linear-agent.opencode";
+export const EXTERNAL_OPENCODE_SERVICE_LABEL = "com.opencode.server";
 
 const ConfigFileSchema = z.object({
   webhookServerPublicHostname: z.string().min(1),
@@ -112,6 +113,11 @@ export function getManagedOpencodeHostAndPort(config: Config): {
     hostname: DEFAULT_OPENCODE_SERVER_HOSTNAME,
     port: DEFAULT_OPENCODE_SERVER_PORT,
   };
+}
+
+export function getManagedOpencodeUrl(config: Config): string {
+  const opencode = getManagedOpencodeHostAndPort(config);
+  return `http://${opencode.hostname}:${opencode.port}`;
 }
 
 export function loadConfig(options: LoadConfigOptions = {}): Config {

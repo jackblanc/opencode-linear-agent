@@ -6,8 +6,10 @@ import { homedir } from "node:os";
 import type { Config } from "./config";
 import {
   DEFAULT_OPENCODE_SERVER_URL,
+  EXTERNAL_OPENCODE_SERVICE_LABEL,
   getAppPaths,
   getManagedOpencodeHostAndPort,
+  getManagedOpencodeUrl,
   OPENCODE_SERVICE_LABEL,
   WEBHOOK_SERVICE_LABEL,
 } from "./config";
@@ -217,10 +219,14 @@ function renderLaunchdPlist(service: ManagedServiceDefinition): string {
 function getLaunchdEnvironmentVariables(): Record<string, string> {
   const env: Record<string, string> = {};
   const pathValue = process.env["PATH"];
+  const home = process.env["HOME"];
   const xdgConfigHome = process.env["XDG_CONFIG_HOME"];
   const xdgDataHome = process.env["XDG_DATA_HOME"];
   if (pathValue) {
     env["PATH"] = pathValue;
+  }
+  if (home) {
+    env["HOME"] = home;
   }
   if (xdgConfigHome) {
     env["XDG_CONFIG_HOME"] = xdgConfigHome;
@@ -547,22 +553,29 @@ function isKnownOpenCodeLaunchdLabel(
   label: string,
   managedLabel: string,
 ): boolean {
-  return label === managedLabel || label === "com.opencode.server";
+  return label === managedLabel || label === EXTERNAL_OPENCODE_SERVICE_LABEL;
 }
 
-function isDefaultLocalOpencodeUrl(url: string): boolean {
-  if (!URL.canParse(url)) {
+function isSameLocalOpencodeUrl(left: string, right: string): boolean {
+  if (!URL.canParse(left) || !URL.canParse(right)) {
     return false;
   }
-  const parsed = new URL(url);
-  const port = Number.parseInt(
-    parsed.port || `${parsed.protocol === "http:" ? 80 : 443}`,
+  const leftUrl = new URL(left);
+  const rightUrl = new URL(right);
+  const leftPort = Number.parseInt(
+    leftUrl.port || `${leftUrl.protocol === "http:" ? 80 : 443}`,
+    10,
+  );
+  const rightPort = Number.parseInt(
+    rightUrl.port || `${rightUrl.protocol === "http:" ? 80 : 443}`,
     10,
   );
   return (
-    parsed.protocol === "http:" &&
-    (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
-    port === 4096
+    leftUrl.protocol === "http:" &&
+    rightUrl.protocol === "http:" &&
+    (leftUrl.hostname === "127.0.0.1" || leftUrl.hostname === "localhost") &&
+    (rightUrl.hostname === "127.0.0.1" || rightUrl.hostname === "localhost") &&
+    leftPort === rightPort
   );
 }
 
@@ -576,6 +589,7 @@ export async function detectOpenCodeStatus(input: {
   const runner = input.runner ?? runCommand;
   const fetcher = input.fetcher ?? fetch;
   const configuredUrl = input.config.opencodeServerUrl;
+  const managedUrl = getManagedOpencodeUrl(input.config);
   let launchdLabel: string | null = null;
   const reachableConfigured = await probeHttpUrl(configuredUrl, fetcher, 1200);
   if (reachableConfigured) {
@@ -607,12 +621,12 @@ export async function detectOpenCodeStatus(input: {
           input.platform,
         );
         if (status.runtimeState === "running") {
-          if (!isDefaultLocalOpencodeUrl(configuredUrl)) {
+          if (!isSameLocalOpencodeUrl(configuredUrl, managedUrl)) {
             return {
               state: "launchd_service",
               recommendedAction: "update_config",
               configuredUrl,
-              reachableUrl: DEFAULT_OPENCODE_SERVER_URL,
+              reachableUrl: managedUrl,
               launchdLabel,
             };
           }
@@ -631,7 +645,7 @@ export async function detectOpenCodeStatus(input: {
   const fallbackUrl = DEFAULT_OPENCODE_SERVER_URL;
   const reachableListener = await probeHttpUrl(fallbackUrl, fetcher, 1200);
   if (reachableListener) {
-    if (!isDefaultLocalOpencodeUrl(configuredUrl)) {
+    if (!isSameLocalOpencodeUrl(configuredUrl, fallbackUrl)) {
       return {
         state: "listener_config_mismatch",
         recommendedAction: "update_config",

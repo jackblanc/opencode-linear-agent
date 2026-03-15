@@ -51,11 +51,13 @@ const services: Record<"webhook" | "opencode", ManagedServiceDefinition> = {
 };
 
 const oldPath = process.env["PATH"];
+const oldHome = process.env["HOME"];
 const oldXdgConfigHome = process.env["XDG_CONFIG_HOME"];
 const oldXdgDataHome = process.env["XDG_DATA_HOME"];
 
 beforeEach(() => {
   process.env["PATH"] = "/usr/local/bin:/usr/bin:/bin";
+  process.env["HOME"] = "/Users/test";
   process.env["XDG_CONFIG_HOME"] = "/tmp/opencode-config";
   process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
 });
@@ -70,6 +72,11 @@ afterEach(() => {
     process.env["XDG_CONFIG_HOME"] = oldXdgConfigHome;
   } else {
     delete process.env["XDG_CONFIG_HOME"];
+  }
+  if (oldHome) {
+    process.env["HOME"] = oldHome;
+  } else {
+    delete process.env["HOME"];
   }
   if (oldXdgDataHome) {
     process.env["XDG_DATA_HOME"] = oldXdgDataHome;
@@ -149,6 +156,7 @@ describe("installLaunchdService", () => {
     expect(plist).toContain("<string>serve</string>");
     expect(plist).toContain("<key>EnvironmentVariables</key>");
     expect(plist).toContain("<key>PATH</key>");
+    expect(plist).toContain("<key>HOME</key>");
     expect(plist).toContain("<string>/tmp/opencode-config</string>");
     expect(plist).toContain("<string>/tmp/opencode-data</string>");
     expect(plist).toContain(`<string>${service.stderrPath}</string>`);
@@ -284,7 +292,7 @@ describe("detectOpenCodeStatus", () => {
     expect(status.launchdLabel).toBe("com.opencode.server");
   });
 
-  test("requires config update for running launchd service on default url", async () => {
+  test("reuses running launchd service on configured local port", async () => {
     const status = await detectOpenCodeStatus({
       config: {
         ...config,
@@ -309,8 +317,50 @@ describe("detectOpenCodeStatus", () => {
     });
 
     expect(status.state).toBe("launchd_service");
-    expect(status.recommendedAction).toBe("update_config");
-    expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
+    expect(status.recommendedAction).toBe("reuse");
+    expect(status.reachableUrl).toBe(null);
+  });
+
+  test("preserves configured local port for running launchd service", async () => {
+    const status = await detectOpenCodeStatus({
+      config: {
+        ...config,
+        opencodeServerUrl: "http://localhost:4123",
+      },
+      services: {
+        ...services,
+        opencode: {
+          ...services.opencode,
+          programArguments: [
+            "/usr/local/bin/opencode",
+            "serve",
+            "--port",
+            "4123",
+            "--hostname",
+            "127.0.0.1",
+          ],
+        },
+      },
+      platform: "darwin",
+      runner: createRunner({
+        "launchctl list": {
+          exitCode: 0,
+          stdout: "123\t0\tcom.opencode.server\n",
+          stderr: "",
+        },
+        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
+          {
+            exitCode: 0,
+            stdout: "state = running\npid = 33\nlast exit code = 0\n",
+            stderr: "",
+          },
+      }),
+      fetcher: createFetcher([]),
+    });
+
+    expect(status.state).toBe("launchd_service");
+    expect(status.recommendedAction).toBe("reuse");
+    expect(status.reachableUrl).toBe(null);
   });
 
   test("does not reuse stopped launchd OpenCode service", async () => {
