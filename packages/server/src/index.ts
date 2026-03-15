@@ -20,6 +20,7 @@ import type {
 import {
   IssueEventHandler,
   WorktreeManager,
+  createFileLogSink,
   handleAuthorize,
   handleCallback,
   handleWebhook,
@@ -29,12 +30,96 @@ import {
   Log,
   type EventDispatcher,
   type KeyValueStore,
+  type LogSink,
   type OAuthConfig,
   type TokenStore,
 } from "@opencode-linear-agent/core";
-import { loadConfig, type Config } from "./config";
+import {
+  createServerLogPath,
+  getLogDir,
+  loadConfig,
+  type Config,
+} from "./config";
 import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
+import { mkdir } from "node:fs/promises";
+
+export interface ServerLoggingRuntime {
+  log: ReturnType<typeof Log.create>;
+  logPath: string;
+  sink: LogSink;
+}
+
+let serverLoggingRuntime: ServerLoggingRuntime | null = null;
+let serverLoggingRuntimePromise: Promise<ServerLoggingRuntime> | null = null;
+
+async function createServerLoggingRuntime(): Promise<ServerLoggingRuntime> {
+  const logDir = getLogDir();
+  const logPath = createServerLogPath();
+
+  await mkdir(logDir, { recursive: true });
+
+  const sink = await createFileLogSink(logPath);
+  Log.init({ sink });
+
+  const runtime = {
+    log: Log.create({ service: "startup" }),
+    logPath,
+    sink,
+  } satisfies ServerLoggingRuntime;
+
+  serverLoggingRuntime = runtime;
+  return runtime;
+}
+
+export async function initializeServerLogging(): Promise<ServerLoggingRuntime> {
+  if (serverLoggingRuntime) {
+    return serverLoggingRuntime;
+  }
+
+  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch(
+    async (error: unknown) => {
+      serverLoggingRuntimePromise = null;
+      throw error;
+    },
+  );
+
+  return serverLoggingRuntimePromise;
+}
+
+export async function shutdownServerLogging(
+  logging: ServerLoggingRuntime,
+  signal: string,
+): Promise<void> {
+  logging.log.info("Shutting down", { signal });
+  await Log.shutdown();
+}
+
+function registerShutdownHandlers(
+  server: ReturnType<typeof Bun.serve>,
+  logging: ServerLoggingRuntime,
+): void {
+  let shutdown: Promise<void> | null = null;
+
+  const run = (signal: string): void => {
+    shutdown ??= shutdownServerLogging(logging, signal).then(
+      () => {
+        void server.stop(true);
+        process.exit(0);
+      },
+      (error: unknown) => {
+        void server.stop(true);
+        process.stderr.write(
+          `shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+        process.exit(1);
+      },
+    );
+  };
+
+  process.once("SIGINT", () => run("SIGINT"));
+  process.once("SIGTERM", () => run("SIGTERM"));
+}
 
 /**
  * Extract client IP from request headers
@@ -278,7 +363,9 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
-  const log = Log.create({ service: "startup" });
+  const logging = await initializeServerLogging();
+  const log = logging.log;
+  const logPath = logging.logPath;
   log.info("Starting Linear OpenCode Agent (Local)");
 
   // Load configuration
@@ -295,6 +382,8 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const tokenStore = new FileTokenStore(kv);
   const sessionRepository = new FileSessionRepository(kv);
 
+  log.info("Storage initialized", { logPath });
+
   // Start proactive token refresh so the plugin always has a valid token
   startTokenRefreshTimer(config, tokenStore);
 
@@ -307,6 +396,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 
   // Start server
   const server = createServer(config, kv, tokenStore, dispatcher);
+  registerShutdownHandlers(server, logging);
 
   const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;
   log.info("Server started", {
@@ -333,12 +423,17 @@ Make sure OpenCode is running: opencode serve
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
+  void main().catch(async (error: unknown) => {
     const log = Log.create({ service: "startup" });
     log.error("Failed to start server", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
+
+    if (serverLoggingRuntime) {
+      await Log.shutdown();
+    }
+
     process.exit(1);
   });
 }

@@ -98,9 +98,10 @@ export class SessionManager {
     const existingState = await this.repository.get(linearSessionId);
 
     if (existingState?.opencodeSessionId) {
-      log.tag("opencodeSession", existingState.opencodeSessionId.slice(0, 8));
-      log.tag("opencodeSessionId", existingState.opencodeSessionId);
-      log.info("Found existing state, attempting to resume");
+      const sessionLog = log
+        .tag("opencodeSession", existingState.opencodeSessionId.slice(0, 8))
+        .tag("opencodeSessionId", existingState.opencodeSessionId);
+      sessionLog.info("Found existing state, attempting to resume");
 
       const sessionResult = await this.opencode.getSession(
         existingState.opencodeSessionId,
@@ -108,7 +109,7 @@ export class SessionManager {
       );
 
       if (Result.isOk(sessionResult)) {
-        log.info("Successfully resumed session");
+        sessionLog.info("Successfully resumed session");
         return Result.ok({
           opencodeSessionId: sessionResult.value.id,
           existingState,
@@ -117,7 +118,7 @@ export class SessionManager {
       }
 
       // Session not found or error - log and try to fetch previous context
-      log.warn("Failed to resume session, fetching previous context", {
+      sessionLog.warn("Failed to resume session, fetching previous context", {
         error: sessionResult.error.message,
         errorType: sessionResult.error._tag,
       });
@@ -125,7 +126,7 @@ export class SessionManager {
       const previousContext = await this.fetchPreviousContext(
         existingState.opencodeSessionId,
         workdir,
-        log,
+        sessionLog,
       );
 
       const sessionRepoDirectory = existingState.repoDirectory ?? repoDirectory;
@@ -145,7 +146,7 @@ export class SessionManager {
         workdir,
         existingState,
         previousContext,
-        log,
+        sessionLog,
       );
     }
 
@@ -223,9 +224,10 @@ export class SessionManager {
 
     const sessionId = sessionResult.value.id;
 
-    log.tag("opencodeSession", sessionId.slice(0, 8));
-    log.tag("opencodeSessionId", sessionId);
-    log.info("Created OpenCode session");
+    const sessionLog = log
+      .tag("opencodeSession", sessionId.slice(0, 8))
+      .tag("opencodeSessionId", sessionId);
+    sessionLog.info("Created OpenCode session");
 
     const newState: SessionState = {
       opencodeSessionId: sessionId,
@@ -239,7 +241,10 @@ export class SessionManager {
 
     await this.repository.save(newState);
 
-    log.info("Saved session state to repository", { branchName, workdir });
+    sessionLog.info("Saved session state to repository", {
+      branchName,
+      workdir,
+    });
 
     return Result.ok({
       opencodeSessionId: sessionId,

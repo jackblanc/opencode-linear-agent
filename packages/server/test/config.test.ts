@@ -10,13 +10,23 @@ const ConfigResultSchema = z.object({
   projectsPath: z.string(),
   webhookServerPort: z.number(),
 });
+const PathResultSchema = z.object({
+  logPath: z.string(),
+});
 
 beforeEach(async () => {
   await rm(TEST_DIR, { recursive: true, force: true });
   await mkdir(TEST_DIR, { recursive: true });
 });
 
+const oldXdgDataHome = process.env["XDG_DATA_HOME"];
+
 afterEach(async () => {
+  if (oldXdgDataHome) {
+    process.env["XDG_DATA_HOME"] = oldXdgDataHome;
+  } else {
+    delete process.env["XDG_DATA_HOME"];
+  }
   await rm(TEST_DIR, { recursive: true, force: true });
 });
 
@@ -119,6 +129,83 @@ describe("loadConfig", () => {
 
     expect(() => loadConfig({ configPath })).toThrow(
       `Config file not found at ${configPath}. Please create a config file with the necessary configuration values.`,
+    );
+  });
+
+  test("uses XDG data dir when set", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        "bun",
+        "-e",
+        [
+          'import { createServerLogPath } from "./packages/server/src/config";',
+          "process.stdout.write(JSON.stringify({",
+          '  logPath: createServerLogPath(new Date("2026-03-06T21:57:17.187Z")),',
+          "}));",
+        ].join("\n"),
+      ],
+      cwd: join(import.meta.dir, "..", "..", ".."),
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: "/tmp/opencode-data",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+
+    const paths = PathResultSchema.parse(JSON.parse(stdout));
+    expect(
+      paths.logPath.startsWith("/tmp/opencode-data/opencode-linear-agent/"),
+    ).toBe(true);
+  });
+
+  test("creates per-start server log path", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        "bun",
+        "-e",
+        [
+          'import { createServerLogPath } from "./packages/server/src/config";',
+          "process.stdout.write(JSON.stringify({",
+          '  logPath: createServerLogPath(new Date("2026-03-06T21:57:17.187Z"), 3210),',
+          "}));",
+        ].join("\n"),
+      ],
+      cwd: join(import.meta.dir, "..", "..", ".."),
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: "/tmp/opencode-data",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+
+    const paths = PathResultSchema.parse(JSON.parse(stdout));
+    expect(paths.logPath).toBe(
+      join(
+        "/tmp/opencode-data",
+        "opencode-linear-agent",
+        "log",
+        "server-20260306T215717.187Z-p3210.log",
+      ),
     );
   });
 });
