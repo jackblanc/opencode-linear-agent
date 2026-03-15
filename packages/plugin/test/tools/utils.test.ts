@@ -179,7 +179,34 @@ describe("getClient", () => {
 
     expect(Result.isError(result)).toBe(true);
     if (Result.isError(result)) {
-      expect(result.error).toContain("No unique Linear access token found");
+      expect(result.error).toContain("No Linear access token found");
     }
+  });
+
+  test("returns client when multiple org tokens exist", async () => {
+    await Bun.write(
+      TEST_AUTH_PATH,
+      JSON.stringify({
+        version: 1,
+        organizations: {
+          org123: {
+            accessToken: {
+              value: "token-org123",
+              expiresAt: Date.now() + 60000,
+            },
+          },
+          org456: {
+            accessToken: {
+              value: "token-org456",
+              expiresAt: Date.now() + 60000,
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await getClient();
+
+    expect(Result.isError(result)).toBe(false);
   });
 });

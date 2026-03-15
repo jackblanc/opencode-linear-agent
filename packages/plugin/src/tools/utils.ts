@@ -16,7 +16,7 @@ export async function getClient(): Promise<Result<LinearClient, string>> {
   const token = tokenResult.value;
   if (!token) {
     return Result.err(
-      "No unique Linear access token found in auth.json. Ensure the agent server has authenticated exactly one org.",
+      "No Linear access token found in auth.json. Ensure the agent server has authenticated.",
     );
   }
   if (cachedClient && cachedClient.token === token) {

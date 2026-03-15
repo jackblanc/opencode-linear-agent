@@ -244,18 +244,6 @@ function formatReadError(error: StoreReadError | AuthReadError): string {
   ].join(" ");
 }
 
-async function readAuth(filePath: string): Promise<AuthData> {
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) {
-    return {
-      version: 1,
-      organizations: {},
-    };
-  }
-  const json: unknown = await file.json();
-  return parseAuthData(json);
-}
-
 async function readAuthSafe(
   filePath: string,
 ): Promise<Result<AuthData, AuthReadError>> {
@@ -325,32 +313,16 @@ function getAuthAccessToken(
 
 type AccessTokenSelection =
   | { kind: "missing" }
-  | { kind: "ambiguous" }
   | { kind: "found"; token: string; organizationId: string };
 
 function selectAnyAccessToken(data: AuthData): AccessTokenSelection {
-  const found: Array<{ token: string; organizationId: string }> = [];
   for (const organizationId of Object.keys(data.organizations)) {
     const token = getAuthAccessToken(data, organizationId);
     if (token) {
-      found.push({ token, organizationId });
+      return { kind: "found", token, organizationId };
     }
   }
-  if (found.length === 0) {
-    return { kind: "missing" };
-  }
-  if (found.length > 1) {
-    return { kind: "ambiguous" };
-  }
-  const token = found[0];
-  if (!token) {
-    return { kind: "missing" };
-  }
-  return {
-    kind: "found",
-    token: token.token,
-    organizationId: token.organizationId,
-  };
+  return { kind: "missing" };
 }
 
 /**
@@ -393,25 +365,6 @@ export async function readAnyAccessTokenSafe(): Promise<
 }
 
 /**
- * Read the first available OAuth access token and its organization ID from the store.
- * Returns both so caller can initialize session context properly.
- */
-async function readAnyAccessTokenWithOrg(): Promise<{
-  token: string;
-  organizationId: string;
-} | null> {
-  const data = await readAuth(getEffectiveAuthPath());
-  const selection = selectAnyAccessToken(data);
-  if (selection.kind !== "found") {
-    return null;
-  }
-  return {
-    token: selection.token,
-    organizationId: selection.organizationId,
-  };
-}
-
-/**
  * Save a pending question to the shared store file.
  * Uses file locking to prevent concurrent write conflicts.
  */
@@ -443,6 +396,7 @@ export async function savePendingPermission(
 interface StoredSession {
   opencodeSessionId: string;
   linearSessionId: string;
+  organizationId: string;
   issueId: string;
   branchName: string;
   workdir: string;
@@ -490,13 +444,13 @@ export async function getSessionAsync(
   const stored = await readSessionByWorkdir(workdir);
   if (!stored) return null;
 
-  const tokenInfo = await readAnyAccessTokenWithOrg();
-  if (!tokenInfo) return null;
+  const token = await readAccessToken(stored.organizationId);
+  if (!token) return null;
 
   return {
     sessionId: stored.linearSessionId,
     issueId: stored.issueId,
-    organizationId: tokenInfo.organizationId,
+    organizationId: stored.organizationId,
     workdir: stored.workdir,
   };
 }
@@ -519,15 +473,15 @@ export async function getSessionAsyncSafe(
     return Result.err(authResult.error);
   }
 
-  const selection = selectAnyAccessToken(authResult.value);
-  if (selection.kind !== "found") {
+  const token = getAuthAccessToken(authResult.value, stored.organizationId);
+  if (!token) {
     return Result.ok(null);
   }
 
   return Result.ok({
     sessionId: stored.linearSessionId,
     issueId: stored.issueId,
-    organizationId: selection.organizationId,
+    organizationId: stored.organizationId,
     workdir: stored.workdir,
   });
 }

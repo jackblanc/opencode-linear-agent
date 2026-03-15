@@ -159,7 +159,7 @@ describe("storage", () => {
       }
     });
 
-    test("readAnyAccessTokenSafe should return null when multiple org tokens exist", async () => {
+    test("readAnyAccessTokenSafe should return first token when multiple org tokens exist", async () => {
       await Bun.write(
         TEST_AUTH_PATH,
         JSON.stringify({
@@ -184,7 +184,9 @@ describe("storage", () => {
       const result = await readAnyAccessTokenSafe();
 
       expect(Result.isError(result)).toBe(false);
-      expect(Result.isError(result) ? "unexpected" : result.value).toBeNull();
+      expect(Result.isError(result) ? "unexpected" : result.value).toBe(
+        "token-org123",
+      );
     });
   });
 
@@ -195,6 +197,7 @@ describe("storage", () => {
           value: {
             opencodeSessionId: "oc-1",
             linearSessionId: "lin-1",
+            organizationId: "org123",
             issueId: "CODE-1",
             branchName: "feat/code-1",
             workdir: "/tmp/workdir-a",
@@ -234,6 +237,7 @@ describe("storage", () => {
           value: {
             opencodeSessionId: "oc-old",
             linearSessionId: "lin-old",
+            organizationId: "org123",
             issueId: "CODE-1",
             branchName: "feat/code-1",
             workdir: "/tmp/workdir-a",
@@ -244,6 +248,7 @@ describe("storage", () => {
           value: {
             opencodeSessionId: "oc-new",
             linearSessionId: "lin-new",
+            organizationId: "org123",
             issueId: "CODE-2",
             branchName: "feat/code-2",
             workdir: "/tmp/workdir-a",
@@ -308,6 +313,7 @@ describe("storage", () => {
             value: {
               opencodeSessionId: "oc-1",
               linearSessionId: "lin-1",
+              organizationId: "org123",
               issueId: "CODE-1",
               branchName: "feat/code-1",
               workdir: "/tmp/workdir-a",
@@ -326,6 +332,54 @@ describe("storage", () => {
         expect(result.error.kind).toBe("parse_error");
         expect(result.error.path).toBe(TEST_AUTH_PATH);
       }
+    });
+
+    test("should resolve session using stored organization when multiple org tokens exist", async () => {
+      await Bun.write(
+        TEST_STORE_PATH,
+        JSON.stringify({
+          "session:lin-1": {
+            value: {
+              opencodeSessionId: "oc-1",
+              linearSessionId: "lin-1",
+              organizationId: "org456",
+              issueId: "CODE-1",
+              branchName: "feat/code-1",
+              workdir: "/tmp/workdir-a",
+              lastActivityTime: Date.now(),
+            },
+          },
+        }),
+      );
+      await Bun.write(
+        TEST_AUTH_PATH,
+        JSON.stringify({
+          version: 1,
+          organizations: {
+            org123: {
+              accessToken: {
+                value: "token-org123",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+            org456: {
+              accessToken: {
+                value: "token-org456",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+          },
+        }),
+      );
+
+      const session = await getSessionAsync("/tmp/workdir-a");
+
+      expect(session).toEqual({
+        sessionId: "lin-1",
+        issueId: "CODE-1",
+        organizationId: "org456",
+        workdir: "/tmp/workdir-a",
+      });
     });
   });
 

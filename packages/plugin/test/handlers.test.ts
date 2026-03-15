@@ -68,6 +68,7 @@ async function seedStore(
       value: {
         opencodeSessionId,
         linearSessionId,
+        organizationId: "org-1",
         issueId: "CODE-150",
         branchName: "feat/code-150",
         workdir,

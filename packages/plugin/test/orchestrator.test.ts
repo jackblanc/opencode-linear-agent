@@ -77,6 +77,7 @@ async function seedStore(workdir: string): Promise<void> {
       value: {
         opencodeSessionId: "oc-1",
         linearSessionId: "lin-1",
+        organizationId: "org-1",
         issueId: "CODE-216",
         branchName: "fix/code-216",
         workdir,
