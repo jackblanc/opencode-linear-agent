@@ -37,7 +37,6 @@ macOS can install/manage both with:
 
 ```bash
 opencode-linear-agent setup
-opencode-linear-agent setup --manage-opencode
 opencode-linear-agent status
 ```
 

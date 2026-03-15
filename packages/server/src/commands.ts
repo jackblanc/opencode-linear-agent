@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { Config } from "./config";
+import { isManagedOpencodeConfigSupported, type Config } from "./config";
 import {
   detectOpenCodeStatus,
   formatServiceStatus,
@@ -103,10 +103,7 @@ async function createStatusReport(deps: CliDeps): Promise<StatusReport> {
   );
   const opencode = await detectOpenCodeStatus({
     config: env.config,
-    services: env.services,
-    runner,
     fetcher,
-    platform,
   });
   return {
     platform,
@@ -120,9 +117,7 @@ async function createStatusReport(deps: CliDeps): Promise<StatusReport> {
 function formatOpenCodeDetection(status: OpenCodeDetectionStatus): string {
   return [
     `opencode: ${status.state}`,
-    `action=${status.recommendedAction}`,
     `url=${status.reachableUrl ?? status.configuredUrl}`,
-    `label=${status.launchdLabel ?? "-"}`,
   ].join(" ");
 }
 
@@ -145,7 +140,7 @@ function printHelp(stdout: Output): void {
   writeLine(stdout, "  serve                          Start webhook server");
   writeLine(
     stdout,
-    "  setup [--manage-opencode]      Install/start launchd services on macOS",
+    "  setup                          Install/start launchd services on macOS",
   );
   writeLine(
     stdout,
@@ -163,10 +158,6 @@ function printHelp(stdout: Output): void {
 
 function isJsonFlag(args: string[]): boolean {
   return args.includes("--json");
-}
-
-function isManageOpencodeFlag(args: string[]): boolean {
-  return args.includes("--manage-opencode");
 }
 
 function getServiceStatusExitCode(status: ManagedServiceStatus): number {
@@ -194,6 +185,14 @@ async function handleStatus(args: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
+function getUnsupportedOpencodeConfigMessage(config: Config): string {
+  return `Managed OpenCode setup requires local http://localhost:<port> or http://127.0.0.1:<port>; got ${config.opencodeServerUrl}`;
+}
+
+function canManageOpencode(action: string): boolean {
+  return action === "install" || action === "start";
+}
+
 async function handleSetup(args: string[], deps: CliDeps): Promise<number> {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
@@ -211,39 +210,45 @@ async function handleSetup(args: string[], deps: CliDeps): Promise<number> {
   );
   const detection = await detectOpenCodeStatus({
     config: env.config,
-    services: env.services,
-    runner,
     fetcher: deps.fetcher ?? fetch,
-    platform,
   });
 
   let opencodeResultText = formatOpenCodeDetection(detection);
   let code = webhook.ok ? 0 : 1;
-  if (detection.recommendedAction === "offer_managed_service") {
-    if (isManageOpencodeFlag(args)) {
-      if (!env.opencodePath) {
-        writeLine(
-          stderr,
-          "OpenCode binary not found in PATH; cannot install managed service",
-        );
+  if (!isManagedOpencodeConfigSupported(env.config)) {
+    writeLine(stderr, getUnsupportedOpencodeConfigMessage(env.config));
+    code = 1;
+  } else if (detection.state === "configured_url_unreachable") {
+    if (!env.opencodePath) {
+      writeLine(
+        stderr,
+        "OpenCode binary not found in PATH; cannot install managed service",
+      );
+      code = 1;
+    } else {
+      const managed = await installLaunchdService(
+        env.services.opencode,
+        runner,
+        platform,
+      );
+      if (!managed.ok) {
+        opencodeResultText = formatServiceStatus(managed.status);
         code = 1;
       } else {
-        const managed = await installLaunchdService(
-          env.services.opencode,
-          runner,
-          platform,
-        );
-        opencodeResultText = formatServiceStatus(managed.status);
-        if (!managed.ok) {
+        const verified = await detectOpenCodeStatus({
+          config: env.config,
+          fetcher: deps.fetcher ?? fetch,
+        });
+        opencodeResultText = formatOpenCodeDetection(verified);
+        if (verified.state !== "configured_url_reachable") {
+          writeLine(
+            stderr,
+            `OpenCode still unreachable at configured url ${env.config.opencodeServerUrl}`,
+          );
           code = 1;
         }
       }
-    } else {
-      opencodeResultText = `${opencodeResultText} next=run 'opencode-linear-agent setup --manage-opencode' or start OpenCode manually`;
     }
-  } else if (detection.recommendedAction === "update_config") {
-    opencodeResultText = `${opencodeResultText} next=set opencodeServerUrl=${detection.reachableUrl ?? detection.configuredUrl} or start OpenCode at configured url`;
-    code = 1;
   }
 
   writeLine(stdout, formatServiceStatus(webhook.status));
@@ -272,6 +277,19 @@ async function handleService(args: string[], deps: CliDeps): Promise<number> {
       writeLine(stdout, formatServiceStatus(status));
     }
     return getServiceStatusExitCode(status);
+  }
+  if (name === "opencode" && canManageOpencode(action)) {
+    if (!isManagedOpencodeConfigSupported(env.config)) {
+      writeLine(stderr, getUnsupportedOpencodeConfigMessage(env.config));
+      return 1;
+    }
+    if (!env.opencodePath) {
+      writeLine(
+        stderr,
+        "OpenCode binary not found in PATH; cannot manage service",
+      );
+      return 1;
+    }
   }
   const result =
     action === "install"

@@ -73,7 +73,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    opencode-linear-agent setup
    ```
 
-   Add `--manage-opencode` if `opencode-linear-agent status` reports OpenCode as absent and you want this package to install a per-user OpenCode launchd service too.
+   On macOS, `setup` also ensures a persistent OpenCode launchd service for the exact configured `opencodeServerUrl` when that URL is a local `http://localhost:<port>` or `http://127.0.0.1:<port>` endpoint.
 
 4. Complete setup:
    - Configure OAuth app + webhook in Linear (see [Setup Guide](#setup-guide))
@@ -116,13 +116,13 @@ Use `organization.id` as `linearOrganizationId` if you want to restrict webhooks
 
 ### 3) OpenCode server
 
-Run OpenCode locally so this agent can create sessions, or let `opencode-linear-agent setup --manage-opencode` install a managed macOS launchd service when none is already running:
+Run OpenCode locally so this agent can create sessions, or let `opencode-linear-agent setup` install a managed macOS launchd service for the exact configured local URL:
 
 ```bash
 opencode serve --port 4096 --hostname 127.0.0.1
 ```
 
-Set `opencodeServerUrl` to `http://localhost:4096` in `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`).
+Set `opencodeServerUrl` to an exact local HTTP endpoint like `http://localhost:4096` in `$XDG_CONFIG_HOME/opencode-linear-agent/config.json` (default `~/.config/opencode-linear-agent/config.json`). Non-local URLs are not eligible for managed setup.
 
 ### 4) Plugin installation (required)
 
@@ -199,28 +199,29 @@ Linear API                    OpenCode Server (:4096)
 Use the built-in service manager instead of editing plist files by hand:
 
 ```bash
-# Install/start webhook service
+# Install/start webhook + managed OpenCode service for configured local URL
 opencode-linear-agent setup
 
-# Install/start webhook + managed OpenCode service, but only if OpenCode is absent
-opencode-linear-agent setup --manage-opencode
-
-# Inspect launchd + OpenCode reuse state
+# Inspect launchd + configured OpenCode health
 opencode-linear-agent status
 
 # Inspect one service
 opencode-linear-agent service status webhook
+opencode-linear-agent service status opencode
 
 # Stop or remove one service
 opencode-linear-agent service stop webhook
 opencode-linear-agent service uninstall webhook
+opencode-linear-agent service stop opencode
+opencode-linear-agent service uninstall opencode
 ```
 
 Behavior:
 
 - `setup` always installs/starts the per-user webhook launchd service on macOS.
-- `setup` first probes `opencodeServerUrl`, then launchd labels, then local `127.0.0.1:4096`; if any signal is positive, it reuses that OpenCode instance.
-- Managed OpenCode launchd install is only attempted when OpenCode looks absent and you pass `--manage-opencode`.
+- `setup` treats the configured `opencodeServerUrl` as the only OpenCode health check.
+- If that configured URL is local `http://localhost:<port>` or `http://127.0.0.1:<port>` and unhealthy, `setup` installs/starts this tool's managed OpenCode launchd service for that exact endpoint.
+- If `opencodeServerUrl` is non-local or non-HTTP, `setup` fails instead of guessing another server.
 - Generated plist files live in `~/Library/LaunchAgents`.
 - Service logs live in `$XDG_DATA_HOME/opencode-linear-agent/` (default `~/.local/share/opencode-linear-agent/`).
 

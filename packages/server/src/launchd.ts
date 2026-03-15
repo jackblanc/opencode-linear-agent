@@ -5,11 +5,8 @@ import { homedir } from "node:os";
 
 import type { Config } from "./config";
 import {
-  DEFAULT_OPENCODE_SERVER_URL,
-  EXTERNAL_OPENCODE_SERVICE_LABEL,
   getAppPaths,
   getManagedOpencodeHostAndPort,
-  getManagedOpencodeUrl,
   OPENCODE_SERVICE_LABEL,
   WEBHOOK_SERVICE_LABEL,
 } from "./config";
@@ -18,16 +15,8 @@ export type ManagedServiceName = "webhook" | "opencode";
 export type ServiceInstallState = "unsupported" | "absent" | "installed";
 export type ServiceRuntimeState = "running" | "stopped" | "unknown";
 export type OpenCodeReuseState =
-  | "reachable_configured_url"
-  | "launchd_service"
-  | "listener"
-  | "listener_config_mismatch"
-  | "absent";
-
-export type OpenCodeRecommendedAction =
-  | "reuse"
-  | "offer_managed_service"
-  | "update_config";
+  | "configured_url_reachable"
+  | "configured_url_unreachable";
 
 export interface ManagedServiceDefinition {
   name: ManagedServiceName;
@@ -60,10 +49,8 @@ export interface ServiceActionResult {
 
 export interface OpenCodeDetectionStatus {
   state: OpenCodeReuseState;
-  recommendedAction: OpenCodeRecommendedAction;
   configuredUrl: string;
   reachableUrl: string | null;
-  launchdLabel: string | null;
 }
 
 export interface CommandOutput {
@@ -247,7 +234,10 @@ export function getManagedServiceDefinitions(input: {
   opencodeExecutablePath: string;
 }): Record<ManagedServiceName, ManagedServiceDefinition> {
   const paths = getAppPaths();
-  const opencode = getManagedOpencodeHostAndPort(input.config);
+  const opencode = getManagedOpencodeHostAndPort(input.config) ?? {
+    hostname: "127.0.0.1",
+    port: 4096,
+  };
   return {
     webhook: {
       name: "webhook",
@@ -534,141 +524,24 @@ async function probeHttpUrl(
     .catch(() => false);
 }
 
-function parseLaunchctlList(output: string): string[] {
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      const parts = line.split(/\s+/);
-      const label = parts.at(-1);
-      if (!label || label === "Label") {
-        return [];
-      }
-      return [label];
-    });
-}
-
-function isKnownOpenCodeLaunchdLabel(
-  label: string,
-  managedLabel: string,
-): boolean {
-  return label === managedLabel || label === EXTERNAL_OPENCODE_SERVICE_LABEL;
-}
-
-function isSameLocalOpencodeUrl(left: string, right: string): boolean {
-  if (!URL.canParse(left) || !URL.canParse(right)) {
-    return false;
-  }
-  const leftUrl = new URL(left);
-  const rightUrl = new URL(right);
-  const leftPort = Number.parseInt(
-    leftUrl.port || `${leftUrl.protocol === "http:" ? 80 : 443}`,
-    10,
-  );
-  const rightPort = Number.parseInt(
-    rightUrl.port || `${rightUrl.protocol === "http:" ? 80 : 443}`,
-    10,
-  );
-  return (
-    leftUrl.protocol === "http:" &&
-    rightUrl.protocol === "http:" &&
-    (leftUrl.hostname === "127.0.0.1" || leftUrl.hostname === "localhost") &&
-    (rightUrl.hostname === "127.0.0.1" || rightUrl.hostname === "localhost") &&
-    leftPort === rightPort
-  );
-}
-
 export async function detectOpenCodeStatus(input: {
   config: Config;
-  services: Record<ManagedServiceName, ManagedServiceDefinition>;
-  runner?: CommandRunner;
   fetcher?: FetchLike;
-  platform?: NodeJS.Platform;
 }): Promise<OpenCodeDetectionStatus> {
-  const runner = input.runner ?? runCommand;
   const fetcher = input.fetcher ?? fetch;
   const configuredUrl = input.config.opencodeServerUrl;
-  const managedUrl = getManagedOpencodeUrl(input.config);
-  let launchdLabel: string | null = null;
   const reachableConfigured = await probeHttpUrl(configuredUrl, fetcher, 1200);
   if (reachableConfigured) {
     return {
-      state: "reachable_configured_url",
-      recommendedAction: "reuse",
+      state: "configured_url_reachable",
       configuredUrl,
       reachableUrl: configuredUrl,
-      launchdLabel: null,
     };
   }
-
-  if (isLaunchdSupported(input.platform)) {
-    const list = await runner(["launchctl", "list"]);
-    if (list.exitCode === 0) {
-      const labels = parseLaunchctlList(list.stdout);
-      launchdLabel =
-        labels.find((label) =>
-          isKnownOpenCodeLaunchdLabel(label, input.services.opencode.label),
-        ) ?? null;
-      if (launchdLabel) {
-        const service = {
-          ...input.services.opencode,
-          label: launchdLabel,
-        };
-        const status = await getLaunchdServiceStatus(
-          service,
-          runner,
-          input.platform,
-        );
-        if (status.runtimeState === "running") {
-          if (!isSameLocalOpencodeUrl(configuredUrl, managedUrl)) {
-            return {
-              state: "launchd_service",
-              recommendedAction: "update_config",
-              configuredUrl,
-              reachableUrl: managedUrl,
-              launchdLabel,
-            };
-          }
-          return {
-            state: "launchd_service",
-            recommendedAction: "reuse",
-            configuredUrl,
-            reachableUrl: null,
-            launchdLabel,
-          };
-        }
-      }
-    }
-  }
-
-  const fallbackUrl = DEFAULT_OPENCODE_SERVER_URL;
-  const reachableListener = await probeHttpUrl(fallbackUrl, fetcher, 1200);
-  if (reachableListener) {
-    if (!isSameLocalOpencodeUrl(configuredUrl, fallbackUrl)) {
-      return {
-        state: "listener_config_mismatch",
-        recommendedAction: "update_config",
-        configuredUrl,
-        reachableUrl: fallbackUrl,
-        launchdLabel,
-      };
-    }
-    return {
-      state: "listener",
-      recommendedAction: "reuse",
-      configuredUrl,
-      reachableUrl: fallbackUrl,
-      launchdLabel,
-    };
-  }
-
   return {
-    state: "absent",
-    recommendedAction: "offer_managed_service",
+    state: "configured_url_unreachable",
     configuredUrl,
     reachableUrl: null,
-    launchdLabel,
   };
 }
 

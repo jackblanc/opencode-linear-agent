@@ -252,202 +252,58 @@ describe("uninstallLaunchdService", () => {
 });
 
 describe("detectOpenCodeStatus", () => {
-  test("prefers reachable configured URL", async () => {
+  test("reports reachable configured URL", async () => {
     const status = await detectOpenCodeStatus({
       config,
-      services,
-      platform: "darwin",
-      runner: createRunner({
-        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
-      }),
       fetcher: async () => new Response("ok", { status: 200 }),
     });
 
-    expect(status.state).toBe("reachable_configured_url");
-    expect(status.recommendedAction).toBe("reuse");
+    expect(status.state).toBe("configured_url_reachable");
+    expect(status.reachableUrl).toBe(config.opencodeServerUrl);
   });
 
-  test("reuses launchd-managed OpenCode before port probe", async () => {
+  test("reports configured URL unreachable when probe fails", async () => {
     const status = await detectOpenCodeStatus({
       config,
-      services,
-      platform: "darwin",
-      runner: createRunner({
-        "launchctl list": {
-          exitCode: 0,
-          stdout: "123\t0\tcom.opencode.server\n",
-          stderr: "",
-        },
-        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
-          {
-            exitCode: 0,
-            stdout: "state = running\npid = 33\nlast exit code = 0\n",
-            stderr: "",
-          },
-      }),
-      fetcher: createFetcher(["http://127.0.0.1:4096"]),
-    });
-
-    expect(status.state).toBe("launchd_service");
-    expect(status.launchdLabel).toBe("com.opencode.server");
-  });
-
-  test("reuses running launchd service on configured local port", async () => {
-    const status = await detectOpenCodeStatus({
-      config: {
-        ...config,
-        opencodeServerUrl: "http://localhost:4123",
-      },
-      services,
-      platform: "darwin",
-      runner: createRunner({
-        "launchctl list": {
-          exitCode: 0,
-          stdout: "123\t0\tcom.opencode.server\n",
-          stderr: "",
-        },
-        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
-          {
-            exitCode: 0,
-            stdout: "state = running\npid = 33\nlast exit code = 0\n",
-            stderr: "",
-          },
-      }),
       fetcher: createFetcher([]),
     });
 
-    expect(status.state).toBe("launchd_service");
-    expect(status.recommendedAction).toBe("reuse");
+    expect(status.state).toBe("configured_url_unreachable");
     expect(status.reachableUrl).toBe(null);
   });
 
-  test("preserves configured local port for running launchd service", async () => {
+  test("ignores unrelated reachable default listener when config points elsewhere", async () => {
     const status = await detectOpenCodeStatus({
       config: {
         ...config,
         opencodeServerUrl: "http://localhost:4123",
       },
-      services: {
-        ...services,
-        opencode: {
-          ...services.opencode,
-          programArguments: [
-            "/usr/local/bin/opencode",
-            "serve",
-            "--port",
-            "4123",
-            "--hostname",
-            "127.0.0.1",
-          ],
-        },
-      },
-      platform: "darwin",
-      runner: createRunner({
-        "launchctl list": {
-          exitCode: 0,
-          stdout: "123\t0\tcom.opencode.server\n",
-          stderr: "",
-        },
-        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
-          {
-            exitCode: 0,
-            stdout: "state = running\npid = 33\nlast exit code = 0\n",
-            stderr: "",
-          },
-      }),
-      fetcher: createFetcher([]),
+      fetcher: createFetcher(["http://127.0.0.1:4096"]),
     });
 
-    expect(status.state).toBe("launchd_service");
-    expect(status.recommendedAction).toBe("reuse");
+    expect(status.state).toBe("configured_url_unreachable");
     expect(status.reachableUrl).toBe(null);
   });
 
-  test("does not reuse stopped launchd OpenCode service", async () => {
-    const status = await detectOpenCodeStatus({
-      config,
-      services,
-      platform: "darwin",
-      runner: createRunner({
-        "launchctl list": {
-          exitCode: 0,
-          stdout: "123\t0\tcom.opencode.server\n",
-          stderr: "",
-        },
-        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
-          {
-            exitCode: 0,
-            stdout: "state = waiting\nlast exit code = 1\n",
-            stderr: "",
-          },
-      }),
-      fetcher: createFetcher([]),
-    });
-
-    expect(status.state).toBe("absent");
-    expect(status.recommendedAction).toBe("offer_managed_service");
-    expect(status.launchdLabel).toBe("com.opencode.server");
-  });
-
-  test("ignores unrelated launchd labels containing opencode", async () => {
-    const status = await detectOpenCodeStatus({
-      config,
-      services,
-      platform: "darwin",
-      runner: createRunner({
-        "launchctl list": {
-          exitCode: 0,
-          stdout: "123\t0\tcom.example.opencode-helper\n",
-          stderr: "",
-        },
-      }),
-      fetcher: createFetcher([]),
-    });
-
-    expect(status.state).toBe("absent");
-    expect(status.recommendedAction).toBe("offer_managed_service");
-  });
-
-  test("falls back to local listener when configured URL is absent", async () => {
-    const status = await detectOpenCodeStatus({
-      config,
-      services,
-      platform: "linux",
-      runner: createRunner({}),
-      fetcher: createFetcher(["http://127.0.0.1:4096"]),
-    });
-
-    expect(status.state).toBe("listener");
-    expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
-  });
-
-  test("reports config mismatch when only fallback listener is reachable", async () => {
+  test("reports reachable configured non-default local URL", async () => {
     const status = await detectOpenCodeStatus({
       config: {
         ...config,
         opencodeServerUrl: "http://localhost:4123",
       },
-      services,
-      platform: "linux",
-      runner: createRunner({}),
-      fetcher: createFetcher(["http://127.0.0.1:4096"]),
+      fetcher: createFetcher(["http://localhost:4123"]),
     });
 
-    expect(status.state).toBe("listener_config_mismatch");
-    expect(status.recommendedAction).toBe("update_config");
-    expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
+    expect(status.state).toBe("configured_url_reachable");
+    expect(status.reachableUrl).toBe("http://localhost:4123");
   });
 
   test("ignores non-ok HTTP responses", async () => {
     const status = await detectOpenCodeStatus({
       config,
-      services,
-      platform: "linux",
-      runner: createRunner({}),
       fetcher: createFetcher([{ url: "http://localhost:4096", status: 503 }]),
     });
 
-    expect(status.state).toBe("absent");
-    expect(status.recommendedAction).toBe("offer_managed_service");
+    expect(status.state).toBe("configured_url_unreachable");
   });
 });

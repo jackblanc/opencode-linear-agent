@@ -66,7 +66,6 @@ describe("runCli", () => {
           stdout: "",
           stderr: "Could not find service",
         },
-        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
       }),
       fetcher: async () => new Response("ok", { status: 200 }),
     });
@@ -75,13 +74,140 @@ describe("runCli", () => {
     expect(JSON.parse(stdout.lines.join(""))).toMatchObject({
       launchdSupported: true,
       webhook: { runtimeState: "running" },
-      opencode: { state: "reachable_configured_url" },
+      opencode: { state: "configured_url_reachable" },
     });
   });
 
-  test("setup suggests managed OpenCode when absent", async () => {
+  test("setup installs managed OpenCode when configured URL is down", async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
+    let probes = 0;
+
+    const code = await runCli(["setup"], {
+      startServer: async () => undefined,
+      loadConfig: () => config,
+      platform: "darwin",
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => "/usr/local/bin/opencode",
+      runner: createRunner({
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 11\nlast exit code = 0\n",
+          stderr: "",
+        },
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.opencode.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.opencode.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.opencode`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.opencode`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 22\nlast exit code = 0\n",
+          stderr: "",
+        },
+      }),
+      fetcher: async () => {
+        probes += 1;
+        return probes >= 2
+          ? new Response("ok", { status: 200 })
+          : Promise.reject(new Error("offline"));
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(probes).toBe(2);
+    expect(stdout.lines.join("")).toContain(
+      "opencode: configured_url_reachable",
+    );
+    expect(stderr.lines.join("")).toBe("");
+  });
+
+  test("setup fails for non-local configured OpenCode URL", async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const code = await runCli(["setup"], {
+      startServer: async () => undefined,
+      loadConfig: () => ({
+        ...config,
+        opencodeServerUrl: "https://opencode.example.com",
+      }),
+      platform: "darwin",
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => "/usr/local/bin/opencode",
+      runner: createRunner({
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 11\nlast exit code = 0\n",
+          stderr: "",
+        },
+      }),
+      fetcher: async () => Promise.reject(new Error("offline")),
+    });
+
+    expect(code).toBe(1);
+    expect(stderr.lines.join("")).toContain(
+      "Managed OpenCode setup requires local http://localhost:<port>",
+    );
+  });
+
+  test("setup fails clearly when binary is missing", async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
     const code = await runCli(["setup"], {
       startServer: async () => undefined,
       loadConfig: () => config,
@@ -114,142 +240,14 @@ describe("runCli", () => {
           stdout: "state = running\npid = 11\nlast exit code = 0\n",
           stderr: "",
         },
-        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
       }),
       fetcher: async () => Promise.reject(new Error("offline")),
-    });
-
-    expect(code).toBe(0);
-    expect(stdout.lines.join("")).toContain("setup --manage-opencode");
-    expect(stderr.lines.join("")).toBe("");
-  });
-
-  test("setup fails when config points away from reachable fallback listener", async () => {
-    const stdout = createBuffer();
-    const stderr = createBuffer();
-    const code = await runCli(["setup"], {
-      startServer: async () => undefined,
-      loadConfig: () => ({
-        ...config,
-        opencodeServerUrl: "http://localhost:4123",
-      }),
-      platform: "darwin",
-      stdout: stdout.stream,
-      stderr: stderr.stream,
-      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
-      resolveOpencodePath: async () => "/usr/local/bin/opencode",
-      runner: createRunner({
-        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
-          {
-            exitCode: 1,
-            stdout: "",
-            stderr: "Could not find service",
-          },
-        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
-          {
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          },
-        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
-          {
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          },
-        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
-          exitCode: 0,
-          stdout: "state = running\npid = 11\nlast exit code = 0\n",
-          stderr: "",
-        },
-        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
-      }),
-      fetcher: async (input: string | URL) => {
-        const url = input instanceof URL ? input.toString() : input;
-        if (url === "http://127.0.0.1:4096") {
-          return new Response("ok", { status: 200 });
-        }
-        return Promise.reject(new Error("offline"));
-      },
     });
 
     expect(code).toBe(1);
-    expect(stdout.lines.join("")).toContain("action=update_config");
-    expect(stdout.lines.join("")).toContain(
-      "set opencodeServerUrl=http://127.0.0.1:4096",
+    expect(stderr.lines.join("")).toContain(
+      "OpenCode binary not found in PATH; cannot install managed service",
     );
-    expect(stderr.lines.join("")).toBe("");
-  });
-
-  test("setup resolves opencode path once", async () => {
-    const stdout = createBuffer();
-    let calls = 0;
-
-    const code = await runCli(["setup", "--manage-opencode"], {
-      startServer: async () => undefined,
-      loadConfig: () => config,
-      platform: "darwin",
-      stdout: stdout.stream,
-      stderr: createBuffer().stream,
-      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
-      resolveOpencodePath: async () => {
-        calls += 1;
-        return "/usr/local/bin/opencode";
-      },
-      runner: createRunner({
-        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
-          {
-            exitCode: 1,
-            stdout: "",
-            stderr: "Could not find service",
-          },
-        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
-          {
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          },
-        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
-          {
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          },
-        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
-          exitCode: 0,
-          stdout: "state = running\npid = 11\nlast exit code = 0\n",
-          stderr: "",
-        },
-        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
-        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.opencode.plist")}`]:
-          {
-            exitCode: 1,
-            stdout: "",
-            stderr: "Could not find service",
-          },
-        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.opencode.plist")}`]:
-          {
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          },
-        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.opencode`]:
-          {
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          },
-        [`launchctl print gui/${uid}/com.opencode-linear-agent.opencode`]: {
-          exitCode: 0,
-          stdout: "state = running\npid = 22\nlast exit code = 0\n",
-          stderr: "",
-        },
-      }),
-      fetcher: async () => Promise.reject(new Error("offline")),
-    });
-
-    expect(code).toBe(0);
-    expect(calls).toBe(1);
   });
 
   test("service status exits nonzero when absent", async () => {
@@ -319,5 +317,48 @@ describe("runCli", () => {
       reason: "ok",
       status: { name: "webhook", runtimeState: "running" },
     });
+  });
+
+  test("service install opencode fails clearly when config is unsupported", async () => {
+    const stderr = createBuffer();
+
+    const code = await runCli(["service", "install", "opencode"], {
+      startServer: async () => undefined,
+      loadConfig: () => ({
+        ...config,
+        opencodeServerUrl: "https://opencode.example.com",
+      }),
+      platform: "darwin",
+      stdout: createBuffer().stream,
+      stderr: stderr.stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => "/usr/local/bin/opencode",
+      runner: createRunner({}),
+    });
+
+    expect(code).toBe(1);
+    expect(stderr.lines.join("")).toContain(
+      "Managed OpenCode setup requires local http://localhost:<port>",
+    );
+  });
+
+  test("service start opencode fails clearly when binary is missing", async () => {
+    const stderr = createBuffer();
+
+    const code = await runCli(["service", "start", "opencode"], {
+      startServer: async () => undefined,
+      loadConfig: () => config,
+      platform: "darwin",
+      stdout: createBuffer().stream,
+      stderr: stderr.stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => null,
+      runner: createRunner({}),
+    });
+
+    expect(code).toBe(1);
+    expect(stderr.lines.join("")).toContain(
+      "OpenCode binary not found in PATH; cannot manage service",
+    );
   });
 });

@@ -13,10 +13,9 @@ const DEFAULT_WEBHOOK_IPS = [
 
 const DEFAULT_OPENCODE_SERVER_HOSTNAME = "127.0.0.1";
 const DEFAULT_OPENCODE_SERVER_PORT = 4096;
-export const DEFAULT_OPENCODE_SERVER_URL = `http://${DEFAULT_OPENCODE_SERVER_HOSTNAME}:${DEFAULT_OPENCODE_SERVER_PORT}`;
+const DEFAULT_OPENCODE_SERVER_URL = `http://${DEFAULT_OPENCODE_SERVER_HOSTNAME}:${DEFAULT_OPENCODE_SERVER_PORT}`;
 export const WEBHOOK_SERVICE_LABEL = "com.opencode-linear-agent.server";
 export const OPENCODE_SERVICE_LABEL = "com.opencode-linear-agent.opencode";
-export const EXTERNAL_OPENCODE_SERVICE_LABEL = "com.opencode.server";
 
 const ConfigFileSchema = z.object({
   webhookServerPublicHostname: z.string().min(1),
@@ -80,44 +79,33 @@ export function getAppPaths(): AppPaths {
 export function getManagedOpencodeHostAndPort(config: Config): {
   hostname: string;
   port: number;
-} {
+} | null {
   if (!URL.canParse(config.opencodeServerUrl)) {
-    return {
-      hostname: DEFAULT_OPENCODE_SERVER_HOSTNAME,
-      port: DEFAULT_OPENCODE_SERVER_PORT,
-    };
+    return null;
   }
   const url = new URL(config.opencodeServerUrl);
-  if (url.protocol !== "http:") {
-    return {
-      hostname: DEFAULT_OPENCODE_SERVER_HOSTNAME,
-      port: DEFAULT_OPENCODE_SERVER_PORT,
-    };
-  }
-  const hostname = url.hostname;
-  const port = Number.parseInt(
-    url.port || `${DEFAULT_OPENCODE_SERVER_PORT}`,
-    10,
-  );
   if (
-    (hostname === "127.0.0.1" || hostname === "localhost") &&
-    Number.isInteger(port)
+    url.protocol !== "http:" ||
+    (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") ||
+    !url.port
   ) {
-    return {
-      hostname:
-        hostname === "localhost" ? DEFAULT_OPENCODE_SERVER_HOSTNAME : hostname,
-      port,
-    };
+    return null;
+  }
+  const port = Number.parseInt(url.port, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return null;
   }
   return {
-    hostname: DEFAULT_OPENCODE_SERVER_HOSTNAME,
-    port: DEFAULT_OPENCODE_SERVER_PORT,
+    hostname:
+      url.hostname === "localhost"
+        ? DEFAULT_OPENCODE_SERVER_HOSTNAME
+        : url.hostname,
+    port,
   };
 }
 
-export function getManagedOpencodeUrl(config: Config): string {
-  const opencode = getManagedOpencodeHostAndPort(config);
-  return `http://${opencode.hostname}:${opencode.port}`;
+export function isManagedOpencodeConfigSupported(config: Config): boolean {
+  return getManagedOpencodeHostAndPort(config) !== null;
 }
 
 export function loadConfig(options: LoadConfigOptions = {}): Config {

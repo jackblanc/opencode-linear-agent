@@ -175,7 +175,7 @@ describe("loadConfig", () => {
     });
 
     expect(local).toEqual({ hostname: "127.0.0.1", port: 4123 });
-    expect(remote).toEqual({ hostname: "127.0.0.1", port: 4096 });
+    expect(remote).toBe(null);
   });
 
   test("fails clearly when config file is missing", () => {
