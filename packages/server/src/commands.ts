@@ -39,6 +39,7 @@ export interface CliDeps {
 
 interface CliEnvironment {
   config: Config;
+  opencodePath: string | null;
   services: Record<ManagedServiceName, ManagedServiceDefinition>;
 }
 
@@ -68,6 +69,7 @@ async function createEnvironment(deps: CliDeps): Promise<CliEnvironment> {
   )();
   return {
     config,
+    opencodePath,
     services: getManagedServiceDefinitions({
       config,
       agentExecutableCommand: agentCommand,
@@ -145,6 +147,10 @@ function printHelp(stdout: Output): void {
     stdout,
     "  service <action> <name>        install|start|stop|uninstall|status webhook|opencode",
   );
+  writeLine(
+    stdout,
+    "  note: stop unloads current login session; KeepAlive agents restart on next login",
+  );
 }
 
 function isJsonFlag(args: string[]): boolean {
@@ -183,9 +189,6 @@ async function handleSetup(args: string[], deps: CliDeps): Promise<number> {
   }
   const env = await createEnvironment(deps);
   const runner = deps.runner ?? runCommand;
-  const opencodePath = await (
-    deps.resolveOpencodePath ?? resolveOpencodeExecutablePath
-  )();
   const webhook = await installLaunchdService(
     env.services.webhook,
     runner,
@@ -203,7 +206,7 @@ async function handleSetup(args: string[], deps: CliDeps): Promise<number> {
   let code = webhook.ok ? 0 : 1;
   if (detection.recommendedAction === "offer_managed_service") {
     if (isManageOpencodeFlag(args)) {
-      if (!opencodePath) {
+      if (!env.opencodePath) {
         writeLine(
           stderr,
           "OpenCode binary not found in PATH; cannot install managed service",

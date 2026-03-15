@@ -6,6 +6,7 @@ import {
   detectOpenCodeStatus,
   getLaunchdServiceStatus,
   installLaunchdService,
+  uninstallLaunchdService,
   type CommandOutput,
   type ManagedServiceDefinition,
 } from "../src/launchd";
@@ -89,14 +90,19 @@ function createRunner(
 }
 
 function createFetcher(
-  okUrls: string[],
+  okUrls: Array<string | { url: string; status: number }>,
 ): (input: string | URL) => Promise<Response> {
   return async (input: string | URL): Promise<Response> => {
     const url = input instanceof URL ? input.toString() : input;
-    if (!okUrls.includes(url)) {
+    const match = okUrls.find((item) =>
+      typeof item === "string" ? item === url : item.url === url,
+    );
+    if (!match) {
       return Promise.reject(new Error("offline"));
     }
-    return new Response("ok", { status: 200 });
+    return new Response("ok", {
+      status: typeof match === "string" ? 200 : match.status,
+    });
   };
 }
 
@@ -181,6 +187,60 @@ describe("getLaunchdServiceStatus", () => {
     expect(status.pid).toBe(123);
     expect(status.lastExitStatus).toBe(0);
   });
+
+  test("maps throttled state to stopped", async () => {
+    const status = await getLaunchdServiceStatus(
+      services.webhook,
+      createRunner({
+        [`launchctl print gui/${process.getuid?.() ?? 0}/${services.webhook.label}`]:
+          {
+            exitCode: 0,
+            stdout: "state = throttled\npid = 123\nlast exit code = 78\n",
+            stderr: "",
+          },
+      }),
+      "darwin",
+    );
+
+    expect(status.runtimeState).toBe("stopped");
+  });
+});
+
+describe("uninstallLaunchdService", () => {
+  test("keeps plist when bootout fails", async () => {
+    const plistPath = join(import.meta.dir, ".test-launchd", "webhook.plist");
+    const service = {
+      ...services.webhook,
+      plistPath,
+    };
+
+    await Bun.write(plistPath, "plist");
+
+    const result = await uninstallLaunchdService(
+      service,
+      createRunner({
+        [`launchctl bootout gui/${process.getuid?.() ?? 0}/${service.label}`]: {
+          exitCode: 5,
+          stdout: "",
+          stderr: "permission denied",
+        },
+        [`launchctl print gui/${process.getuid?.() ?? 0}/${service.label}`]: {
+          exitCode: 0,
+          stdout: "state = waiting\nlast exit code = 1\n",
+          stderr: "",
+        },
+      }),
+      "darwin",
+    );
+
+    expect(result.ok).toBe(false);
+    expect(await Bun.file(plistPath).exists()).toBe(true);
+
+    await rm(join(import.meta.dir, ".test-launchd"), {
+      recursive: true,
+      force: true,
+    });
+  });
 });
 
 describe("detectOpenCodeStatus", () => {
@@ -210,11 +270,72 @@ describe("detectOpenCodeStatus", () => {
           stdout: "123\t0\tcom.opencode.server\n",
           stderr: "",
         },
+        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
+          {
+            exitCode: 0,
+            stdout: "state = running\npid = 33\nlast exit code = 0\n",
+            stderr: "",
+          },
       }),
       fetcher: createFetcher(["http://127.0.0.1:4096"]),
     });
 
     expect(status.state).toBe("launchd_service");
+    expect(status.launchdLabel).toBe("com.opencode.server");
+  });
+
+  test("requires config update for running launchd service on default url", async () => {
+    const status = await detectOpenCodeStatus({
+      config: {
+        ...config,
+        opencodeServerUrl: "http://localhost:4123",
+      },
+      services,
+      platform: "darwin",
+      runner: createRunner({
+        "launchctl list": {
+          exitCode: 0,
+          stdout: "123\t0\tcom.opencode.server\n",
+          stderr: "",
+        },
+        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
+          {
+            exitCode: 0,
+            stdout: "state = running\npid = 33\nlast exit code = 0\n",
+            stderr: "",
+          },
+      }),
+      fetcher: createFetcher([]),
+    });
+
+    expect(status.state).toBe("launchd_service");
+    expect(status.recommendedAction).toBe("update_config");
+    expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
+  });
+
+  test("does not reuse stopped launchd OpenCode service", async () => {
+    const status = await detectOpenCodeStatus({
+      config,
+      services,
+      platform: "darwin",
+      runner: createRunner({
+        "launchctl list": {
+          exitCode: 0,
+          stdout: "123\t0\tcom.opencode.server\n",
+          stderr: "",
+        },
+        [`launchctl print gui/${process.getuid?.() ?? 0}/com.opencode.server`]:
+          {
+            exitCode: 0,
+            stdout: "state = waiting\nlast exit code = 1\n",
+            stderr: "",
+          },
+      }),
+      fetcher: createFetcher([]),
+    });
+
+    expect(status.state).toBe("absent");
+    expect(status.recommendedAction).toBe("offer_managed_service");
     expect(status.launchdLabel).toBe("com.opencode.server");
   });
 
@@ -265,5 +386,18 @@ describe("detectOpenCodeStatus", () => {
     expect(status.state).toBe("listener_config_mismatch");
     expect(status.recommendedAction).toBe("update_config");
     expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
+  });
+
+  test("ignores non-ok HTTP responses", async () => {
+    const status = await detectOpenCodeStatus({
+      config,
+      services,
+      platform: "linux",
+      runner: createRunner({}),
+      fetcher: createFetcher([{ url: "http://localhost:4096", status: 503 }]),
+    });
+
+    expect(status.state).toBe("absent");
+    expect(status.recommendedAction).toBe("offer_managed_service");
   });
 });

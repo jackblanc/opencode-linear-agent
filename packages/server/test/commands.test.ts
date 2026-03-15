@@ -180,4 +180,75 @@ describe("runCli", () => {
     );
     expect(stderr.lines.join("")).toBe("");
   });
+
+  test("setup resolves opencode path once", async () => {
+    const stdout = createBuffer();
+    let calls = 0;
+
+    const code = await runCli(["setup", "--manage-opencode"], {
+      startServer: async () => undefined,
+      loadConfig: () => config,
+      platform: "darwin",
+      stdout: stdout.stream,
+      stderr: createBuffer().stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => {
+        calls += 1;
+        return "/usr/local/bin/opencode";
+      },
+      runner: createRunner({
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 11\nlast exit code = 0\n",
+          stderr: "",
+        },
+        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.opencode.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.opencode.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.opencode`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.opencode`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 22\nlast exit code = 0\n",
+          stderr: "",
+        },
+      }),
+      fetcher: async () => Promise.reject(new Error("offline")),
+    });
+
+    expect(code).toBe(0);
+    expect(calls).toBe(1);
+  });
 });

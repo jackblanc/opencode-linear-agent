@@ -125,10 +125,15 @@ function parseRuntimeState(output: string): ServiceRuntimeState {
   if (state === "running") {
     return "running";
   }
-  if (state === "waiting" || state === "exited") {
+  if (state === "waiting" || state === "exited" || state === "throttled") {
     return "stopped";
   }
   return "unknown";
+}
+
+function joinCommandOutput(parts: string[]): string | undefined {
+  const text = parts.filter(Boolean).join("\n").trim();
+  return text ? text : undefined;
 }
 
 function parseLaunchctlPrint(
@@ -365,8 +370,11 @@ export async function installLaunchdService(
       ok: false,
       reason: "launchctl_failed",
       status: await getLaunchdServiceStatus(service, runner, platform),
-      stdout: `${bootout.stdout}${absent ? "" : `\n${bootstrap.stdout}`}`,
-      stderr: `${bootout.stderr}\n${bootstrap.stderr}`.trim(),
+      stdout: joinCommandOutput([
+        absent ? "" : bootout.stdout,
+        bootstrap.stdout,
+      ]),
+      stderr: joinCommandOutput([bootout.stderr, bootstrap.stderr]),
     };
   }
   const kickstart = await runner([
@@ -478,10 +486,13 @@ export async function uninstallLaunchdService(
     };
   }
   const stopped = await stopLaunchdService(service, runner, platform);
+  if (!stopped.ok) {
+    return stopped;
+  }
   await rm(service.plistPath, { force: true });
   return {
-    ok: stopped.ok,
-    reason: stopped.ok ? "ok" : stopped.reason,
+    ok: true,
+    reason: "ok",
     status: createAbsentStatus(service),
     stdout: stopped.stdout,
     stderr: stopped.stderr,
@@ -513,7 +524,7 @@ async function probeHttpUrl(
     method: "GET",
     signal: createTimeoutSignal(timeoutMs),
   })
-    .then(() => true)
+    .then((res) => res.ok)
     .catch(() => false);
 }
 
@@ -565,6 +576,7 @@ export async function detectOpenCodeStatus(input: {
   const runner = input.runner ?? runCommand;
   const fetcher = input.fetcher ?? fetch;
   const configuredUrl = input.config.opencodeServerUrl;
+  let launchdLabel: string | null = null;
   const reachableConfigured = await probeHttpUrl(configuredUrl, fetcher, 1200);
   if (reachableConfigured) {
     return {
@@ -580,17 +592,38 @@ export async function detectOpenCodeStatus(input: {
     const list = await runner(["launchctl", "list"]);
     if (list.exitCode === 0) {
       const labels = parseLaunchctlList(list.stdout);
-      const launchdLabel = labels.find((label) =>
-        isKnownOpenCodeLaunchdLabel(label, input.services.opencode.label),
-      );
+      launchdLabel =
+        labels.find((label) =>
+          isKnownOpenCodeLaunchdLabel(label, input.services.opencode.label),
+        ) ?? null;
       if (launchdLabel) {
-        return {
-          state: "launchd_service",
-          recommendedAction: "reuse",
-          configuredUrl,
-          reachableUrl: null,
-          launchdLabel,
+        const service = {
+          ...input.services.opencode,
+          label: launchdLabel,
         };
+        const status = await getLaunchdServiceStatus(
+          service,
+          runner,
+          input.platform,
+        );
+        if (status.runtimeState === "running") {
+          if (!isDefaultLocalOpencodeUrl(configuredUrl)) {
+            return {
+              state: "launchd_service",
+              recommendedAction: "update_config",
+              configuredUrl,
+              reachableUrl: DEFAULT_OPENCODE_SERVER_URL,
+              launchdLabel,
+            };
+          }
+          return {
+            state: "launchd_service",
+            recommendedAction: "reuse",
+            configuredUrl,
+            reachableUrl: null,
+            launchdLabel,
+          };
+        }
       }
     }
   }
@@ -604,7 +637,7 @@ export async function detectOpenCodeStatus(input: {
         recommendedAction: "update_config",
         configuredUrl,
         reachableUrl: fallbackUrl,
-        launchdLabel: null,
+        launchdLabel,
       };
     }
     return {
@@ -612,7 +645,7 @@ export async function detectOpenCodeStatus(input: {
       recommendedAction: "reuse",
       configuredUrl,
       reachableUrl: fallbackUrl,
-      launchdLabel: null,
+      launchdLabel,
     };
   }
 
@@ -621,7 +654,7 @@ export async function detectOpenCodeStatus(input: {
     recommendedAction: "offer_managed_service",
     configuredUrl,
     reachableUrl: null,
-    launchdLabel: null,
+    launchdLabel,
   };
 }
 
