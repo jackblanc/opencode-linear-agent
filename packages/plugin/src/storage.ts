@@ -150,6 +150,23 @@ async function readStore(filePath: string): Promise<StoreData> {
   return parseStoreData(json);
 }
 
+async function readStoreSafe(
+  filePath: string,
+): Promise<Result<StoreData, StoreReadError>> {
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    return Result.ok({});
+  }
+
+  return Result.tryPromise({
+    try: async () => {
+      const json: unknown = await file.json();
+      return parseStoreData(json);
+    },
+    catch: (e) => toStoreReadError(e, filePath),
+  });
+}
+
 function toStoreReadError(error: unknown, filePath: string): StoreReadError {
   return toReadError(error, filePath, "store");
 }
@@ -440,6 +457,13 @@ async function readSessionByWorkdir(
   workdir: string,
 ): Promise<StoredSession | null> {
   const data = await readStore(getEffectiveStorePath());
+  return readSessionByWorkdirFromData(data, workdir);
+}
+
+function readSessionByWorkdirFromData(
+  data: StoreData,
+  workdir: string,
+): StoredSession | null {
   let latest: StoredSession | null = null;
 
   for (const key of Object.keys(data)) {
@@ -480,18 +504,30 @@ export async function getSessionAsync(
 export async function getSessionAsyncSafe(
   workdir: string,
 ): Promise<Result<LinearContext | null, StoreReadError | AuthReadError>> {
-  return Result.tryPromise({
-    try: async () => getSessionAsync(workdir),
-    catch: (e) => {
-      const message = e instanceof Error ? e.message : String(e);
-      if (
-        e instanceof SyntaxError ||
-        message.includes("Invalid auth data:") ||
-        message.includes("parse JSON")
-      ) {
-        return toAuthReadError(e, getEffectiveAuthPath());
-      }
-      return toStoreReadError(e, getEffectiveStorePath());
-    },
+  const storeResult = await readStoreSafe(getEffectiveStorePath());
+  if (Result.isError(storeResult)) {
+    return Result.err(storeResult.error);
+  }
+
+  const stored = readSessionByWorkdirFromData(storeResult.value, workdir);
+  if (!stored) {
+    return Result.ok(null);
+  }
+
+  const authResult = await readAuthSafe(getEffectiveAuthPath());
+  if (Result.isError(authResult)) {
+    return Result.err(authResult.error);
+  }
+
+  const selection = selectAnyAccessToken(authResult.value);
+  if (selection.kind !== "found") {
+    return Result.ok(null);
+  }
+
+  return Result.ok({
+    sessionId: stored.linearSessionId,
+    issueId: stored.issueId,
+    organizationId: selection.organizationId,
+    workdir: stored.workdir,
   });
 }

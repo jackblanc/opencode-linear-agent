@@ -80,4 +80,30 @@ describe("FileTokenStore", () => {
       },
     );
   });
+
+  test("preserves concurrent writes across store instances", async () => {
+    await Bun.write(
+      TEST_AUTH_PATH,
+      JSON.stringify({ version: 1, organizations: {} }),
+    );
+
+    const a = new FileTokenStore(TEST_AUTH_PATH);
+    const b = new FileTokenStore(TEST_AUTH_PATH);
+    const refresh: RefreshTokenData = {
+      refreshToken: "refresh-1",
+      appId: "app-1",
+      organizationId: "org-1",
+      installedAt: "2026-03-15T00:00:00.000Z",
+      workspaceName: "Acme",
+    };
+
+    await Promise.all([
+      a.setAccessToken("org-1", "access-1", 3600),
+      b.setRefreshTokenData("org-1", refresh),
+    ]);
+
+    const stored = JSON.parse(await readFile(TEST_AUTH_PATH, "utf-8"));
+    expect(stored.organizations["org-1"].accessToken.value).toBe("access-1");
+    expect(stored.organizations["org-1"].refreshToken).toEqual(refresh);
+  });
 });

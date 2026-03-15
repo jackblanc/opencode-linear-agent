@@ -7,6 +7,7 @@ import {
   readAccessTokenSafe,
   readAnyAccessTokenSafe,
   getSessionAsync,
+  getSessionAsyncSafe,
   savePendingQuestion,
   savePendingPermission,
   setAuthPath,
@@ -270,6 +271,61 @@ describe("storage", () => {
 
       expect(session?.sessionId).toBe("lin-new");
       expect(session?.issueId).toBe("CODE-2");
+    });
+
+    test("getSessionAsyncSafe should return store parse_error for invalid store JSON", async () => {
+      await Bun.write(TEST_STORE_PATH, "{ invalid");
+      await Bun.write(
+        TEST_AUTH_PATH,
+        JSON.stringify({
+          version: 1,
+          organizations: {
+            org123: {
+              accessToken: {
+                value: "test-token-abc",
+                expiresAt: Date.now() + 60000,
+              },
+            },
+          },
+        }),
+      );
+
+      const result = await getSessionAsyncSafe("/tmp/workdir-a");
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error.fileType).toBe("store");
+        expect(result.error.kind).toBe("parse_error");
+        expect(result.error.path).toBe(TEST_STORE_PATH);
+      }
+    });
+
+    test("getSessionAsyncSafe should return auth parse_error for invalid auth JSON", async () => {
+      await Bun.write(
+        TEST_STORE_PATH,
+        JSON.stringify({
+          "session:lin-1": {
+            value: {
+              opencodeSessionId: "oc-1",
+              linearSessionId: "lin-1",
+              issueId: "CODE-1",
+              branchName: "feat/code-1",
+              workdir: "/tmp/workdir-a",
+              lastActivityTime: Date.now(),
+            },
+          },
+        }),
+      );
+      await Bun.write(TEST_AUTH_PATH, "{ invalid");
+
+      const result = await getSessionAsyncSafe("/tmp/workdir-a");
+
+      expect(Result.isError(result)).toBe(true);
+      if (Result.isError(result)) {
+        expect(result.error.fileType).toBe("auth");
+        expect(result.error.kind).toBe("parse_error");
+        expect(result.error.path).toBe(TEST_AUTH_PATH);
+      }
     });
   });
 
