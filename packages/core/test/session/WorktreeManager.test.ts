@@ -19,7 +19,7 @@ function createLogger(): Logger {
     warn: () => undefined,
     error: () => undefined,
     tag: () => logger,
-    clone: () => logger,
+    time: () => () => undefined,
   };
   return logger;
 }
