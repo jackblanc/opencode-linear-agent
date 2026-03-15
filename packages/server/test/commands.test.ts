@@ -123,4 +123,61 @@ describe("runCli", () => {
     expect(stdout.lines.join("")).toContain("setup --manage-opencode");
     expect(stderr.lines.join("")).toBe("");
   });
+
+  test("setup fails when config points away from reachable fallback listener", async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const code = await runCli(["setup"], {
+      startServer: async () => undefined,
+      loadConfig: () => ({
+        ...config,
+        opencodeServerUrl: "http://localhost:4123",
+      }),
+      platform: "darwin",
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      resolveAgentCommand: async () => ["/usr/local/bin/opencode-linear-agent"],
+      resolveOpencodePath: async () => "/usr/local/bin/opencode",
+      runner: createRunner({
+        [`launchctl bootout gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 1,
+            stdout: "",
+            stderr: "Could not find service",
+          },
+        [`launchctl bootstrap gui/${uid} ${join(launchAgentsDir, "com.opencode-linear-agent.server.plist")}`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl kickstart -k gui/${uid}/com.opencode-linear-agent.server`]:
+          {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          },
+        [`launchctl print gui/${uid}/com.opencode-linear-agent.server`]: {
+          exitCode: 0,
+          stdout: "state = running\npid = 11\nlast exit code = 0\n",
+          stderr: "",
+        },
+        "launchctl list": { exitCode: 0, stdout: "", stderr: "" },
+      }),
+      fetcher: async (input: string | URL) => {
+        const url = input instanceof URL ? input.toString() : input;
+        if (url === "http://127.0.0.1:4096") {
+          return new Response("ok", { status: 200 });
+        }
+        return Promise.reject(new Error("offline"));
+      },
+    });
+
+    expect(code).toBe(1);
+    expect(stdout.lines.join("")).toContain("action=update_config");
+    expect(stdout.lines.join("")).toContain(
+      "set opencodeServerUrl=http://127.0.0.1:4096",
+    );
+    expect(stderr.lines.join("")).toBe("");
+  });
 });

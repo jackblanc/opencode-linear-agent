@@ -223,6 +223,9 @@ async function handleSetup(args: string[], deps: CliDeps): Promise<number> {
     } else {
       opencodeResultText = `${opencodeResultText} next=run 'opencode-linear-agent setup --manage-opencode' or start OpenCode manually`;
     }
+  } else if (detection.recommendedAction === "update_config") {
+    opencodeResultText = `${opencodeResultText} next=set opencodeServerUrl=${detection.reachableUrl ?? detection.configuredUrl} or start OpenCode at configured url`;
+    code = 1;
   }
 
   writeLine(stdout, formatServiceStatus(webhook.status));

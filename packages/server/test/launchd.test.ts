@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -48,6 +48,34 @@ const services: Record<"webhook" | "opencode", ManagedServiceDefinition> = {
     ],
   },
 };
+
+const oldPath = process.env["PATH"];
+const oldXdgConfigHome = process.env["XDG_CONFIG_HOME"];
+const oldXdgDataHome = process.env["XDG_DATA_HOME"];
+
+beforeEach(() => {
+  process.env["PATH"] = "/usr/local/bin:/usr/bin:/bin";
+  process.env["XDG_CONFIG_HOME"] = "/tmp/opencode-config";
+  process.env["XDG_DATA_HOME"] = "/tmp/opencode-data";
+});
+
+afterEach(() => {
+  if (oldPath) {
+    process.env["PATH"] = oldPath;
+  } else {
+    delete process.env["PATH"];
+  }
+  if (oldXdgConfigHome) {
+    process.env["XDG_CONFIG_HOME"] = oldXdgConfigHome;
+  } else {
+    delete process.env["XDG_CONFIG_HOME"];
+  }
+  if (oldXdgDataHome) {
+    process.env["XDG_DATA_HOME"] = oldXdgDataHome;
+  } else {
+    delete process.env["XDG_DATA_HOME"];
+  }
+});
 
 function createRunner(
   outputs: Record<string, CommandOutput>,
@@ -113,6 +141,10 @@ describe("installLaunchdService", () => {
     );
     expect(plist).toContain("<string>/usr/local/bin/opencode</string>");
     expect(plist).toContain("<string>serve</string>");
+    expect(plist).toContain("<key>EnvironmentVariables</key>");
+    expect(plist).toContain("<key>PATH</key>");
+    expect(plist).toContain("<string>/tmp/opencode-config</string>");
+    expect(plist).toContain("<string>/tmp/opencode-data</string>");
     expect(plist).toContain(`<string>${service.stderrPath}</string>`);
     expect(plist).not.toContain("/bin/sh");
 
@@ -186,6 +218,25 @@ describe("detectOpenCodeStatus", () => {
     expect(status.launchdLabel).toBe("com.opencode.server");
   });
 
+  test("ignores unrelated launchd labels containing opencode", async () => {
+    const status = await detectOpenCodeStatus({
+      config,
+      services,
+      platform: "darwin",
+      runner: createRunner({
+        "launchctl list": {
+          exitCode: 0,
+          stdout: "123\t0\tcom.example.opencode-helper\n",
+          stderr: "",
+        },
+      }),
+      fetcher: createFetcher([]),
+    });
+
+    expect(status.state).toBe("absent");
+    expect(status.recommendedAction).toBe("offer_managed_service");
+  });
+
   test("falls back to local listener when configured URL is absent", async () => {
     const status = await detectOpenCodeStatus({
       config,
@@ -196,6 +247,23 @@ describe("detectOpenCodeStatus", () => {
     });
 
     expect(status.state).toBe("listener");
+    expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
+  });
+
+  test("reports config mismatch when only fallback listener is reachable", async () => {
+    const status = await detectOpenCodeStatus({
+      config: {
+        ...config,
+        opencodeServerUrl: "http://localhost:4123",
+      },
+      services,
+      platform: "linux",
+      runner: createRunner({}),
+      fetcher: createFetcher(["http://127.0.0.1:4096"]),
+    });
+
+    expect(status.state).toBe("listener_config_mismatch");
+    expect(status.recommendedAction).toBe("update_config");
     expect(status.reachableUrl).toBe("http://127.0.0.1:4096");
   });
 });

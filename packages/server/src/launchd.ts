@@ -19,7 +19,13 @@ export type OpenCodeReuseState =
   | "reachable_configured_url"
   | "launchd_service"
   | "listener"
+  | "listener_config_mismatch"
   | "absent";
+
+export type OpenCodeRecommendedAction =
+  | "reuse"
+  | "offer_managed_service"
+  | "update_config";
 
 export interface ManagedServiceDefinition {
   name: ManagedServiceName;
@@ -52,7 +58,7 @@ export interface ServiceActionResult {
 
 export interface OpenCodeDetectionStatus {
   state: OpenCodeReuseState;
-  recommendedAction: "reuse" | "offer_managed_service";
+  recommendedAction: OpenCodeRecommendedAction;
   configuredUrl: string;
   reachableUrl: string | null;
   launchdLabel: string | null;
@@ -165,6 +171,18 @@ function renderLaunchdPlist(service: ManagedServiceDefinition): string {
   const args = service.programArguments
     .map((arg) => `    <string>${escapeXml(arg)}</string>`)
     .join("\n");
+  const env = getLaunchdEnvironmentVariables();
+  const envBlock = Object.keys(env).length
+    ? [
+        "  <key>EnvironmentVariables</key>",
+        "  <dict>",
+        ...Object.entries(env).flatMap(([key, value]) => [
+          `    <key>${escapeXml(key)}</key>`,
+          `    <string>${escapeXml(value)}</string>`,
+        ]),
+        "  </dict>",
+      ]
+    : [];
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -180,6 +198,7 @@ function renderLaunchdPlist(service: ManagedServiceDefinition): string {
     "  <true/>",
     "  <key>KeepAlive</key>",
     "  <true/>",
+    ...envBlock,
     "  <key>StandardOutPath</key>",
     `  <string>${escapeXml(service.stdoutPath)}</string>`,
     "  <key>StandardErrorPath</key>",
@@ -188,6 +207,23 @@ function renderLaunchdPlist(service: ManagedServiceDefinition): string {
     "</plist>",
     "",
   ].join("\n");
+}
+
+function getLaunchdEnvironmentVariables(): Record<string, string> {
+  const env: Record<string, string> = {};
+  const pathValue = process.env["PATH"];
+  const xdgConfigHome = process.env["XDG_CONFIG_HOME"];
+  const xdgDataHome = process.env["XDG_DATA_HOME"];
+  if (pathValue) {
+    env["PATH"] = pathValue;
+  }
+  if (xdgConfigHome) {
+    env["XDG_CONFIG_HOME"] = xdgConfigHome;
+  }
+  if (xdgDataHome) {
+    env["XDG_DATA_HOME"] = xdgDataHome;
+  }
+  return env;
 }
 
 export function isLaunchdSupported(platform = process.platform): boolean {
@@ -496,6 +532,29 @@ function parseLaunchctlList(output: string): string[] {
     });
 }
 
+function isKnownOpenCodeLaunchdLabel(
+  label: string,
+  managedLabel: string,
+): boolean {
+  return label === managedLabel || label === "com.opencode.server";
+}
+
+function isDefaultLocalOpencodeUrl(url: string): boolean {
+  if (!URL.canParse(url)) {
+    return false;
+  }
+  const parsed = new URL(url);
+  const port = Number.parseInt(
+    parsed.port || `${parsed.protocol === "http:" ? 80 : 443}`,
+    10,
+  );
+  return (
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+    port === 4096
+  );
+}
+
 export async function detectOpenCodeStatus(input: {
   config: Config;
   services: Record<ManagedServiceName, ManagedServiceDefinition>;
@@ -521,11 +580,8 @@ export async function detectOpenCodeStatus(input: {
     const list = await runner(["launchctl", "list"]);
     if (list.exitCode === 0) {
       const labels = parseLaunchctlList(list.stdout);
-      const launchdLabel = labels.find(
-        (label) =>
-          label === input.services.opencode.label ||
-          (label.includes("opencode") &&
-            label !== input.services.webhook.label),
+      const launchdLabel = labels.find((label) =>
+        isKnownOpenCodeLaunchdLabel(label, input.services.opencode.label),
       );
       if (launchdLabel) {
         return {
@@ -542,6 +598,15 @@ export async function detectOpenCodeStatus(input: {
   const fallbackUrl = DEFAULT_OPENCODE_SERVER_URL;
   const reachableListener = await probeHttpUrl(fallbackUrl, fetcher, 1200);
   if (reachableListener) {
+    if (!isDefaultLocalOpencodeUrl(configuredUrl)) {
+      return {
+        state: "listener_config_mismatch",
+        recommendedAction: "update_config",
+        configuredUrl,
+        reachableUrl: fallbackUrl,
+        launchdLabel: null,
+      };
+    }
     return {
       state: "listener",
       recommendedAction: "reuse",
