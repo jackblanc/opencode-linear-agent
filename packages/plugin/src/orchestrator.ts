@@ -35,11 +35,11 @@ import type { LinearContext } from "./storage";
 
 export type Logger = (message: string) => void;
 
-export type TokenReader = (organizationId: string) => Promise<string | null>;
+type TokenReader = (organizationId: string) => Promise<string | null>;
 
-export type LinearServiceFactory = (accessToken: string) => LinearService;
+type LinearServiceFactory = (accessToken: string) => LinearService;
 
-export type SessionMessagesReader = (
+type SessionMessagesReader = (
   sessionId: string,
 ) => Promise<Array<{ info: { role: string; error?: unknown }; parts: Part[] }>>;
 

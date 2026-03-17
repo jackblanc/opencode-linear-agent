@@ -32,7 +32,7 @@ interface ResolvedRepoPath {
   repoName: string;
 }
 
-export type RepoResolution = ResolvedRepoPath | MissingRepoLabelResolution;
+type RepoResolution = ResolvedRepoPath | MissingRepoLabelResolution;
 
 function toRepoLabelSuggestion(
   candidate: IssueRepositoryCandidate,

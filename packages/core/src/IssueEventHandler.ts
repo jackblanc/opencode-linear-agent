@@ -9,7 +9,7 @@ type CleanupIssueStateType = "completed" | "canceled";
 const ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS = 3;
 const ISSUE_SESSION_LOOKUP_DELAY_MS = 1000;
 
-export interface IssueCleanupWebhookPayload {
+interface IssueCleanupWebhookPayload {
   type: "Issue";
   action: string;
   data: {

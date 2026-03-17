@@ -2,7 +2,7 @@ import type { ReasoningPart } from "@opencode-ai/sdk/v2";
 import type { HandlerState } from "../session/SessionState";
 import type { Action, HandlerResult } from "../actions/types";
 
-export interface ReasoningHandlerContext {
+interface ReasoningHandlerContext {
   linearSessionId: string;
 }
 

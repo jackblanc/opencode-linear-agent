@@ -41,7 +41,7 @@ export function setStorePath(path: string): void {
 
 type StoreReadErrorKind = "parse_error" | "schema_error" | "io_error";
 
-export interface StoreReadError {
+interface StoreReadError {
   kind: StoreReadErrorKind;
   path: string;
   message: string;

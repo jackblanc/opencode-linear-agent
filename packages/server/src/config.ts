@@ -35,7 +35,7 @@ const ConfigFileSchema = z.object({
 
 export type Config = z.infer<typeof ConfigFileSchema>;
 
-export interface LoadConfigOptions {
+interface LoadConfigOptions {
   configPath?: string;
 }
 

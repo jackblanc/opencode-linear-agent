@@ -16,7 +16,7 @@ import {
 /**
  * Worktree creation result
  */
-export interface WorktreeResult {
+interface WorktreeResult {
   directory: string;
   branch: string;
 }
@@ -24,7 +24,7 @@ export interface WorktreeResult {
 /**
  * Session creation/retrieval result
  */
-export interface OpencodeSessionResult {
+interface OpencodeSessionResult {
   id: string;
 }
 

@@ -35,7 +35,7 @@ function formatOptionLine(label: string, description: string): string {
 /**
  * Context needed for question handler processing
  */
-export interface QuestionHandlerContext {
+interface QuestionHandlerContext {
   linearSessionId: string;
   opencodeSessionId: string;
   workdir: string | null;

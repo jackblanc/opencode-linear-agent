@@ -25,7 +25,7 @@ function mapTodoStatus(
 /**
  * Context needed for todo handler processing
  */
-export interface TodoHandlerContext {
+interface TodoHandlerContext {
   linearSessionId: string;
   opencodeSessionId: string;
 }
@@ -33,7 +33,7 @@ export interface TodoHandlerContext {
 /**
  * Properties from todo.updated event
  */
-export interface TodoUpdatedProperties {
+interface TodoUpdatedProperties {
   sessionID: string;
   todos: Todo[];
 }

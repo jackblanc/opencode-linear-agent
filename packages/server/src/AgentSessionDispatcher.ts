@@ -17,7 +17,7 @@ import {
   type MissingRepoLabelResolution,
 } from "./RepoResolver";
 
-export interface AgentSessionDispatcherConfig {
+interface AgentSessionDispatcherConfig {
   organizationId: string;
   projectsPath: string;
 }

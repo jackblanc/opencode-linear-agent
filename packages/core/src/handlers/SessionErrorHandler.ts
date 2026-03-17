@@ -4,7 +4,7 @@ import type { Action, HandlerResult } from "../actions/types";
 /**
  * Context needed for session error handler processing
  */
-export interface SessionErrorHandlerContext {
+interface SessionErrorHandlerContext {
   linearSessionId: string;
 }
 

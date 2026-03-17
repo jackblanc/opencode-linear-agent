@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 /**
  * Result from resolving a worktree
  */
-export interface WorktreeResolution {
+interface WorktreeResolution {
   workdir: string;
   branchName: string;
   source: "existing_session" | "created";
@@ -27,7 +27,7 @@ export interface WorktreeIssue {
 
 export type SessionWorktreeAction = "created" | "prompted";
 
-export interface SessionCleanupResult {
+interface SessionCleanupResult {
   worktreeRemoved: boolean;
   branchRemoved: boolean;
   fullyCleaned: boolean;
