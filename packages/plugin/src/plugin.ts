@@ -10,7 +10,6 @@ import type { Event } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import { createLinearService } from "./linear";
 import { readAccessTokenSafe, formatStoreReadError } from "./storage";
-import { handleUserMessage } from "./handlers";
 import { handleEvent, type Logger } from "./orchestrator";
 import { linearTools } from "./tools/index";
 
@@ -26,19 +25,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       },
     });
   };
-
-  const info = (message: string, extra?: Record<string, unknown>): void => {
-    void input.client.app.log({
-      body: {
-        service: "linear-plugin",
-        level: "info",
-        message,
-        extra,
-      },
-    });
-  };
-
-  info("Linear plugin initialized (reads session state from file store)");
 
   const readTokenForHook = async (
     organizationId: string,
@@ -88,32 +74,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       });
       if (Result.isError(result)) {
         log(`event hook failed: ${result.error}`);
-      }
-    },
-
-    /**
-     * When the user sends a message in the chat, post it as an activity to the Linear session, so that
-     * the user's message shows up in Linear even when they send the message from OpenCode directly.
-     */
-    "chat.message": async (_ctx, output) => {
-      const result = await Result.tryPromise({
-        try: async () => {
-          await handleUserMessage(
-            workdir,
-            output.parts,
-            async (organizationId) =>
-              readTokenForHook(
-                organizationId,
-                "chat.message token read failed",
-              ),
-            createLinearService,
-            log,
-          );
-        },
-        catch: (e) => (e instanceof Error ? e.message : String(e)),
-      });
-      if (Result.isError(result)) {
-        log(`chat.message hook failed: ${result.error}`);
       }
     },
   };
