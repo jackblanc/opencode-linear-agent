@@ -14,6 +14,22 @@
     // Disable no-await-in-loop - we have legitimate sequential retry loops
     "eslint/no-await-in-loop": "off",
 
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@opencode-ai/sdk/v1",
+            "message": "Import from '@opencode-ai/sdk/v2' instead of v1 for better type safety and features."
+          },
+          {
+            "name": "@opencode-ai/sdk",
+            "message": "Import from '@opencode-ai/sdk/v2' instead of the root SDK package for better type safety and features."
+          }
+        ]
+      }
+    ],
+
     // Export/Import Control - CRITICAL for project requirements
     "eslint-plugin-import/no-commonjs": "error",
     "eslint-plugin-import/no-cycle": "error",
