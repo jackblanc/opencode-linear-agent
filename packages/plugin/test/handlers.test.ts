@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { Part } from "@opencode-ai/sdk";
+import type { Part } from "@opencode-ai/sdk/v2";
 import type { LinearService } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { handleUserMessage } from "../src/handlers";

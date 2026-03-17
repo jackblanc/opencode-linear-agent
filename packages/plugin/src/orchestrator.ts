@@ -1,5 +1,5 @@
-import type { Event } from "@opencode-ai/sdk";
 import type {
+  Event,
   EventMessagePartUpdated,
   EventSessionIdle,
   EventTodoUpdated,
@@ -9,6 +9,7 @@ import type {
   ToolPart,
   Part,
   TextPart,
+  EventPermissionAsked,
 } from "@opencode-ai/sdk/v2";
 import {
   processToolPart,
@@ -142,25 +143,13 @@ export async function handleEvent(
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  const eventType: string = event.type;
-
-  if (eventType === "message.part.updated") {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
-    const typedEvent = event as unknown as EventMessagePartUpdated;
-    return handlePartUpdated(
-      typedEvent,
-      workdir,
-      readToken,
-      createService,
-      log,
-    );
+  if (event.type === "message.part.updated") {
+    return handlePartUpdated(event, workdir, readToken, createService, log);
   }
 
-  if (eventType === "session.idle") {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
-    const typedEvent = event as unknown as EventSessionIdle;
+  if (event.type === "session.idle") {
     return handleSessionIdle(
-      typedEvent,
+      event,
       workdir,
       readSessionMessages,
       readToken,
@@ -169,23 +158,13 @@ export async function handleEvent(
     );
   }
 
-  if (eventType === "todo.updated") {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
-    const typedEvent = event as unknown as EventTodoUpdated;
-    return handleTodoUpdated(
-      typedEvent,
-      workdir,
-      readToken,
-      createService,
-      log,
-    );
+  if (event.type === "todo.updated") {
+    return handleTodoUpdated(event, workdir, readToken, createService, log);
   }
 
-  if (eventType === "session.error") {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
-    const typedEvent = event as unknown as EventSessionError;
+  if (event.type === "session.error") {
     return handleSessionErrorEvent(
-      typedEvent,
+      event,
       workdir,
       readToken,
       createService,
@@ -193,16 +172,12 @@ export async function handleEvent(
     );
   }
 
-  if (eventType === "question.asked") {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Checked by eventType guard above
-    const typedEvent = event as unknown as EventQuestionAsked;
-    return handleQuestionAsked(
-      typedEvent,
-      workdir,
-      readToken,
-      createService,
-      log,
-    );
+  if (event.type === "question.asked") {
+    return handleQuestionAsked(event, workdir, readToken, createService, log);
+  }
+
+  if (event.type === "permission.asked") {
+    await handlePermissionAsked(event, workdir, readToken, createService, log);
   }
 }
 
@@ -339,32 +314,33 @@ async function handleQuestionAsked(
   await persistPendingQuestion(result.pendingQuestion);
 }
 
-export async function handlePermissionAskHook(
+async function handlePermissionAsked(
+  event: EventPermissionAsked,
   workdir: string,
-  sessionId: string,
-  requestId: string,
-  permission: string,
-  patterns: string[],
-  metadata: Record<string, unknown>,
-  linear: LinearService,
+  readToken: TokenReader,
+  createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
-  const session = await getSessionAsync(workdir);
-  if (!session?.sessionId) return;
+  const { id, sessionID, patterns, permission, metadata } = event.properties;
 
-  const ctx = toSessionContext(sessionId, session);
-  if (!ctx) return;
+  const resolved = await resolveSession(
+    workdir,
+    sessionID,
+    readToken,
+    createService,
+  );
+  if (!resolved) return;
 
   const result = processPermissionAsked(
     {
-      id: requestId,
-      sessionID: sessionId,
+      id,
+      sessionID,
       permission,
       patterns,
       metadata,
     },
-    ctx,
+    resolved.ctx,
   );
-  await executeActions(result.actions, linear, log);
+  await executeActions(result.actions, resolved.linear, log);
   await persistPendingPermission(result.pendingPermission);
 }

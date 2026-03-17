@@ -362,12 +362,3 @@ export async function getSessionAsync(
     workdir: stored.workdir,
   };
 }
-
-export async function getSessionAsyncSafe(
-  workdir: string,
-): Promise<Result<LinearContext | null, StoreReadError>> {
-  return Result.tryPromise({
-    try: async () => getSessionAsync(workdir),
-    catch: (e) => toStoreReadError(e, getEffectiveStorePath()),
-  });
-}

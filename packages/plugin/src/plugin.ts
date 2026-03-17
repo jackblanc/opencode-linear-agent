@@ -6,20 +6,12 @@
  */
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
-import type { Permission } from "@opencode-ai/sdk";
+import type { Event } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import { createLinearService } from "./linear";
-import {
-  readAccessTokenSafe,
-  getSessionAsyncSafe,
-  formatStoreReadError,
-} from "./storage";
+import { readAccessTokenSafe, formatStoreReadError } from "./storage";
 import { handleUserMessage } from "./handlers";
-import {
-  handleEvent,
-  handlePermissionAskHook,
-  type Logger,
-} from "./orchestrator";
+import { handleEvent, type Logger } from "./orchestrator";
 import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
@@ -65,10 +57,13 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
     /**
      * Event handler for streaming OpenCode events to Linear.
-     * Fires AFTER state changes occur (e.g., tool enters "running" state).
-     * Also handles question.asked events for Linear elicitations.
+     *
+     * OpenCode emits the V2 shape of events, but the plugin is still incorrectly
+     * using the V1 SDK types, so we cast to V2 for type accuracy.
      */
-    event: async ({ event }) => {
+    event: async ({ event: _event }) => {
+      // eslint-disable-next-line no-unsafe-type-assertion
+      const event = _event as unknown as Event; // Cast to V2 Event type
       const result = await Result.tryPromise({
         try: async () => {
           await handleEvent(
@@ -96,6 +91,10 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       }
     },
 
+    /**
+     * When the user sends a message in the chat, post it as an activity to the Linear session, so that
+     * the user's message shows up in Linear even when they send the message from OpenCode directly.
+     */
     "chat.message": async (_ctx, output) => {
       const result = await Result.tryPromise({
         try: async () => {
@@ -116,56 +115,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
       if (Result.isError(result)) {
         log(`chat.message hook failed: ${result.error}`);
       }
-    },
-
-    /**
-     * Hook into permission requests to post elicitations.
-     * Fires BEFORE permission dialog is shown to user.
-     */
-    "permission.ask": async (ctx: Permission, _output) => {
-      info("permission.ask hook fired", {
-        type: ctx.type,
-        sessionID: ctx.sessionID,
-        id: ctx.id,
-      });
-
-      const sessionResult = await getSessionAsyncSafe(workdir);
-      if (Result.isError(sessionResult)) {
-        log(
-          `permission.ask session read failed: ${formatStoreReadError(sessionResult.error)}`,
-        );
-        return;
-      }
-
-      const session = sessionResult.value;
-      if (!session) {
-        info("permission.ask: session not found", { workdir });
-        return;
-      }
-
-      const token = await readTokenForHook(
-        session.organizationId,
-        "permission.ask token read failed",
-      );
-      if (!token) return;
-
-      const linear = createLinearService(token);
-      const patterns = Array.isArray(ctx.pattern)
-        ? ctx.pattern
-        : ctx.pattern
-          ? [ctx.pattern]
-          : [];
-
-      await handlePermissionAskHook(
-        workdir,
-        ctx.sessionID,
-        ctx.id,
-        ctx.type,
-        patterns,
-        ctx.metadata,
-        linear,
-        log,
-      );
     },
   };
 }
