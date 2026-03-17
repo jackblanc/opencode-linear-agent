@@ -4,7 +4,7 @@ import type { Action, HandlerResult } from "../actions/types";
 /**
  * Context needed for text handler processing
  */
-export interface TextHandlerContext {
+interface TextHandlerContext {
   linearSessionId: string;
 }
 

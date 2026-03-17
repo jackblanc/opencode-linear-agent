@@ -11,7 +11,7 @@ import { Log, type Logger } from "../logger";
 /**
  * Result of getting or creating a session
  */
-export interface SessionResult {
+interface SessionResult {
   opencodeSessionId: string;
   existingState: SessionState | null;
   /** True if we had to create a new OpenCode session (old one was lost) */

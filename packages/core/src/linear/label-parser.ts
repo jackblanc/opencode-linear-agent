@@ -11,11 +11,11 @@ interface ParsedRepoLabel {
   organizationName?: string;
 }
 
-export interface LinearLabelLike {
+interface LinearLabelLike {
   name: string;
 }
 
-export type RepoLabelMatch =
+type RepoLabelMatch =
   | { status: "missing" }
   | { status: "invalid"; label: string }
   | { status: "valid"; label: string; value: ParsedRepoLabel };

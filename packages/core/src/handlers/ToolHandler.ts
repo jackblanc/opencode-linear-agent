@@ -236,7 +236,7 @@ function getToolThought(
 /**
  * Context needed for tool handler processing
  */
-export interface ToolHandlerContext {
+interface ToolHandlerContext {
   linearSessionId: string;
   workdir: string | null;
 }

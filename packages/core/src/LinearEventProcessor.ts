@@ -22,7 +22,7 @@ import { Log, type Logger } from "./logger";
 /**
  * Configuration for the LinearEventProcessor
  */
-export interface LinearEventProcessorConfig {
+interface LinearEventProcessorConfig {
   /** OpenCode server URL for external links (should be localhost for security) */
   opencodeUrl?: string;
   /** Linear organization ID for OAuth token lookup */

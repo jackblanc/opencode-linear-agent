@@ -4,7 +4,7 @@ import type { Action, HandlerResultWithPermission } from "../actions/types";
 /**
  * Context needed for permission handler processing
  */
-export interface PermissionHandlerContext {
+interface PermissionHandlerContext {
   linearSessionId: string;
   opencodeSessionId: string;
   workdir: string | null;
@@ -18,7 +18,7 @@ export interface PermissionHandlerContext {
  * this shape from their respective SDK types. The handler doesn't need the
  * `always` field from v2's PermissionRequest.
  */
-export interface PermissionHandlerInput {
+interface PermissionHandlerInput {
   id: string;
   sessionID: string;
   permission: string;

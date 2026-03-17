@@ -1,14 +1,10 @@
 import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
 import { LinearUnknownError, OpencodeUnknownError } from "../src/errors";
-import {
-  IssueEventHandler,
-  type IssueCleanupWebhookPayload,
-} from "../src/IssueEventHandler";
+import { IssueEventHandler } from "../src/IssueEventHandler";
 import type { LinearService } from "../src/linear/LinearService";
 import type { SessionRepository } from "../src/session/SessionRepository";
 import type { SessionState } from "../src/session/SessionState";
-import type { SessionCleanupResult } from "../src/session/WorktreeManager";
 
 function createLinear(ids: string[]): LinearService {
   return {
@@ -58,9 +54,9 @@ function createRepo(state: SessionState | null): SessionRepository {
   };
 }
 
-function buildIssueEvent(stateType: string): IssueCleanupWebhookPayload {
+function buildIssueEvent(stateType: string) {
   return {
-    type: "Issue",
+    type: "Issue" as const,
     action: "update",
     data: {
       id: "issue-1",
@@ -97,9 +93,7 @@ describe("IssueEventHandler", () => {
       },
     };
     const worktree = {
-      cleanupSessionResources: async (
-        session: SessionState,
-      ): Promise<SessionCleanupResult> => {
+      cleanupSessionResources: async (session: SessionState) => {
         cleanups.push(session);
         return {
           worktreeRemoved: true,
@@ -155,7 +149,7 @@ describe("IssueEventHandler", () => {
         },
       },
       {
-        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+        cleanupSessionResources: async () => ({
           worktreeRemoved: true,
           branchRemoved: false,
           fullyCleaned: false,
@@ -180,7 +174,7 @@ describe("IssueEventHandler", () => {
       },
       createRepo(null),
       {
-        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+        cleanupSessionResources: async () => ({
           worktreeRemoved: true,
           branchRemoved: true,
           fullyCleaned: true,
@@ -204,7 +198,7 @@ describe("IssueEventHandler", () => {
       },
       createRepo(null),
       {
-        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+        cleanupSessionResources: async () => ({
           worktreeRemoved: true,
           branchRemoved: true,
           fullyCleaned: true,
@@ -255,9 +249,7 @@ describe("IssueEventHandler", () => {
         delete: async (): Promise<void> => undefined,
       },
       {
-        cleanupSessionResources: async (
-          session: SessionState,
-        ): Promise<SessionCleanupResult> => {
+        cleanupSessionResources: async (session: SessionState) => {
           cleanups.push(session.linearSessionId);
           return {
             worktreeRemoved: true,
@@ -303,7 +295,7 @@ describe("IssueEventHandler", () => {
         },
       },
       {
-        cleanupSessionResources: async (): Promise<SessionCleanupResult> => ({
+        cleanupSessionResources: async () => ({
           worktreeRemoved: true,
           branchRemoved: true,
           fullyCleaned: true,

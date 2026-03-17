@@ -1,11 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import { processPermissionAsked } from "../../src/handlers/PermissionHandler";
-import type { PermissionHandlerInput } from "../../src/handlers/PermissionHandler";
+
 import type { PostElicitationAction, Action } from "../../src/actions/types";
 
-function createPermissionInput(
-  overrides: Partial<PermissionHandlerInput> = {},
-): PermissionHandlerInput {
+function createPermissionInput(overrides: Record<string, unknown> = {}) {
   return {
     id: "perm-1",
     sessionID: "opencode-456",
