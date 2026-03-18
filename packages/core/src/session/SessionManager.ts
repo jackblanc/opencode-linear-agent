@@ -5,7 +5,7 @@ import type {
   OpencodeService,
   MessageWithParts,
 } from "../opencode/OpencodeService";
-import type { OpencodeServiceError } from "../errors";
+import type { OpencodeServiceError } from "../errors/opencode";
 import { Log, type Logger } from "../logger";
 
 /**

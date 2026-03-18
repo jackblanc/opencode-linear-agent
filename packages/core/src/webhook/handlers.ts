@@ -4,7 +4,7 @@
 
 import { LinearWebhookClient } from "@linear/sdk/webhooks";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import type { TokenStore } from "../storage";
+import type { TokenStore } from "../storage/types";
 import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
 import { isAgentSessionEventWebhook, isSupportedWebhook } from "./types";
 import { Log } from "../logger";

@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
-import { OpencodeUnknownError } from "../../src/errors";
+import { OpencodeUnknownError } from "../../src/errors/opencode";
 import { OpencodeService } from "../../src/opencode/OpencodeService";
 import { SessionManager } from "../../src/session/SessionManager";
 import type {

@@ -4,7 +4,7 @@
  * Wraps FileStore for session-specific operations.
  */
 
-import type { KeyValueStore } from "../storage";
+import type { KeyValueStore } from "../storage/types";
 import type {
   SessionRepository,
   PendingQuestion,

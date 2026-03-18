@@ -6,12 +6,12 @@ import type {
   Event as OpencodeEvent,
 } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
-import type { OpencodeServiceError } from "../errors";
+import type { OpencodeServiceError } from "../errors/opencode";
 import {
   mapOpencodeError,
   getOpencodeErrorMessage,
   OpencodeUnknownError,
-} from "../errors";
+} from "../errors/opencode";
 
 /**
  * Worktree creation result
