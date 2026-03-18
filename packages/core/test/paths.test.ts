@@ -5,7 +5,8 @@ void mock.module("xdg-basedir", () => ({
   xdgData: "/tmp/data",
 }));
 
-const { getConfigPath, getStorePath } = await import("../src/paths");
+const { getConfigPath, getStateRootPath, getStorePath } =
+  await import("../src/paths");
 
 describe("getAppPaths", () => {
   test("builds config path from xdg config root", () => {
@@ -16,5 +17,9 @@ describe("getAppPaths", () => {
 
   test("builds store path from xdg data root", () => {
     expect(getStorePath()).toBe("/tmp/data/opencode-linear-agent/store.json");
+  });
+
+  test("builds state root path from xdg data root", () => {
+    expect(getStateRootPath()).toBe("/tmp/data/opencode-linear-agent/state");
   });
 });

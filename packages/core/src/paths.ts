@@ -28,3 +28,7 @@ export function getConfigPath(): string {
 export function getStorePath(): string {
   return join(requireDataHome(), APPLICATION_DIRECTORY, "store.json");
 }
+
+export function getStateRootPath(): string {
+  return join(requireDataHome(), APPLICATION_DIRECTORY, "state");
+}
