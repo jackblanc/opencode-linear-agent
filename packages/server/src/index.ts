@@ -28,6 +28,9 @@ import {
   LinearServiceImpl,
   OpencodeService,
   Log,
+  FileStore,
+  FileTokenStore,
+  FileSessionRepository,
   type EventDispatcher,
   type KeyValueStore,
   type LogSink,
@@ -40,7 +43,6 @@ import {
   loadConfig,
   type Config,
 } from "./config";
-import { FileStore, FileTokenStore, FileSessionRepository } from "./storage";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
 import { mkdir } from "node:fs/promises";
 

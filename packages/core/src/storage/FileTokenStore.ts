@@ -4,11 +4,7 @@
  * Wraps FileStore for token-specific operations.
  */
 
-import type {
-  KeyValueStore,
-  TokenStore,
-  RefreshTokenData,
-} from "@opencode-linear-agent/core";
+import type { KeyValueStore, RefreshTokenData, TokenStore } from "./types";
 
 /**
  * Key prefixes for token storage

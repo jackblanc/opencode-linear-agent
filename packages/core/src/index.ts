@@ -32,6 +32,8 @@ export { executeActions } from "./actions";
 
 // Session state (consumed by plugin orchestrator)
 export { createInitialHandlerState } from "./session/SessionState";
+// ignore knip error - used in packages/server/test/AgentSessionDispatcher.test.ts
+/** @public */
 export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,
@@ -40,6 +42,7 @@ export type {
   PendingRepoSelection,
   RepoSelectionOption,
 } from "./session/SessionRepository";
+export { FileSessionRepository } from "./session/FileSessionRepository";
 export { WorktreeManager } from "./session/WorktreeManager";
 
 // Linear service interface and implementation
@@ -54,7 +57,8 @@ export { findRepoLabel } from "./linear/label-parser";
 export { parseRepoLabel } from "./linear/label-parser";
 
 // Storage interfaces
-export type { KeyValueStore, TokenStore, RefreshTokenData } from "./storage";
+export { FileStore, FileTokenStore } from "./storage";
+export type { KeyValueStore, TokenStore } from "./storage";
 
 // OAuth handlers (consumed by server)
 export type { OAuthConfig } from "./oauth";
@@ -77,7 +81,7 @@ export { getConfigPath, getStorePath } from "./paths";
 
 // Zod schemas for runtime validation
 export { parseStoreData } from "./schemas";
-export type { StoredValue, StoreData } from "./schemas";
+export type { StoreData } from "./schemas";
 
 // OpenCode service wrapper (consumed by server)
 export { OpencodeService } from "./opencode";
