@@ -14,13 +14,10 @@
 
 import { mkdir, writeFile, readFile, exists } from "node:fs/promises";
 import { dirname } from "node:path";
-import {
-  getStorePath,
-  parseStoreData,
-  type KeyValueStore,
-  type StoreData,
-  type StoredValue,
-} from "@opencode-linear-agent/core";
+
+import { parseStoreData, type StoreData, type StoredValue } from "../schemas";
+import type { KeyValueStore } from "./types";
+import { getStorePath } from "../paths";
 
 /**
  * File-based KeyValueStore implementation
