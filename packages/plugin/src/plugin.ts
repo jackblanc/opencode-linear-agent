@@ -8,14 +8,16 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
+import {
+  formatStoreReadError,
+  readAccessTokenSafe,
+} from "@opencode-linear-agent/core";
+
 import { createLinearService } from "./linear";
-import { readAccessTokenSafe, formatStoreReadError } from "./storage";
 import { handleEvent, type Logger } from "./orchestrator";
 import { linearTools } from "./tools/index";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
-  const workdir = input.worktree ?? input.directory;
-
   const log: Logger = (message: string) => {
     void input.client.app.log({
       body: {
@@ -54,7 +56,6 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         try: async () => {
           await handleEvent(
             event,
-            workdir,
             async (sessionId) => {
               const messages = await input.client.session.messages({
                 path: { id: sessionId },

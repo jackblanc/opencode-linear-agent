@@ -2,11 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Event, Part, ReasoningPart, TextPart } from "@opencode-ai/sdk/v2";
-import type { LinearService } from "@opencode-linear-agent/core";
+import { setStorePath, type LinearService } from "@opencode-linear-agent/core";
 import type { ActivityContent, IssueState } from "../../core/src/linear/types";
 import { Result } from "better-result";
 import { handleEvent } from "../src/orchestrator";
-import { setStorePath } from "../src/storage";
 
 const TEST_DIR = join(import.meta.dir, ".test-orchestrator");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
@@ -140,7 +139,6 @@ describe("handleEvent", () => {
 
     await handleEvent(
       partUpdated(reasoningPart("Need inspect state flow.")),
-      workdir,
       async () => [],
       async () => "token-1",
       () => createLinear(calls),
@@ -161,7 +159,6 @@ describe("handleEvent", () => {
 
     await handleEvent(
       partUpdated(textPart("Final prose should wait.")),
-      workdir,
       async () => [],
       async () => "token-1",
       () => createLinear(calls),
@@ -177,7 +174,6 @@ describe("handleEvent", () => {
 
     await handleEvent(
       sessionIdle(),
-      workdir,
       async () => [{ info: { role: "assistant" }, parts }],
       async () => "token-1",
       () => createLinear(calls),
@@ -199,7 +195,6 @@ describe("handleEvent", () => {
 
     await handleEvent(
       sessionIdle(),
-      workdir,
       async () => [{ info: { role: "assistant" }, parts }],
       async () => "token-1",
       () => createLinear(calls),
@@ -208,7 +203,6 @@ describe("handleEvent", () => {
 
     await handleEvent(
       partUpdated(textPart("late text")),
-      workdir,
       async () => [],
       async () => "token-1",
       () => createLinear(calls),
