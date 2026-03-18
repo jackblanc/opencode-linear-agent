@@ -3,16 +3,16 @@ import { mkdir, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
 import {
+  getSessionByOpencodeSessionId,
   readAccessToken,
   readAccessTokenSafe,
   readAnyAccessTokenSafe,
-  getSessionAsync,
   savePendingQuestion,
   savePendingPermission,
   setStorePath,
   type PendingQuestion,
   type PendingPermission,
-} from "../src/storage";
+} from "@opencode-linear-agent/core";
 
 const TEST_DIR = join(import.meta.dir, ".test-storage");
 const TEST_STORE_PATH = join(TEST_DIR, "store.json");
@@ -125,8 +125,8 @@ describe("storage", () => {
     });
   });
 
-  describe("getSessionAsync", () => {
-    test("should resolve session by workdir", async () => {
+  describe("getSessionByOpencodeSessionId", () => {
+    test("should resolve session by opencode session id", async () => {
       const storeData = {
         "token:access:org123": { value: "test-token-abc" },
         "session:lin-1": {
@@ -142,7 +142,7 @@ describe("storage", () => {
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const session = await getSessionAsync("/tmp/workdir-a");
+      const session = await getSessionByOpencodeSessionId("oc-1");
 
       expect(session).toEqual({
         sessionId: "lin-1",
@@ -152,12 +152,12 @@ describe("storage", () => {
       });
     });
 
-    test("should pick latest session for same workdir", async () => {
+    test("should pick latest session for same opencode session id", async () => {
       const storeData = {
         "token:access:org123": { value: "test-token-abc" },
         "session:lin-old": {
           value: {
-            opencodeSessionId: "oc-old",
+            opencodeSessionId: "oc-1",
             linearSessionId: "lin-old",
             issueId: "CODE-1",
             branchName: "feat/code-1",
@@ -167,7 +167,7 @@ describe("storage", () => {
         },
         "session:lin-new": {
           value: {
-            opencodeSessionId: "oc-new",
+            opencodeSessionId: "oc-1",
             linearSessionId: "lin-new",
             issueId: "CODE-2",
             branchName: "feat/code-2",
@@ -178,7 +178,7 @@ describe("storage", () => {
       };
       await Bun.write(TEST_STORE_PATH, JSON.stringify(storeData));
 
-      const session = await getSessionAsync("/tmp/workdir-a");
+      const session = await getSessionByOpencodeSessionId("oc-1");
 
       expect(session?.sessionId).toBe("lin-new");
       expect(session?.issueId).toBe("CODE-2");

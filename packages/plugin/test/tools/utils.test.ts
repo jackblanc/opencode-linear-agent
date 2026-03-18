@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
-import { setStorePath } from "../../src/storage";
+import { setStorePath } from "@opencode-linear-agent/core";
 import {
   parseDateFilter,
   withWarnings,

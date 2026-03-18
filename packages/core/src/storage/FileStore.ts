@@ -12,7 +12,14 @@
  * locking if concurrent access is required.
  */
 
-import { mkdir, writeFile, readFile, exists } from "node:fs/promises";
+import {
+  mkdir,
+  writeFile,
+  readFile,
+  exists,
+  open,
+  unlink,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { parseStoreData, type StoreData, type StoredValue } from "../schemas";
@@ -23,6 +30,8 @@ import { getStorePath } from "../paths";
  * File-based KeyValueStore implementation
  */
 export class FileStore implements KeyValueStore {
+  private static readonly LOCK_TIMEOUT_MS = 5000;
+  private static readonly LOCK_RETRY_DELAY_MS = 50;
   private data: StoreData = {};
   private loaded = false;
   private filePath: string;
@@ -74,6 +83,52 @@ export class FileStore implements KeyValueStore {
     await writeFile(this.filePath, JSON.stringify(this.data, null, 2));
   }
 
+  private async acquireLock(): Promise<{ release: () => Promise<void> }> {
+    const lockPath = `${this.filePath}.lock`;
+    const start = Date.now();
+
+    while (true) {
+      try {
+        const handle = await open(lockPath, "wx");
+        await handle.write(String(Date.now()));
+        await handle.close();
+
+        return {
+          release: async (): Promise<void> => {
+            await unlink(lockPath).catch(() => {});
+          },
+        };
+      } catch (err) {
+        if (
+          !(err instanceof Error) ||
+          !("code" in err) ||
+          err.code !== "EEXIST"
+        ) {
+          throw err;
+        }
+
+        if (Date.now() - start > FileStore.LOCK_TIMEOUT_MS) {
+          await unlink(lockPath).catch(() => {});
+          continue;
+        }
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, FileStore.LOCK_RETRY_DELAY_MS),
+        );
+      }
+    }
+  }
+
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const lock = await this.acquireLock();
+
+    try {
+      return await fn();
+    } finally {
+      await lock.release();
+    }
+  }
+
   /**
    * Check if a stored value has expired
    */
@@ -120,49 +175,55 @@ export class FileStore implements KeyValueStore {
     value: unknown,
     options?: { expirationTtl?: number },
   ): Promise<void> {
-    await this.ensureLoaded();
+    await this.withLock(async () => {
+      await this.reload();
 
-    const stored: StoredValue = { value };
+      const stored: StoredValue = { value };
 
-    if (options?.expirationTtl) {
-      // Convert TTL in seconds to expiration timestamp in milliseconds
-      stored.expires = Date.now() + options.expirationTtl * 1000;
-    }
+      if (options?.expirationTtl) {
+        // Convert TTL in seconds to expiration timestamp in milliseconds
+        stored.expires = Date.now() + options.expirationTtl * 1000;
+      }
 
-    this.data[key] = stored;
-    await this.save();
+      this.data[key] = stored;
+      await this.save();
+    });
   }
 
   async delete(key: string): Promise<void> {
-    await this.ensureLoaded();
+    await this.withLock(async () => {
+      await this.reload();
 
-    if (key in this.data) {
-      delete this.data[key];
-      await this.save();
-    }
+      if (key in this.data) {
+        delete this.data[key];
+        await this.save();
+      }
+    });
   }
 
   /**
    * Clean up expired entries (optional maintenance method)
    */
   async cleanup(): Promise<number> {
-    await this.ensureLoaded();
+    return this.withLock(async () => {
+      await this.reload();
 
-    let cleaned = 0;
-    const now = Date.now();
+      let cleaned = 0;
+      const now = Date.now();
 
-    for (const key of Object.keys(this.data)) {
-      const stored = this.data[key];
-      if (stored?.expires && now > stored.expires) {
-        delete this.data[key];
-        cleaned++;
+      for (const key of Object.keys(this.data)) {
+        const stored = this.data[key];
+        if (stored?.expires && now > stored.expires) {
+          delete this.data[key];
+          cleaned++;
+        }
       }
-    }
 
-    if (cleaned > 0) {
-      await this.save();
-    }
+      if (cleaned > 0) {
+        await this.save();
+      }
 
-    return cleaned;
+      return cleaned;
+    });
   }
 }

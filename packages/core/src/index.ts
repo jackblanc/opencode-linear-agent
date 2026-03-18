@@ -57,6 +57,17 @@ export { parseRepoLabel } from "./linear/label-parser";
 // Storage interfaces
 export { FileStore } from "./storage/FileStore";
 export { FileTokenStore } from "./storage/FileTokenStore";
+export {
+  formatStoreReadError,
+  getSessionByOpencodeSessionId,
+  readAccessToken,
+  readAccessTokenSafe,
+  readAnyAccessTokenSafe,
+  savePendingPermission,
+  savePendingQuestion,
+  setStorePath,
+} from "./storage/plugin";
+export type { LinearContext } from "./storage/plugin";
 export type { KeyValueStore, TokenStore } from "./storage/types";
 
 // OAuth handlers (consumed by server)
@@ -81,10 +92,6 @@ export type { LinearServiceError } from "./errors/linear";
 
 // Paths
 export { getConfigPath, getStorePath } from "./paths";
-
-// Zod schemas for runtime validation
-export { parseStoreData } from "./schemas";
-export type { StoreData } from "./schemas";
 
 // OpenCode service wrapper (consumed by server)
 export { OpencodeService } from "./opencode/OpencodeService";

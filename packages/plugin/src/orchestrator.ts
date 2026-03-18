@@ -21,17 +21,15 @@ import {
   processPermissionAsked,
   executeActions,
   createInitialHandlerState,
+  getSessionByOpencodeSessionId,
+  savePendingPermission,
+  savePendingQuestion,
   type LinearService,
+  type LinearContext,
   type PendingQuestion,
   type PendingPermission,
   type SessionErrorProperties,
 } from "@opencode-linear-agent/core";
-import {
-  getSessionAsync,
-  savePendingQuestion,
-  savePendingPermission,
-} from "./storage";
-import type { LinearContext } from "./storage";
 
 export type Logger = (message: string) => void;
 
@@ -97,12 +95,11 @@ interface ResolvedSession {
 }
 
 async function resolveSession(
-  workdir: string,
   opencodeSessionId: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
 ): Promise<ResolvedSession | null> {
-  const session = await getSessionAsync(workdir);
+  const session = await getSessionByOpencodeSessionId(opencodeSessionId);
   if (!session?.sessionId) return null;
 
   const ctx = toSessionContext(opencodeSessionId, session);
@@ -137,20 +134,18 @@ function extractLatestAssistantText(
 
 export async function handleEvent(
   event: Event,
-  workdir: string,
   readSessionMessages: SessionMessagesReader,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   if (event.type === "message.part.updated") {
-    return handlePartUpdated(event, workdir, readToken, createService, log);
+    return handlePartUpdated(event, readToken, createService, log);
   }
 
   if (event.type === "session.idle") {
     return handleSessionIdle(
       event,
-      workdir,
       readSessionMessages,
       readToken,
       createService,
@@ -159,31 +154,24 @@ export async function handleEvent(
   }
 
   if (event.type === "todo.updated") {
-    return handleTodoUpdated(event, workdir, readToken, createService, log);
+    return handleTodoUpdated(event, readToken, createService, log);
   }
 
   if (event.type === "session.error") {
-    return handleSessionErrorEvent(
-      event,
-      workdir,
-      readToken,
-      createService,
-      log,
-    );
+    return handleSessionErrorEvent(event, readToken, createService, log);
   }
 
   if (event.type === "question.asked") {
-    return handleQuestionAsked(event, workdir, readToken, createService, log);
+    return handleQuestionAsked(event, readToken, createService, log);
   }
 
   if (event.type === "permission.asked") {
-    await handlePermissionAsked(event, workdir, readToken, createService, log);
+    await handlePermissionAsked(event, readToken, createService, log);
   }
 }
 
 async function handlePartUpdated(
   event: EventMessagePartUpdated,
-  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
@@ -192,7 +180,6 @@ async function handlePartUpdated(
   if (!("sessionID" in part)) return;
 
   const resolved = await resolveSession(
-    workdir,
     part.sessionID,
     readToken,
     createService,
@@ -220,19 +207,13 @@ async function handlePartUpdated(
 
 async function handleSessionIdle(
   event: EventSessionIdle,
-  workdir: string,
   readSessionMessages: SessionMessagesReader,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   const sessionID = event.properties.sessionID;
-  const resolved = await resolveSession(
-    workdir,
-    sessionID,
-    readToken,
-    createService,
-  );
+  const resolved = await resolveSession(sessionID, readToken, createService);
   if (!resolved) return;
 
   const messages = await readSessionMessages(sessionID);
@@ -246,19 +227,13 @@ async function handleSessionIdle(
 
 async function handleTodoUpdated(
   event: EventTodoUpdated,
-  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   const { sessionID, todos } = event.properties;
 
-  const resolved = await resolveSession(
-    workdir,
-    sessionID,
-    readToken,
-    createService,
-  );
+  const resolved = await resolveSession(sessionID, readToken, createService);
   if (!resolved) return;
 
   const actions = processTodoUpdated({ sessionID, todos }, resolved.ctx);
@@ -267,7 +242,6 @@ async function handleTodoUpdated(
 
 async function handleSessionErrorEvent(
   event: EventSessionError,
-  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
@@ -275,12 +249,7 @@ async function handleSessionErrorEvent(
   const sessionID = event.properties.sessionID;
   if (!sessionID) return;
 
-  const resolved = await resolveSession(
-    workdir,
-    sessionID,
-    readToken,
-    createService,
-  );
+  const resolved = await resolveSession(sessionID, readToken, createService);
   if (!resolved) return;
 
   const state = createInitialHandlerState();
@@ -294,19 +263,13 @@ async function handleSessionErrorEvent(
 
 async function handleQuestionAsked(
   event: EventQuestionAsked,
-  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   const { id, sessionID, questions } = event.properties;
 
-  const resolved = await resolveSession(
-    workdir,
-    sessionID,
-    readToken,
-    createService,
-  );
+  const resolved = await resolveSession(sessionID, readToken, createService);
   if (!resolved) return;
 
   const result = processQuestionAsked(id, questions, resolved.ctx);
@@ -316,19 +279,13 @@ async function handleQuestionAsked(
 
 async function handlePermissionAsked(
   event: EventPermissionAsked,
-  workdir: string,
   readToken: TokenReader,
   createService: LinearServiceFactory,
   log: Logger,
 ): Promise<void> {
   const { id, sessionID, patterns, permission, metadata } = event.properties;
 
-  const resolved = await resolveSession(
-    workdir,
-    sessionID,
-    readToken,
-    createService,
-  );
+  const resolved = await resolveSession(sessionID, readToken, createService);
   if (!resolved) return;
 
   const result = processPermissionAsked(

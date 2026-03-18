@@ -4,7 +4,10 @@
 
 import { LinearClient } from "@linear/sdk";
 import { Result } from "better-result";
-import { readAnyAccessTokenSafe, formatStoreReadError } from "../storage";
+import {
+  formatStoreReadError,
+  readAnyAccessTokenSafe,
+} from "@opencode-linear-agent/core";
 
 let cachedClient: { token: string; client: LinearClient } | null = null;
 
