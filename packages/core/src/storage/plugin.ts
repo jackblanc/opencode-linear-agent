@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { Result } from "better-result";
 
@@ -7,8 +8,9 @@ import {
   type PendingQuestion,
 } from "../session/SessionRepository";
 import { FileSessionRepository } from "../session/FileSessionRepository";
-import { getStorePath } from "../paths";
+import { getStateRootPath, getStorePath } from "../paths";
 import { parseStoreData, type StoreData } from "../schemas";
+import { createFileAgentState } from "../state/root";
 import { FileStore } from "./FileStore";
 
 export interface LinearContext {
@@ -52,6 +54,18 @@ function getEffectiveStorePath(): string {
 
 function createFileStore(): FileStore {
   return new FileStore(getEffectiveStorePath());
+}
+
+function getEffectiveStateRootPath(): string {
+  if (storePath) {
+    return join(dirname(storePath), "state");
+  }
+
+  return getStateRootPath();
+}
+
+function createAgentState() {
+  return createFileAgentState(getEffectiveStateRootPath());
 }
 
 export function setStorePath(path: string): void {
@@ -256,12 +270,16 @@ export async function savePendingQuestion(
   question: PendingQuestion,
 ): Promise<void> {
   const repository = new FileSessionRepository(createFileStore());
+  const state = createAgentState();
   await repository.savePendingQuestion(question);
+  await state.question.put(question.linearSessionId, question);
 }
 
 export async function savePendingPermission(
   permission: PendingPermission,
 ): Promise<void> {
   const repository = new FileSessionRepository(createFileStore());
+  const state = createAgentState();
   await repository.savePendingPermission(permission);
+  await state.permission.put(permission.linearSessionId, permission);
 }
