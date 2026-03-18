@@ -1,6 +1,6 @@
 import type { Result } from "better-result";
 import type { LinearService } from "../linear/LinearService";
-import type { LinearServiceError } from "../errors";
+import type { LinearServiceError } from "../errors/linear";
 import type { Action, LinearAction } from "./types";
 
 async function executeLinearAction(

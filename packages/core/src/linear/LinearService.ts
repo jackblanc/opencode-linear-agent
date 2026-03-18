@@ -1,5 +1,5 @@
 import type { Result } from "better-result";
-import type { LinearServiceError } from "../errors";
+import type { LinearServiceError } from "../errors/linear";
 import type {
   ActivityContent,
   IssueState,

@@ -3,7 +3,11 @@
  */
 
 import { LinearClient } from "@linear/sdk";
-import type { KeyValueStore, TokenStore, RefreshTokenData } from "../storage";
+import type {
+  KeyValueStore,
+  RefreshTokenData,
+  TokenStore,
+} from "../storage/types";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../logger";
 import {

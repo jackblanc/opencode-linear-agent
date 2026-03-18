@@ -16,19 +16,17 @@ export { LinearEventProcessor } from "./LinearEventProcessor";
 export { IssueEventHandler } from "./IssueEventHandler";
 
 // Pure handler functions (consumed by plugin orchestrator)
-export {
-  processToolPart,
-  processReasoningPart,
-  processSessionIdle,
-  processTodoUpdated,
-  processPermissionAsked,
-  processQuestionAsked,
-  processSessionError,
-} from "./handlers";
-export type { SessionErrorProperties } from "./handlers";
+export { processToolPart } from "./handlers/ToolHandler";
+export { processReasoningPart } from "./handlers/ReasoningHandler";
+export { processSessionIdle } from "./handlers/TextHandler";
+export { processTodoUpdated } from "./handlers/TodoHandler";
+export { processPermissionAsked } from "./handlers/PermissionHandler";
+export { processQuestionAsked } from "./handlers/QuestionHandler";
+export { processSessionError } from "./handlers/SessionErrorHandler";
+export type { SessionErrorProperties } from "./handlers/SessionErrorHandler";
 
 // Action execution (consumed by plugin orchestrator)
-export { executeActions } from "./actions";
+export { executeActions } from "./actions/execute";
 
 // Session state (consumed by plugin orchestrator)
 export { createInitialHandlerState } from "./session/SessionState";
@@ -57,16 +55,21 @@ export { findRepoLabel } from "./linear/label-parser";
 export { parseRepoLabel } from "./linear/label-parser";
 
 // Storage interfaces
-export { FileStore, FileTokenStore } from "./storage";
-export type { KeyValueStore, TokenStore } from "./storage";
+export { FileStore } from "./storage/FileStore";
+export { FileTokenStore } from "./storage/FileTokenStore";
+export type { KeyValueStore, TokenStore } from "./storage/types";
 
 // OAuth handlers (consumed by server)
-export type { OAuthConfig } from "./oauth";
-export { handleAuthorize, handleCallback, refreshAccessToken } from "./oauth";
+export type { OAuthConfig } from "./oauth/types";
+export {
+  handleAuthorize,
+  handleCallback,
+  refreshAccessToken,
+} from "./oauth/handlers";
 
 // Webhook handlers (consumed by server)
-export type { EventDispatcher } from "./webhook";
-export { handleWebhook } from "./webhook";
+export type { EventDispatcher } from "./webhook/types";
+export { handleWebhook } from "./webhook/handlers";
 
 // Logging
 export { Log, createFileLogSink } from "./logger";
@@ -84,4 +87,4 @@ export { parseStoreData } from "./schemas";
 export type { StoreData } from "./schemas";
 
 // OpenCode service wrapper (consumed by server)
-export { OpencodeService } from "./opencode";
+export { OpencodeService } from "./opencode/OpencodeService";
