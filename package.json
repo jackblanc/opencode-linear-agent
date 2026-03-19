@@ -10,8 +10,8 @@
     ],
     "catalog": {
       "@linear/sdk": "^77.0.0",
-      "@opencode-ai/sdk": "1.2.24",
-      "@opencode-ai/plugin": "1.2.24",
+      "@opencode-ai/sdk": "1.2.27",
+      "@opencode-ai/plugin": "1.2.27",
       "better-result": "^2.7.0",
       "xdg-basedir": "^5.1.0",
       "zod": "^4.3.6"
