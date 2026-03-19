@@ -14,6 +14,14 @@ import type { LinearService } from "../linear/LinearService";
 import type { AgentStateNamespace } from "../state/root";
 import { Result } from "better-result";
 import type { SessionState } from "../session/SessionState";
+import { mapTodoStatus } from "./formatting/todo";
+import {
+  extractToolParameter,
+  getToolActionName,
+  getToolThought,
+  replacePathsInOutput,
+  truncateOutput,
+} from "./formatting/tool";
 
 export class OpencodeEventProcessor {
   constructor(
@@ -86,63 +94,217 @@ export class OpencodeEventProcessor {
 
   private processEventMessagePartUpdated(
     event: EventMessagePartUpdated,
-    _sessionState: SessionState,
-    _linearClient: LinearService,
+    sessionState: SessionState,
+    linearClient: LinearService,
   ) {
     switch (event.properties.part.type) {
       case "tool":
-        return this.processToolPart(event.properties.part);
+        return this.processToolPart(
+          event.properties.part,
+          sessionState,
+          linearClient,
+        );
       case "reasoning":
-        return this.processReasoningPart(event.properties.part);
+        return this.processReasoningPart(
+          event.properties.part,
+          sessionState,
+          linearClient,
+        );
       case "text":
-        return this.processTextPart(event.properties.part);
+        return this.processTextPart(
+          event.properties.part,
+          sessionState,
+          linearClient,
+        );
     }
 
     return Result.ok();
   }
 
-  private processToolPart(_part: ToolPart) {
+  private processToolPart(
+    part: ToolPart,
+    sessionState: SessionState,
+    linearClient: LinearService,
+  ) {
+    if (part.state.status === "running") {
+      return linearClient.postActivity(
+        sessionState.linearSessionId,
+        {
+          type: "action",
+          action: getToolActionName(part.tool, false),
+          body: getToolThought(part.tool, part.state.input),
+          parameter: extractToolParameter(
+            part.tool,
+            part.state.input,
+            sessionState.workdir,
+          ),
+        },
+        true,
+      );
+    }
+    if (part.state.status === "completed") {
+      return linearClient.postActivity(
+        sessionState.linearSessionId,
+        {
+          type: "action",
+          action: getToolActionName(part.tool, true),
+          parameter: extractToolParameter(
+            part.tool,
+            part.state.input,
+            sessionState.workdir,
+          ),
+          result: truncateOutput(
+            replacePathsInOutput(part.state.output, sessionState.workdir),
+          ),
+        },
+        false,
+      );
+    }
+    if (part.state.status === "error") {
+      return linearClient.postActivity(sessionState.linearSessionId, {
+        type: "action",
+        action: getToolActionName(part.tool, true),
+        parameter: extractToolParameter(
+          part.tool,
+          part.state.input,
+          sessionState.workdir,
+        ),
+        result: `Error: ${truncateOutput(replacePathsInOutput(part.state.error, sessionState.workdir))}`,
+      });
+    }
+
     return Result.ok();
   }
 
-  private processReasoningPart(_part: ReasoningPart) {
-    return Result.ok();
+  private processReasoningPart(
+    part: ReasoningPart,
+    sessionState: SessionState,
+    linearClient: LinearService,
+  ) {
+    return linearClient.postActivity(
+      sessionState.linearSessionId,
+      { type: "thought", body: part.text.trim() },
+      true,
+    );
   }
 
-  private processTextPart(_part: TextPart) {
-    return Result.ok();
+  private processTextPart(
+    part: TextPart,
+    sessionState: SessionState,
+    linearClient: LinearService,
+  ) {
+    return linearClient.postActivity(
+      sessionState.linearSessionId,
+      { type: "response", body: part.text.trim() },
+      false,
+    );
   }
 
   private processEventSessionError(
-    _event: EventSessionError,
-    _sessionState: SessionState,
-    _linearClient: LinearService,
+    event: EventSessionError,
+    sessionState: SessionState,
+    linearClient: LinearService,
   ) {
-    return Result.ok();
+    const body = `**Error: ${event.properties.error?.name ?? "UndefinedError"}**
+${event.properties.error?.data.message ?? "No error message provided"}
+\`\`\`json\n${JSON.stringify(event.properties.error?.data ?? {})}\n\`\`\``.trim();
+
+    return linearClient.postActivity(
+      sessionState.linearSessionId,
+      {
+        type: "error",
+        body,
+      },
+      false,
+    );
   }
 
   private processEventQuestionAsked(
-    _event: EventQuestionAsked,
-    _sessionState: SessionState,
-    _linearClient: LinearService,
+    event: EventQuestionAsked,
+    sessionState: SessionState,
+    linearClient: LinearService,
   ): Result<void, Error> {
-    return Result.ok();
+    // Save to pending state
+    this.agentState.question.put(sessionState.linearSessionId, {
+      requestId: event.properties.id,
+      opencodeSessionId: sessionState.opencodeSessionId,
+      linearSessionId: sessionState.linearSessionId,
+      workdir: sessionState.workdir ?? "",
+      issueId: sessionState.issueId,
+      questions: event.properties.questions,
+      answers: [],
+      createdAt: Date.now(),
+    });
+
+    event.properties.questions.map((questionInfo) => {
+      // Post to Linear
+      linearClient.postElicitation(
+        sessionState.linearSessionId,
+        questionInfo.question,
+        "select",
+        {
+          options: questionInfo.options.map((opencodeQuestionOption) => ({
+            label: opencodeQuestionOption.description,
+            value: opencodeQuestionOption.label,
+          })),
+        },
+      );
+    });
+
+    return Result.ok(); // TODO map actual result
   }
 
-  private processEventPermissionAsked(
-    _event: EventPermissionAsked,
-    _sessionState: SessionState,
-    _linearClient: LinearService,
-  ): Result<void, Error> {
-    return Result.ok();
+  private async processEventPermissionAsked(
+    event: EventPermissionAsked,
+    sessionState: SessionState,
+    linearClient: LinearService,
+  ): Promise<Result<void, Error>> {
+    const { id, sessionID, permission, patterns, metadata } = event.properties;
+
+    const patternsList =
+      patterns.length > 0
+        ? `\n\n**Patterns:**\n${patterns.map((p) => `- \`${p}\``).join("\n")}`
+        : "";
+    const body = `**Permission Request: ${permission}**${patternsList}\n\nPlease approve or reject this tool call.`;
+
+    await this.agentState.permission.put(sessionState.linearSessionId, {
+      requestId: id,
+      opencodeSessionId: sessionID,
+      linearSessionId: sessionState.linearSessionId,
+      workdir: sessionState.workdir ?? "",
+      issueId: sessionState.issueId,
+      permission,
+      patterns,
+      metadata,
+      createdAt: Date.now(),
+    });
+
+    return linearClient.postElicitation(
+      sessionState.linearSessionId,
+      body,
+      "select",
+      {
+        options: [
+          { value: "Approve" },
+          { value: "Approve Always" },
+          { value: "Reject" },
+        ],
+      },
+    );
   }
 
   private processEventTodoUpdated(
-    _event: EventTodoUpdated,
-    _sessionState: SessionState,
-    _linearClient: LinearService,
-  ): Result<void, Error> {
-    return Result.ok();
+    event: EventTodoUpdated,
+    sessionState: SessionState,
+    linearClient: LinearService,
+  ) {
+    return linearClient.updatePlan(
+      sessionState.linearSessionId,
+      event.properties.todos.map((opencodeTodo) => ({
+        content: opencodeTodo.content,
+        status: mapTodoStatus(opencodeTodo.status),
+      })),
+    );
   }
 
   private processEventSessionIdle(
@@ -150,6 +312,7 @@ export class OpencodeEventProcessor {
     _sessionState: SessionState,
     _linearClient: LinearService,
   ): Result<void, Error> {
+    // Intentionally do nothing here.
     return Result.ok();
   }
 

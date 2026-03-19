@@ -15,27 +15,11 @@
 export { LinearEventProcessor } from "./LinearEventProcessor";
 export { IssueEventHandler } from "./IssueEventHandler";
 
-// Pure handler functions (consumed by plugin orchestrator)
-export { processToolPart } from "./handlers/ToolHandler";
-export { processReasoningPart } from "./handlers/ReasoningHandler";
-export { processTextPart } from "./handlers/TextHandler";
-export { processTodoUpdated } from "./handlers/TodoHandler";
-export { processPermissionAsked } from "./handlers/PermissionHandler";
-export { processQuestionAsked } from "./handlers/QuestionHandler";
-export { processSessionError } from "./handlers/SessionErrorHandler";
-
-// Action execution (consumed by plugin orchestrator)
-export { executeActions } from "./actions/execute";
-
-// Session state (consumed by plugin orchestrator)
-export { createInitialHandlerState } from "./session/SessionState";
 // ignore knip error - used in packages/server/test/AgentSessionDispatcher.test.ts
 /** @public */
 export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,
-  PendingQuestion,
-  PendingPermission,
   PendingRepoSelection,
   RepoSelectionOption,
 } from "./session/SessionRepository";

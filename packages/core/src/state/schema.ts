@@ -4,7 +4,6 @@ import type {
   PendingPermission,
   PendingQuestion,
   PendingRepoSelection,
-  QuestionInfo,
   QuestionOption,
   RepoSelectionOption,
 } from "../session/SessionRepository";
@@ -28,7 +27,7 @@ const questionOptionSchema: z.ZodType<QuestionOption> = z.object({
   aliases: z.array(z.string()),
 });
 
-const questionInfoSchema: z.ZodType<QuestionInfo> = z.object({
+const questionInfoSchema = z.object({
   question: z.string(),
   header: z.string(),
   options: z.array(questionOptionSchema),

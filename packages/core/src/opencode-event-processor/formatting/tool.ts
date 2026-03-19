@@ -1,7 +1,4 @@
-import type { ToolPart } from "@opencode-ai/sdk/v2";
-import type { HandlerState } from "../session/SessionState";
-import type { Action, HandlerResult } from "../actions/types";
-import { isInstallCommand } from "../utils/package-manager";
+import { isInstallCommand } from "../../utils/package-manager";
 
 /**
  * Tool name mapping for friendly action names
@@ -57,7 +54,10 @@ function toGerund(verb: string): string {
 /**
  * Get friendly tool action name
  */
-function getToolActionName(toolName: string, completed: boolean): string {
+export function getToolActionName(
+  toolName: string,
+  completed: boolean,
+): string {
   const mapping = TOOL_ACTION_MAP[toolName.toLowerCase()];
   if (!mapping) {
     const capitalized = toolName.charAt(0).toUpperCase() + toolName.slice(1);
@@ -101,7 +101,10 @@ function toRelativePath(absolutePath: string, workdir: string | null): string {
  * Replace all absolute paths in a string with relative paths
  * Handles tool output that may contain multiple file paths
  */
-function replacePathsInOutput(output: string, workdir: string | null): string {
+export function replacePathsInOutput(
+  output: string,
+  workdir: string | null,
+): string {
   if (!workdir) {
     // Try worktree pattern replacement even without explicit workdir
     return output.replace(
@@ -122,7 +125,7 @@ function replacePathsInOutput(output: string, workdir: string | null): string {
 /**
  * Extract parameter from tool input for display
  */
-function extractToolParameter(
+export function extractToolParameter(
   toolName: string,
   input: Record<string, unknown>,
   workdir: string | null = null,
@@ -180,7 +183,7 @@ function extractToolParameter(
 /**
  * Truncate output if it exceeds max length
  */
-function truncateOutput(output: string): string {
+export function truncateOutput(output: string): string {
   if (output.length > MAX_OUTPUT_LENGTH) {
     return output.slice(0, MAX_OUTPUT_LENGTH) + "...(truncated)";
   }
@@ -190,10 +193,10 @@ function truncateOutput(output: string): string {
 /**
  * Get contextual thought message for tool execution
  */
-function getToolThought(
+export function getToolThought(
   toolName: string,
   input: Record<string, unknown>,
-): string | null {
+): string | undefined {
   const toolLower = toolName.toLowerCase();
   const command = getString(input, "command");
 
@@ -229,134 +232,4 @@ function getToolThought(
   if (toolLower === "task") {
     return "Delegating subtask...";
   }
-
-  return null;
-}
-
-/**
- * Context needed for tool handler processing
- */
-interface ToolHandlerContext {
-  linearSessionId: string;
-  workdir: string | null;
-}
-
-/**
- * Process a tool part event - pure function
- *
- * Takes current state and returns new state + actions.
- * No side effects, no I/O.
- */
-/**
- * Check if a tool is a question tool (handled separately by QuestionHandler)
- */
-function isQuestionTool(toolName: string): boolean {
-  const lower = toolName.toLowerCase();
-  return lower === "question" || lower.endsWith("_question");
-}
-
-export function processToolPart(
-  part: ToolPart,
-  state: HandlerState,
-  ctx: ToolHandlerContext,
-): HandlerResult<HandlerState> {
-  const { state: toolState, tool, id } = part;
-  const actions: Action[] = [];
-
-  if (isQuestionTool(tool)) {
-    return { state, actions: [] };
-  }
-
-  if (toolState.status === "running") {
-    // Only post running state once per tool
-    if (state.runningTools.has(id)) {
-      return { state, actions: [] };
-    }
-
-    // Create new state with this tool added to running set
-    const newState: HandlerState = {
-      ...state,
-      runningTools: new Set([...state.runningTools, id]),
-    };
-
-    // Post contextual thought if this is a meaningful operation
-    const thought = getToolThought(tool, toolState.input);
-    if (thought) {
-      actions.push({
-        type: "postActivity",
-        sessionId: ctx.linearSessionId,
-        content: { type: "thought", body: thought },
-        ephemeral: true,
-      });
-    }
-
-    // Post running action activity
-    actions.push({
-      type: "postActivity",
-      sessionId: ctx.linearSessionId,
-      content: {
-        type: "action",
-        action: getToolActionName(tool, false),
-        parameter: extractToolParameter(tool, toolState.input, ctx.workdir),
-      },
-      ephemeral: true,
-    });
-
-    return { state: newState, actions };
-  }
-
-  if (toolState.status === "completed") {
-    // Clean up running state tracking
-    const newRunningTools = new Set(state.runningTools);
-    newRunningTools.delete(id);
-    const newState: HandlerState = {
-      ...state,
-      runningTools: newRunningTools,
-    };
-
-    // Post completed action activity
-    actions.push({
-      type: "postActivity",
-      sessionId: ctx.linearSessionId,
-      content: {
-        type: "action",
-        action: getToolActionName(tool, true),
-        parameter: extractToolParameter(tool, toolState.input, ctx.workdir),
-        result: truncateOutput(
-          replacePathsInOutput(toolState.output, ctx.workdir),
-        ),
-      },
-      ephemeral: false,
-    });
-
-    return { state: newState, actions };
-  }
-
-  if (toolState.status === "error") {
-    // Clean up running state tracking
-    const newRunningTools = new Set(state.runningTools);
-    newRunningTools.delete(id);
-    const newState: HandlerState = {
-      ...state,
-      runningTools: newRunningTools,
-    };
-
-    // Post error action activity
-    actions.push({
-      type: "postActivity",
-      sessionId: ctx.linearSessionId,
-      content: {
-        type: "action",
-        action: getToolActionName(tool, true),
-        parameter: extractToolParameter(tool, toolState.input, ctx.workdir),
-        result: `Error: ${truncateOutput(replacePathsInOutput(toolState.error, ctx.workdir))}`,
-      },
-      ephemeral: false,
-    });
-
-    return { state: newState, actions };
-  }
-
-  // Unknown status - no change
-  return { state, actions: [] };
 }
