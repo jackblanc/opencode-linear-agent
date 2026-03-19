@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { processSessionIdle } from "../../src/handlers/TextHandler";
+import { processTextPart } from "../../src/handlers/TextHandler";
 import { createInitialHandlerState } from "../../src/session/SessionState";
 
-describe("processSessionIdle", () => {
+describe("processTextPart", () => {
   const ctx = {
     linearSessionId: "linear-123",
   };
@@ -10,7 +10,7 @@ describe("processSessionIdle", () => {
   test("posts final response from provided text", () => {
     const state = createInitialHandlerState();
 
-    const result = processSessionIdle("Hello, world!", state, ctx);
+    const result = processTextPart("Hello, world!", state, ctx);
 
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(1);
@@ -25,7 +25,7 @@ describe("processSessionIdle", () => {
   test("skips empty response text", () => {
     const state = createInitialHandlerState();
 
-    const result = processSessionIdle("   ", state, ctx);
+    const result = processTextPart("   ", state, ctx);
 
     expect(result.state).toBe(state);
     expect(result.actions).toHaveLength(0);
@@ -34,7 +34,7 @@ describe("processSessionIdle", () => {
   test("does not mutate original state", () => {
     const state = createInitialHandlerState();
 
-    processSessionIdle("Hello, world!", state, ctx);
+    processTextPart("Hello, world!", state, ctx);
 
     expect(state).toEqual(createInitialHandlerState());
   });

@@ -1,26 +1,14 @@
 import type { HandlerState } from "../session/SessionState";
 import type { Action, HandlerResult } from "../actions/types";
+import type { EventSessionError } from "@opencode-ai/sdk/v2";
 
 /**
+ * TODO: Each handler defines "Context" that is basically just linearSessionId repeated a million times
+ *
  * Context needed for session error handler processing
  */
 interface SessionErrorHandlerContext {
   linearSessionId: string;
-}
-
-/**
- * Properties from session.error event
- */
-export interface SessionErrorProperties {
-  sessionID: string;
-  error?: {
-    name?: string;
-    data?: { message?: string };
-  };
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
 }
 
 /**
@@ -33,7 +21,7 @@ function isString(value: unknown): value is string {
  * No side effects, no I/O.
  */
 export function processSessionError(
-  properties: SessionErrorProperties,
+  event: EventSessionError,
   state: HandlerState,
   ctx: SessionErrorHandlerContext,
 ): HandlerResult<HandlerState> {
@@ -41,16 +29,10 @@ export function processSessionError(
     return { state, actions: [] };
   }
 
-  let message = "Unknown error";
-  if (
-    properties.error?.data &&
-    "message" in properties.error.data &&
-    isString(properties.error.data.message)
-  ) {
-    message = properties.error.data.message;
-  } else if (properties.error?.name) {
-    message = properties.error.name;
-  }
+  const errorName = event.properties.error?.name ?? "UndefinedError";
+  const errorMessage =
+    event.properties.error?.data.message ?? "No error message provided";
+  const errorData = JSON.stringify(event.properties.error?.data ?? {});
 
   const newState: HandlerState = {
     ...state,
@@ -61,7 +43,10 @@ export function processSessionError(
     {
       type: "postActivity",
       sessionId: ctx.linearSessionId,
-      content: { type: "error", body: `**Error:** ${message}` },
+      content: {
+        type: "error",
+        body: `**Error: ${errorName}**\n${errorMessage}\n\`\`\`json\n${errorData}\n\`\`\``,
+      },
       ephemeral: false,
     },
   ];

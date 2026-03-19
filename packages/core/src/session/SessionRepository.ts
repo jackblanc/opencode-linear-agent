@@ -1,3 +1,4 @@
+import type { QuestionInfo } from "@opencode-ai/sdk/v2";
 import type { SessionState } from "./SessionState";
 
 /**
@@ -12,16 +13,6 @@ export interface QuestionOption {
   value: string;
   /** Candidate texts accepted when matching user replies */
   aliases: string[];
-}
-
-/**
- * A single question from OpenCode's question tool
- */
-export interface QuestionInfo {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiple?: boolean;
 }
 
 /**

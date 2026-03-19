@@ -69,11 +69,6 @@ const authRecordObjectSchema = z.object({
 
 export const authRecordSchema: z.ZodType<AuthRecord> = authRecordObjectSchema;
 
-export const authAccessTokenSchema = authRecordObjectSchema.pick({
-  accessToken: true,
-  accessTokenExpiresAt: true,
-});
-
 export const oauthStateRecordSchema: z.ZodType<OAuthStateRecord> = z.object({
   state: z.string(),
   createdAt: z.number(),

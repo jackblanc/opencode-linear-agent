@@ -29,7 +29,7 @@ const STATE_NAMESPACES = {
   repoSelection: "repo-selection",
 } as const;
 
-interface AgentStateNamespace {
+export interface AgentStateNamespace {
   auth: KvNamespaceStore<AuthRecord>;
   oauthState: KvNamespaceStore<OAuthStateRecord>;
   session: KvNamespaceStore<SessionState>;

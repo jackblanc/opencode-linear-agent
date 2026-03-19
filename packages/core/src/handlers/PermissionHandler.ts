@@ -1,5 +1,6 @@
 import type { PendingPermission } from "../session/SessionRepository";
 import type { Action, HandlerResultWithPermission } from "../actions/types";
+import type { EventPermissionAsked } from "@opencode-ai/sdk/v2";
 
 /**
  * Context needed for permission handler processing
@@ -9,21 +10,6 @@ interface PermissionHandlerContext {
   opencodeSessionId: string;
   workdir: string | null;
   issueId: string;
-}
-
-/**
- * Input for permission handler - decoupled from SDK types.
- *
- * Both the plugin (v1 Permission) and server (v2 PermissionRequest) construct
- * this shape from their respective SDK types. The handler doesn't need the
- * `always` field from v2's PermissionRequest.
- */
-interface PermissionHandlerInput {
-  id: string;
-  sessionID: string;
-  permission: string;
-  patterns: string[];
-  metadata: Record<string, unknown>;
 }
 
 /**
@@ -39,10 +25,10 @@ interface PermissionHandlerInput {
  * No side effects, no I/O.
  */
 export function processPermissionAsked(
-  properties: PermissionHandlerInput,
+  event: EventPermissionAsked,
   ctx: PermissionHandlerContext,
 ): HandlerResultWithPermission {
-  const { id, sessionID, permission, patterns, metadata } = properties;
+  const { id, sessionID, permission, patterns, metadata } = event.properties;
 
   // Only process for our session
   if (sessionID !== ctx.opencodeSessionId) {

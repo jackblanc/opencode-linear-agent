@@ -20,7 +20,7 @@ interface TextHandlerContext {
  * Returns actions with unchanged state.
  * No side effects, no I/O.
  */
-export function processSessionIdle(
+export function processTextPart(
   text: string,
   state: HandlerState,
   ctx: TextHandlerContext,

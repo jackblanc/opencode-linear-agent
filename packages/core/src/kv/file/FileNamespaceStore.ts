@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Result } from "better-result";
 import type { z } from "zod";
 
-import { KvIoError, type KvError } from "../errors";
+import { KvIoError, KvNotFoundError, type KvError } from "../errors";
 import { parseJson, stringifyJson } from "../json";
 import { encodeKvKey } from "../key";
 import type { KvNamespaceStore } from "../types";
@@ -39,7 +39,7 @@ export class FileNamespaceStore<T> implements KvNamespaceStore<T> {
     return Result.ok(join(this.namespacePath, `${name.value}.json`));
   }
 
-  async get(key: string): Promise<Result<T | null, KvError>> {
+  async get(key: string): Promise<Result<T, KvError>> {
     const path = this.getFilePath(key);
     if (Result.isError(path)) {
       return Result.err(path.error);
@@ -47,7 +47,7 @@ export class FileNamespaceStore<T> implements KvNamespaceStore<T> {
 
     const file = Bun.file(path.value);
     if (!(await file.exists())) {
-      return Result.ok(null);
+      return Result.err(new KvNotFoundError({ key }));
     }
 
     const text = await Result.tryPromise({

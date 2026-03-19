@@ -64,9 +64,22 @@ export class KvLockError extends TaggedError("KvLockError")<{
   }
 }
 
+export class KvNotFoundError extends TaggedError("KvNotFoundError")<{
+  key: string;
+  message: string;
+}>() {
+  constructor(args: { key: string }) {
+    super({
+      key: args.key,
+      message: `Value not found for key: ${args.key}`,
+    });
+  }
+}
+
 export type KvError =
   | KvInvalidKeyError
   | KvIoError
   | KvJsonParseError
   | KvSchemaError
-  | KvLockError;
+  | KvLockError
+  | KvNotFoundError;

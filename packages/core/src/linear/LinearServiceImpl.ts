@@ -132,9 +132,12 @@ function mapElicitationSignal(
 }
 
 /**
+ * // TODO: This will be renamed to LinearClient for clarity, but in a separate commit
+ *
  * Linear SDK implementation of LinearService
  */
 export class LinearServiceImpl implements LinearService {
+  // TODO: This will be renamed to LinearSdkClient to disambiguate from our interface
   private readonly client: LinearClient;
   private readonly log: Logger;
 

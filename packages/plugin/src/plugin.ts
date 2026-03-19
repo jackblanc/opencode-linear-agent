@@ -7,18 +7,16 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
-import { Result } from "better-result";
 import {
-  formatStoreReadError,
-  readAccessTokenSafe,
+  getStateRootPath,
+  LinearServiceImpl,
 } from "@opencode-linear-agent/core";
-
-import { createLinearService } from "./linear";
-import { handleEvent, type Logger } from "./orchestrator";
 import { linearTools } from "./tools/index";
+import { OpencodeEventProcessor } from "@opencode-linear-agent/core/src/opencode-event-processor/OpencodeEventProcessor";
+import { createFileAgentState } from "@opencode-linear-agent/core/src/state/root";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
-  const log: Logger = (message: string) => {
+  const log = (message: string) => {
     void input.client.app.log({
       body: {
         service: "linear-plugin",
@@ -28,17 +26,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     });
   };
 
-  const readTokenForHook = async (
-    organizationId: string,
-    hook: string,
-  ): Promise<string | null> => {
-    const tokenResult = await readAccessTokenSafe(organizationId);
-    if (Result.isError(tokenResult)) {
-      log(`${hook}: ${formatStoreReadError(tokenResult.error)}`);
-      return null;
-    }
-    return tokenResult.value;
-  };
+  const opencodeEventProcessor = new OpencodeEventProcessor(
+    log,
+    createFileAgentState(getStateRootPath()),
+    (token) => new LinearServiceImpl(token),
+  );
 
   return {
     tool: linearTools,
@@ -52,30 +44,8 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     event: async ({ event: _event }) => {
       // eslint-disable-next-line no-unsafe-type-assertion
       const event = _event as unknown as Event; // Cast to V2 Event type
-      const result = await Result.tryPromise({
-        try: async () => {
-          await handleEvent(
-            event,
-            async (sessionId) => {
-              const messages = await input.client.session.messages({
-                path: { id: sessionId },
-              });
-              if (messages.error || !messages.data) {
-                return [];
-              }
-              return messages.data;
-            },
-            async (organizationId) =>
-              readTokenForHook(organizationId, "event token read failed"),
-            createLinearService,
-            log,
-          );
-        },
-        catch: (e) => (e instanceof Error ? e.message : String(e)),
-      });
-      if (Result.isError(result)) {
-        log(`event hook failed: ${result.error}`);
-      }
+
+      opencodeEventProcessor.processEvent(event);
     },
   };
 }

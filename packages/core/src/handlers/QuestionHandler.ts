@@ -1,8 +1,5 @@
-import type { QuestionInfo as SdkQuestionInfo } from "@opencode-ai/sdk/v2";
-import type {
-  PendingQuestion,
-  QuestionInfo,
-} from "../session/SessionRepository";
+import type { EventQuestionAsked, QuestionInfo } from "@opencode-ai/sdk/v2";
+import type { PendingQuestion } from "../session/SessionRepository";
 import type { Action, HandlerResultWithQuestion } from "../actions/types";
 
 function toUnique(values: string[]): string[] {
@@ -43,14 +40,13 @@ interface QuestionHandlerContext {
 }
 
 /**
- * Internal function that processes questions into actions and pending state.
- * Shared by processQuestionAsked.
+ * Processes a "question.asked" event and returns the corresponding actions to be taken by the plugin, along with any pending question data that needs to be stored for later reference.
  */
-function processQuestions(
-  requestId: string,
-  questions: SdkQuestionInfo[],
+export function processQuestionAsked(
+  event: EventQuestionAsked,
   ctx: QuestionHandlerContext,
 ): HandlerResultWithQuestion {
+  const questions = event.properties.questions;
   if (questions.length === 0) {
     return { actions: [] };
   }
@@ -85,9 +81,10 @@ function processQuestions(
 
     if (q.options.length > 0) {
       const options = q.options.map((opt) => ({
-        label: opt.label,
-        value: opt.value,
+        label: opt.description, // OpenCode's "description" is what we show to the user next to the options, idk, needs to be tested
+        value: opt.label, // OpenCode's "label" is the key, one to five words to identify the option
       }));
+      // TODO: These don't fit well together
       return {
         type: "postElicitation" as const,
         sessionId: ctx.linearSessionId,
@@ -106,7 +103,7 @@ function processQuestions(
   });
 
   const pendingQuestion: PendingQuestion = {
-    requestId,
+    requestId: event.properties.id,
     opencodeSessionId: ctx.opencodeSessionId,
     linearSessionId: ctx.linearSessionId,
     workdir: ctx.workdir ?? "",
@@ -117,23 +114,4 @@ function processQuestions(
   };
 
   return { actions, pendingQuestion };
-}
-
-/**
- * Process a question.asked event - pure function
- *
- * Handles question.asked events from OpenCode by posting elicitations to Linear
- * and returning the pending question for storage.
- *
- * Uses the OpenCode question ID (from event.properties.id) as the requestId,
- * which is required for question.reply to work correctly.
- *
- * No side effects, no I/O.
- */
-export function processQuestionAsked(
-  questionId: string,
-  questions: SdkQuestionInfo[],
-  ctx: QuestionHandlerContext,
-): HandlerResultWithQuestion {
-  return processQuestions(questionId, questions, ctx);
 }
