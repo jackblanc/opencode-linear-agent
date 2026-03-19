@@ -84,6 +84,7 @@ export class SessionManager {
    */
   async getOrCreateSession(
     linearSessionId: string,
+    organizationId: string,
     issueId: string,
     repoDirectory: string,
     branchName: string,
@@ -140,6 +141,7 @@ export class SessionManager {
 
       return this.createNewSession(
         linearSessionId,
+        organizationId,
         issueId,
         sessionRepoDirectory,
         branchName,
@@ -153,6 +155,7 @@ export class SessionManager {
     // No existing state - create fresh session
     return this.createNewSession(
       linearSessionId,
+      organizationId,
       issueId,
       repoDirectory,
       branchName,
@@ -199,6 +202,7 @@ export class SessionManager {
    */
   private async createNewSession(
     linearSessionId: string,
+    organizationId: string,
     issueId: string,
     repoDirectory: string,
     branchName: string,
@@ -232,6 +236,7 @@ export class SessionManager {
     const newState: SessionState = {
       opencodeSessionId: sessionId,
       linearSessionId,
+      organizationId,
       issueId,
       repoDirectory,
       branchName,

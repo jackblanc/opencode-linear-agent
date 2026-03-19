@@ -55,7 +55,7 @@ export { findRepoLabel } from "./linear/label-parser";
 export { parseRepoLabel } from "./linear/label-parser";
 
 // Storage interfaces
-export { FileStore } from "./storage/FileStore";
+export { FileOAuthStateStore } from "./storage/FileOAuthStateStore";
 export { FileTokenStore } from "./storage/FileTokenStore";
 export {
   formatStoreReadError,
@@ -65,10 +65,10 @@ export {
   readAnyAccessTokenSafe,
   savePendingPermission,
   savePendingQuestion,
-  setStorePath,
+  setStateRootPath,
 } from "./storage/plugin";
 export type { LinearContext } from "./storage/plugin";
-export type { KeyValueStore, TokenStore } from "./storage/types";
+export type { TokenStore } from "./storage/types";
 
 // OAuth handlers (consumed by server)
 export type { OAuthConfig } from "./oauth/types";
@@ -91,7 +91,7 @@ export { LinearForbiddenError } from "./errors/linear";
 export type { LinearServiceError } from "./errors/linear";
 
 // Paths
-export { getConfigPath, getStorePath } from "./paths";
+export { getConfigPath, getStateRootPath } from "./paths";
 
 // OpenCode service wrapper (consumed by server)
 export { OpencodeService } from "./opencode/OpencodeService";

@@ -28,11 +28,10 @@ import {
   LinearServiceImpl,
   OpencodeService,
   Log,
-  FileStore,
+  FileOAuthStateStore,
   FileTokenStore,
   FileSessionRepository,
   type EventDispatcher,
-  type KeyValueStore,
   type LogSink,
   type OAuthConfig,
   type TokenStore,
@@ -250,7 +249,7 @@ function createDirectDispatcher(
  */
 function createServer(
   config: Config,
-  kv: KeyValueStore,
+  oauthStateStore: FileOAuthStateStore,
   tokenStore: TokenStore,
   dispatcher: EventDispatcher,
 ): ReturnType<typeof Bun.serve> {
@@ -287,13 +286,20 @@ function createServer(
 
       // OAuth authorize - start the OAuth flow
       if (pathname === "/api/oauth/authorize") {
-        return respond(await handleAuthorize(request, oauthConfig, kv));
+        return respond(
+          await handleAuthorize(request, oauthConfig, oauthStateStore),
+        );
       }
 
       // OAuth callback - handle the redirect from Linear
       if (pathname === "/api/oauth/callback") {
         return respond(
-          await handleCallback(request, oauthConfig, kv, tokenStore),
+          await handleCallback(
+            request,
+            oauthConfig,
+            oauthStateStore,
+            tokenStore,
+          ),
         );
       }
 
@@ -380,9 +386,9 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     projectsPath: config.projectsPath,
   });
 
-  const kv = new FileStore();
-  const tokenStore = new FileTokenStore(kv);
-  const sessionRepository = new FileSessionRepository(kv);
+  const oauthStateStore = new FileOAuthStateStore();
+  const tokenStore = new FileTokenStore();
+  const sessionRepository = new FileSessionRepository();
 
   log.info("Storage initialized", { logPath });
 
@@ -397,7 +403,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   );
 
   // Start server
-  const server = createServer(config, kv, tokenStore, dispatcher);
+  const server = createServer(config, oauthStateStore, tokenStore, dispatcher);
   registerShutdownHandlers(server, logging);
 
   const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;

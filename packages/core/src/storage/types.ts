@@ -3,41 +3,22 @@
  */
 
 /**
- * Generic key-value store interface
- */
-export interface KeyValueStore {
-  /**
-   * Get a value by key
-   */
-  get<T>(key: string): Promise<T | null>;
-
-  /**
-   * Get a value as a string
-   */
-  getString(key: string): Promise<string | null>;
-
-  /**
-   * Put a value
-   */
-  put(
-    key: string,
-    value: unknown,
-    options?: { expirationTtl?: number },
-  ): Promise<void>;
-
-  /**
-   * Delete a key
-   */
-  delete(key: string): Promise<void>;
-}
-
-/**
  * Refresh token storage structure
  */
 export interface RefreshTokenData {
   refreshToken: string;
   appId: string;
   organizationId: string;
+  installedAt: string;
+  workspaceName?: string;
+}
+
+export interface AuthRecord {
+  organizationId: string;
+  accessToken: string;
+  accessTokenExpiresAt: number;
+  refreshToken: string;
+  appId: string;
   installedAt: string;
   workspaceName?: string;
 }
@@ -52,24 +33,17 @@ export interface TokenStore {
   getAccessToken(organizationId: string): Promise<string | null>;
 
   /**
-   * Set access token for an organization
-   */
-  setAccessToken(
-    organizationId: string,
-    token: string,
-    expirationTtl?: number,
-  ): Promise<void>;
-
-  /**
    * Get refresh token data for an organization
    */
   getRefreshTokenData(organizationId: string): Promise<RefreshTokenData | null>;
 
   /**
-   * Set refresh token data for an organization
+   * Get full auth record for an organization
    */
-  setRefreshTokenData(
-    organizationId: string,
-    data: RefreshTokenData,
-  ): Promise<void>;
+  getAuthRecord(organizationId: string): Promise<AuthRecord | null>;
+
+  /**
+   * Put full auth record for an organization
+   */
+  putAuthRecord(record: AuthRecord): Promise<void>;
 }

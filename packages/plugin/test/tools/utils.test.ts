@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
-import { setStorePath } from "@opencode-linear-agent/core";
+import { setStateRootPath } from "@opencode-linear-agent/core";
 import {
   parseDateFilter,
   withWarnings,
@@ -13,11 +13,11 @@ import {
 } from "../../src/tools/utils";
 
 const TEST_DIR = join(import.meta.dir, "..", ".test-tools-utils");
-const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const TEST_STATE_ROOT = join(TEST_DIR, "state");
 
 beforeEach(async () => {
   await mkdir(TEST_DIR, { recursive: true });
-  setStorePath(TEST_STORE_PATH);
+  setStateRootPath(TEST_STATE_ROOT);
   resetClientCacheForTest();
 });
 
@@ -155,20 +155,22 @@ describe("errorJson", () => {
 
 describe("getClient", () => {
   test("returns structured corruption error for invalid JSON store", async () => {
-    await Bun.write(TEST_STORE_PATH, "{broken");
+    await mkdir(join(TEST_STATE_ROOT, "auth"), { recursive: true });
+    const path = join(TEST_STATE_ROOT, "auth", "org-1.json");
+    await Bun.write(path, "{broken");
 
     const result = await getClient();
 
     expect(Result.isError(result)).toBe(true);
     if (Result.isError(result)) {
-      expect(result.error).toContain("Linear store read failed");
-      expect(result.error).toContain(TEST_STORE_PATH);
+      expect(result.error).toContain("Linear state read failed");
+      expect(result.error).toContain(path);
       expect(result.error).toContain("Recovery:");
     }
   });
 
   test("returns missing token error for empty store", async () => {
-    await Bun.write(TEST_STORE_PATH, JSON.stringify({}));
+    await mkdir(join(TEST_STATE_ROOT, "auth"), { recursive: true });
 
     const result = await getClient();
 

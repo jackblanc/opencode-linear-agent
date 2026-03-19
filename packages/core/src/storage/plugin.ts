@@ -1,17 +1,20 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { Result } from "better-result";
 
-import {
-  type PendingPermission,
-  type PendingQuestion,
+import type {
+  PendingPermission,
+  PendingQuestion,
 } from "../session/SessionRepository";
 import { FileSessionRepository } from "../session/FileSessionRepository";
-import { getStateRootPath, getStorePath } from "../paths";
-import { parseStoreData, type StoreData } from "../schemas";
+import { getStateRootPath } from "../paths";
+import { parseJson } from "../kv/json";
+import { createFileStateRoot } from "../kv/file/FileStateRoot";
+import { KvIoError, type KvError } from "../kv/errors";
 import { createFileAgentState } from "../state/root";
-import { FileStore } from "./FileStore";
+import { authAccessTokenSchema } from "../state/schema";
 
 export interface LinearContext {
   sessionId: string | null;
@@ -28,37 +31,11 @@ interface StoreReadError {
   message: string;
 }
 
-interface StoredSession {
-  opencodeSessionId: string;
-  linearSessionId: string;
-  issueId: string;
-  branchName: string;
-  workdir: string;
-  lastActivityTime: number;
-}
-
-const ACCESS_TOKEN_PREFIX = "token:access:";
-const SESSION_PREFIX = "session:";
-
-let storePath: string | null = null;
-
-function getEffectiveStorePath(): string {
-  if (storePath) {
-    return storePath;
-  }
-
-  const path = getStorePath();
-  storePath = path;
-  return path;
-}
-
-function createFileStore(): FileStore {
-  return new FileStore(getEffectiveStorePath());
-}
+let stateRootPath: string | null = null;
 
 function getEffectiveStateRootPath(): string {
-  if (storePath) {
-    return join(dirname(storePath), "state");
+  if (stateRootPath) {
+    return stateRootPath;
   }
 
   return getStateRootPath();
@@ -68,33 +45,38 @@ function createAgentState() {
   return createFileAgentState(getEffectiveStateRootPath());
 }
 
-export function setStorePath(path: string): void {
-  storePath = path;
+function createAccessTokenStore() {
+  return createFileStateRoot(getEffectiveStateRootPath()).namespace(
+    "auth",
+    authAccessTokenSchema,
+  );
 }
 
-function toStoreReadError(error: unknown, filePath: string): StoreReadError {
-  const message = error instanceof Error ? error.message : String(error);
+export function setStateRootPath(path: string): void {
+  stateRootPath = path;
+}
 
-  if (message.startsWith("Invalid store data:")) {
+function toStoreReadError(error: KvError): StoreReadError {
+  if (error._tag === "KvJsonParseError") {
     return {
-      kind: "schema_error",
-      path: filePath,
-      message,
+      kind: "parse_error",
+      path: error.path,
+      message: error.message,
     };
   }
 
-  if (error instanceof SyntaxError || message.includes("JSON")) {
+  if (error._tag === "KvSchemaError") {
     return {
-      kind: "parse_error",
-      path: filePath,
-      message,
+      kind: "schema_error",
+      path: error.path,
+      message: error.message,
     };
   }
 
   return {
     kind: "io_error",
-    path: filePath,
-    message,
+    path: "path" in error ? error.path : getEffectiveStateRootPath(),
+    message: error.message,
   };
 }
 
@@ -103,46 +85,14 @@ export function formatStoreReadError(error: StoreReadError): string {
     error.kind === "parse_error"
       ? "invalid JSON"
       : error.kind === "schema_error"
-        ? "invalid store schema"
-        : "store read failure";
+        ? "invalid state schema"
+        : "state read failure";
 
   return [
-    `Linear store read failed (${reason}) at ${error.path}.`,
+    `Linear state read failed (${reason}) at ${error.path}.`,
     `Cause: ${error.message}`,
-    "Recovery: 1) Fix or restore store.json, 2) restart agent server, 3) re-run Linear auth if token data was lost.",
+    "Recovery: fix or remove the bad state file, restart agent server, then re-run Linear auth if auth data was lost.",
   ].join(" ");
-}
-
-async function readStoreSafe(): Promise<Result<StoreData, StoreReadError>> {
-  const path = getEffectiveStorePath();
-  const file = Bun.file(path);
-
-  if (!(await file.exists())) {
-    return Result.ok({});
-  }
-
-  return Result.tryPromise({
-    try: async () => {
-      const text = await readFile(path, "utf8");
-      const json: unknown = JSON.parse(text);
-      return parseStoreData(json);
-    },
-    catch: (error) => toStoreReadError(error, path),
-  });
-}
-
-function getValue<T>(data: StoreData, key: string): T | null {
-  const stored = data[key];
-  if (!stored) {
-    return null;
-  }
-
-  if (stored.expires && Date.now() > stored.expires) {
-    return null;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Generic KV store requires type assertion
-  return stored.value as T;
 }
 
 export async function readAccessToken(
@@ -159,127 +109,105 @@ export async function readAccessToken(
 export async function readAccessTokenSafe(
   organizationId: string,
 ): Promise<Result<string | null, StoreReadError>> {
-  const data = await readStoreSafe();
-  if (Result.isError(data)) {
-    return Result.err(data.error);
+  const store = createAccessTokenStore();
+  const rec = await store.get(organizationId);
+  if (Result.isError(rec)) {
+    return Result.err(toStoreReadError(rec.error));
   }
-
-  return Result.ok(
-    getValue<string>(data.value, `${ACCESS_TOKEN_PREFIX}${organizationId}`),
-  );
+  if (!rec.value || rec.value.accessTokenExpiresAt <= Date.now()) {
+    return Result.ok(null);
+  }
+  return Result.ok(rec.value.accessToken);
 }
 
 export async function readAnyAccessTokenSafe(): Promise<
   Result<string | null, StoreReadError>
 > {
-  const data = await readStoreSafe();
-  if (Result.isError(data)) {
-    return Result.err(data.error);
+  const dir = createAgentState().auth.namespacePath;
+  if (!existsSync(dir)) {
+    return Result.ok(null);
   }
 
-  for (const key of Object.keys(data.value)) {
-    if (!key.startsWith(ACCESS_TOKEN_PREFIX)) {
+  const files = await Result.tryPromise({
+    try: async () => await readdir(dir),
+    catch: (error) =>
+      new KvIoError({
+        path: dir,
+        operation: "read",
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+  });
+  if (Result.isError(files)) {
+    return Result.err(toStoreReadError(files.error));
+  }
+
+  const names = files.value.toSorted();
+
+  for (const name of names) {
+    if (!name.endsWith(".json")) {
       continue;
     }
 
-    const token = getValue<string>(data.value, key);
-    if (token) {
-      return Result.ok(token);
+    const path = join(dir, name);
+    const text = await Result.tryPromise({
+      try: async () => await readFile(path, "utf8"),
+      catch: (error) =>
+        new KvIoError({
+          path,
+          operation: "read",
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+    });
+    if (Result.isError(text)) {
+      return Result.err(toStoreReadError(text.error));
+    }
+
+    const parsed = parseJson(text.value, path, authAccessTokenSchema);
+    if (Result.isError(parsed)) {
+      return Result.err(toStoreReadError(parsed.error));
+    }
+
+    if (parsed.value.accessTokenExpiresAt > Date.now()) {
+      return Result.ok(parsed.value.accessToken);
     }
   }
 
   return Result.ok(null);
 }
 
-async function readAnyAccessTokenWithOrg(): Promise<{
-  token: string;
-  organizationId: string;
-} | null> {
-  const data = await readStoreSafe();
-  if (Result.isError(data)) {
-    return null;
-  }
-
-  for (const key of Object.keys(data.value)) {
-    if (!key.startsWith(ACCESS_TOKEN_PREFIX)) {
-      continue;
-    }
-
-    const token = getValue<string>(data.value, key);
-    if (token) {
-      return {
-        token,
-        organizationId: key.slice(ACCESS_TOKEN_PREFIX.length),
-      };
-    }
-  }
-
-  return null;
-}
-
-async function readSessionByOpencodeSessionId(
-  opencodeSessionId: string,
-): Promise<StoredSession | null> {
-  const data = await readStoreSafe();
-  if (Result.isError(data)) {
-    return null;
-  }
-
-  let latest: StoredSession | null = null;
-
-  for (const key of Object.keys(data.value)) {
-    if (!key.startsWith(SESSION_PREFIX)) {
-      continue;
-    }
-
-    const session = getValue<StoredSession>(data.value, key);
-    if (!session || session.opencodeSessionId !== opencodeSessionId) {
-      continue;
-    }
-
-    if (!latest || session.lastActivityTime > latest.lastActivityTime) {
-      latest = session;
-    }
-  }
-
-  return latest;
-}
-
 export async function getSessionByOpencodeSessionId(
   opencodeSessionId: string,
 ): Promise<LinearContext | null> {
-  const session = await readSessionByOpencodeSessionId(opencodeSessionId);
-  if (!session) {
+  const root = createAgentState();
+  const idx = await root.sessionByOpencode.get(opencodeSessionId);
+  if (Result.isError(idx) || !idx.value) {
     return null;
   }
 
-  const tokenInfo = await readAnyAccessTokenWithOrg();
-  if (!tokenInfo) {
+  const session = await root.session.get(idx.value.linearSessionId);
+  if (Result.isError(session) || !session.value) {
+    await root.sessionByOpencode.delete(opencodeSessionId);
     return null;
   }
 
   return {
-    sessionId: session.linearSessionId,
-    issueId: session.issueId,
-    organizationId: tokenInfo.organizationId,
-    workdir: session.workdir,
+    sessionId: session.value.linearSessionId,
+    issueId: session.value.issueId,
+    organizationId: session.value.organizationId,
+    workdir: session.value.workdir,
   };
 }
 
 export async function savePendingQuestion(
   question: PendingQuestion,
 ): Promise<void> {
-  const repository = new FileSessionRepository(createFileStore());
-  const state = createAgentState();
+  const repository = new FileSessionRepository(getEffectiveStateRootPath());
   await repository.savePendingQuestion(question);
-  await state.question.put(question.linearSessionId, question);
 }
 
 export async function savePendingPermission(
   permission: PendingPermission,
 ): Promise<void> {
-  const repository = new FileSessionRepository(createFileStore());
-  const state = createAgentState();
+  const repository = new FileSessionRepository(getEffectiveStateRootPath());
   await repository.savePendingPermission(permission);
-  await state.permission.put(permission.linearSessionId, permission);
 }

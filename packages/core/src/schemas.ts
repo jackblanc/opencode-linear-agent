@@ -10,23 +10,6 @@
 import { z } from "zod";
 
 /**
- * Schema for a single stored value in the key-value store
- */
-export const StoredValueSchema = z.object({
-  value: z.unknown(),
-  expires: z.number().optional(),
-});
-
-export type StoredValue = z.infer<typeof StoredValueSchema>;
-
-/**
- * Schema for the entire store data (record of stored values)
- */
-export const StoreDataSchema = z.record(z.string(), StoredValueSchema);
-
-export type StoreData = z.infer<typeof StoreDataSchema>;
-
-/**
  * Schema for OAuth token response from Linear
  */
 export const TokenResponseSchema = z.object({
@@ -36,20 +19,6 @@ export const TokenResponseSchema = z.object({
 });
 
 export type TokenResponse = z.infer<typeof TokenResponseSchema>;
-
-/**
- * Parse store data from unknown JSON with user-friendly error messages
- */
-export function parseStoreData(data: unknown): StoreData {
-  const result = StoreDataSchema.safeParse(data);
-  if (!result.success) {
-    const issues = result.error.issues
-      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
-      .join("\n");
-    throw new Error(`Invalid store data:\n${issues}`);
-  }
-  return result.data;
-}
 
 /**
  * Parse token response from unknown JSON with user-friendly error messages

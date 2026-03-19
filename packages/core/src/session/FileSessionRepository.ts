@@ -1,107 +1,240 @@
-/**
- * File-based implementation of SessionRepository
- *
- * Wraps FileStore for session-specific operations.
- */
+import { Result } from "better-result";
 
-import type { KeyValueStore } from "../storage/types";
+import type { KvError } from "../kv/errors";
+import { getStateRootPath } from "../paths";
+import { createFileAgentState } from "../state/root";
 import type {
-  SessionRepository,
-  PendingQuestion,
   PendingPermission,
+  PendingQuestion,
   PendingRepoSelection,
+  SessionRepository,
 } from "./SessionRepository";
 import type { SessionState } from "./SessionState";
 
-/**
- * Key prefix for session storage
- */
-const SESSION_PREFIX = "session:";
-
-/**
- * Key prefix for pending question storage
- */
-const QUESTION_PREFIX = "question:";
-
-/**
- * Key prefix for pending permission storage
- */
-const PERMISSION_PREFIX = "permission:";
-
-const REPO_SELECTION_PREFIX = "repo-selection:";
-
-/**
- * File-based SessionRepository implementation
- */
 export class FileSessionRepository implements SessionRepository {
-  constructor(private readonly kv: KeyValueStore) {}
+  constructor(private readonly statePath = getStateRootPath()) {}
+
+  private getState() {
+    return createFileAgentState(this.statePath);
+  }
 
   async get(linearSessionId: string): Promise<SessionState | null> {
-    return this.kv.get<SessionState>(`${SESSION_PREFIX}${linearSessionId}`);
+    const result = await this.getState().session.get(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
+    return result.value;
   }
 
   async save(state: SessionState): Promise<void> {
-    await this.kv.put(`${SESSION_PREFIX}${state.linearSessionId}`, state);
+    const root = this.getState();
+    const sessionStore = root.session;
+    const indexStore = root.sessionByOpencode;
+
+    const result = await sessionStore.withOperationLock(
+      `session:${state.linearSessionId}`,
+      async () => {
+        const existing = await sessionStore.get(state.linearSessionId);
+        if (Result.isError(existing)) {
+          return Result.err(existing.error);
+        }
+
+        const rollback = async (
+          error: KvError,
+        ): Promise<Result<undefined, KvError>> => {
+          const restoredSession = existing.value
+            ? await sessionStore.put(state.linearSessionId, existing.value)
+            : await sessionStore.delete(state.linearSessionId);
+          if (Result.isError(restoredSession)) {
+            return Result.err(restoredSession.error);
+          }
+
+          const droppedNewIndex = await indexStore.delete(
+            state.opencodeSessionId,
+          );
+          if (Result.isError(droppedNewIndex)) {
+            return Result.err(droppedNewIndex.error);
+          }
+
+          if (existing.value) {
+            const restoredIndex = await indexStore.put(
+              existing.value.opencodeSessionId,
+              {
+                linearSessionId: existing.value.linearSessionId,
+              },
+            );
+            if (Result.isError(restoredIndex)) {
+              return Result.err(restoredIndex.error);
+            }
+          }
+
+          return Result.err(error);
+        };
+
+        const saved = await sessionStore.put(state.linearSessionId, state);
+        if (Result.isError(saved)) {
+          return Result.err(saved.error);
+        }
+
+        if (
+          existing.value &&
+          existing.value.opencodeSessionId !== state.opencodeSessionId
+        ) {
+          const removed = await indexStore.delete(
+            existing.value.opencodeSessionId,
+          );
+          if (Result.isError(removed)) {
+            return rollback(removed.error);
+          }
+        }
+
+        const indexed = await indexStore.put(state.opencodeSessionId, {
+          linearSessionId: state.linearSessionId,
+        });
+        if (Result.isError(indexed)) {
+          return rollback(indexed.error);
+        }
+
+        return Result.ok(undefined);
+      },
+    );
+
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async delete(linearSessionId: string): Promise<void> {
-    await this.kv.delete(`${SESSION_PREFIX}${linearSessionId}`);
+    const root = this.getState();
+    const sessionStore = root.session;
+    const indexStore = root.sessionByOpencode;
+
+    const result = await sessionStore.withOperationLock(
+      `session:${linearSessionId}`,
+      async () => {
+        const existing = await sessionStore.get(linearSessionId);
+        if (Result.isError(existing)) {
+          return Result.err(existing.error);
+        }
+
+        const removed = await sessionStore.delete(linearSessionId);
+        if (Result.isError(removed)) {
+          return Result.err(removed.error);
+        }
+
+        if (existing.value) {
+          const dropped = await indexStore.delete(
+            existing.value.opencodeSessionId,
+          );
+          if (Result.isError(dropped)) {
+            return Result.err(dropped.error);
+          }
+        }
+
+        const question = await root.question.delete(linearSessionId);
+        if (Result.isError(question)) {
+          return Result.err(question.error);
+        }
+
+        const permission = await root.permission.delete(linearSessionId);
+        if (Result.isError(permission)) {
+          return Result.err(permission.error);
+        }
+
+        const repoSelection = await root.repoSelection.delete(linearSessionId);
+        if (Result.isError(repoSelection)) {
+          return Result.err(repoSelection.error);
+        }
+
+        return Result.ok(undefined);
+      },
+    );
+
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async getPendingQuestion(
     linearSessionId: string,
   ): Promise<PendingQuestion | null> {
-    return this.kv.get<PendingQuestion>(`${QUESTION_PREFIX}${linearSessionId}`);
+    const result = await this.getState().question.get(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
+    return result.value;
   }
 
   async savePendingQuestion(question: PendingQuestion): Promise<void> {
-    await this.kv.put(
-      `${QUESTION_PREFIX}${question.linearSessionId}`,
+    const result = await this.getState().question.put(
+      question.linearSessionId,
       question,
     );
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async deletePendingQuestion(linearSessionId: string): Promise<void> {
-    await this.kv.delete(`${QUESTION_PREFIX}${linearSessionId}`);
+    const result = await this.getState().question.delete(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async getPendingPermission(
     linearSessionId: string,
   ): Promise<PendingPermission | null> {
-    return this.kv.get<PendingPermission>(
-      `${PERMISSION_PREFIX}${linearSessionId}`,
-    );
+    const result = await this.getState().permission.get(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
+    return result.value;
   }
 
   async savePendingPermission(permission: PendingPermission): Promise<void> {
-    await this.kv.put(
-      `${PERMISSION_PREFIX}${permission.linearSessionId}`,
+    const result = await this.getState().permission.put(
+      permission.linearSessionId,
       permission,
     );
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async deletePendingPermission(linearSessionId: string): Promise<void> {
-    await this.kv.delete(`${PERMISSION_PREFIX}${linearSessionId}`);
+    const result = await this.getState().permission.delete(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async getPendingRepoSelection(
     linearSessionId: string,
   ): Promise<PendingRepoSelection | null> {
-    return this.kv.get<PendingRepoSelection>(
-      `${REPO_SELECTION_PREFIX}${linearSessionId}`,
-    );
+    const result = await this.getState().repoSelection.get(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
+    return result.value;
   }
 
   async savePendingRepoSelection(
     selection: PendingRepoSelection,
   ): Promise<void> {
-    await this.kv.put(
-      `${REPO_SELECTION_PREFIX}${selection.linearSessionId}`,
+    const result = await this.getState().repoSelection.put(
+      selection.linearSessionId,
       selection,
     );
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 
   async deletePendingRepoSelection(linearSessionId: string): Promise<void> {
-    await this.kv.delete(`${REPO_SELECTION_PREFIX}${linearSessionId}`);
+    const result = await this.getState().repoSelection.delete(linearSessionId);
+    if (Result.isError(result)) {
+      throw new Error(result.error.message);
+    }
   }
 }
