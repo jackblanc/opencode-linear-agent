@@ -1,9 +1,23 @@
-import { z } from "zod";
-
 import { createFileStateRoot } from "../kv/file/FileStateRoot";
 import type { KvNamespaceStore } from "../kv/types";
-
-const jsonValueSchema = z.unknown();
+import {
+  authRecordSchema,
+  oauthStateRecordSchema,
+  pendingPermissionSchema,
+  pendingQuestionSchema,
+  pendingRepoSelectionSchema,
+  sessionByOpencodeRecordSchema,
+  sessionStateSchema,
+  type OAuthStateRecord,
+  type SessionByOpencodeRecord,
+} from "./schema";
+import type {
+  PendingPermission,
+  PendingQuestion,
+  PendingRepoSelection,
+} from "../session/SessionRepository";
+import type { SessionState } from "../session/SessionState";
+import type { AuthRecord } from "../storage/types";
 
 const STATE_NAMESPACES = {
   auth: "auth",
@@ -15,32 +29,38 @@ const STATE_NAMESPACES = {
   repoSelection: "repo-selection",
 } as const;
 
-interface AgentStateNamespaces {
-  auth: KvNamespaceStore<unknown>;
-  oauthState: KvNamespaceStore<unknown>;
-  session: KvNamespaceStore<unknown>;
-  sessionByOpencode: KvNamespaceStore<unknown>;
-  question: KvNamespaceStore<unknown>;
-  permission: KvNamespaceStore<unknown>;
-  repoSelection: KvNamespaceStore<unknown>;
+interface AgentStateNamespace {
+  auth: KvNamespaceStore<AuthRecord>;
+  oauthState: KvNamespaceStore<OAuthStateRecord>;
+  session: KvNamespaceStore<SessionState>;
+  sessionByOpencode: KvNamespaceStore<SessionByOpencodeRecord>;
+  question: KvNamespaceStore<PendingQuestion>;
+  permission: KvNamespaceStore<PendingPermission>;
+  repoSelection: KvNamespaceStore<PendingRepoSelection>;
 }
 
-export function createFileAgentState(path: string): AgentStateNamespaces {
+export function createFileAgentState(path: string): AgentStateNamespace {
   const root = createFileStateRoot(path);
 
   return {
-    auth: root.namespace(STATE_NAMESPACES.auth, jsonValueSchema),
-    oauthState: root.namespace(STATE_NAMESPACES.oauthState, jsonValueSchema),
-    session: root.namespace(STATE_NAMESPACES.session, jsonValueSchema),
+    auth: root.namespace(STATE_NAMESPACES.auth, authRecordSchema),
+    oauthState: root.namespace(
+      STATE_NAMESPACES.oauthState,
+      oauthStateRecordSchema,
+    ),
+    session: root.namespace(STATE_NAMESPACES.session, sessionStateSchema),
     sessionByOpencode: root.namespace(
       STATE_NAMESPACES.sessionByOpencode,
-      jsonValueSchema,
+      sessionByOpencodeRecordSchema,
     ),
-    question: root.namespace(STATE_NAMESPACES.question, jsonValueSchema),
-    permission: root.namespace(STATE_NAMESPACES.permission, jsonValueSchema),
+    question: root.namespace(STATE_NAMESPACES.question, pendingQuestionSchema),
+    permission: root.namespace(
+      STATE_NAMESPACES.permission,
+      pendingPermissionSchema,
+    ),
     repoSelection: root.namespace(
       STATE_NAMESPACES.repoSelection,
-      jsonValueSchema,
+      pendingRepoSelectionSchema,
     ),
   };
 }

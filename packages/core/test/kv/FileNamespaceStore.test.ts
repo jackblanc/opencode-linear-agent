@@ -175,9 +175,27 @@ describe("FileNamespaceStore", () => {
 
   test("state root wires planned namespaces", async () => {
     const state = createFileAgentState(TEST_DIR);
+    const now = Date.now();
 
-    await state.session.put("one", { id: 1 });
-    await state.question.put("one", { id: 2 });
+    await state.session.put("one", {
+      opencodeSessionId: "opencode-1",
+      linearSessionId: "linear-1",
+      organizationId: "org-1",
+      issueId: "issue-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/worktree",
+      lastActivityTime: now,
+    });
+    await state.question.put("one", {
+      requestId: "req-1",
+      opencodeSessionId: "opencode-1",
+      linearSessionId: "linear-1",
+      workdir: "/tmp/worktree",
+      issueId: "issue-1",
+      questions: [],
+      answers: [],
+      createdAt: now,
+    });
 
     const session = await state.session.get("one");
     const question = await state.question.get("one");
@@ -188,8 +206,25 @@ describe("FileNamespaceStore", () => {
       return;
     }
 
-    expect(session.value).toEqual({ id: 1 });
-    expect(question.value).toEqual({ id: 2 });
+    expect(session.value).toEqual({
+      opencodeSessionId: "opencode-1",
+      linearSessionId: "linear-1",
+      organizationId: "org-1",
+      issueId: "issue-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/worktree",
+      lastActivityTime: now,
+    });
+    expect(question.value).toEqual({
+      requestId: "req-1",
+      opencodeSessionId: "opencode-1",
+      linearSessionId: "linear-1",
+      workdir: "/tmp/worktree",
+      issueId: "issue-1",
+      questions: [],
+      answers: [],
+      createdAt: now,
+    });
   });
 });
 

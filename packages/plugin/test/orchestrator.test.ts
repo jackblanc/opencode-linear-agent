@@ -2,13 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Event, Part, ReasoningPart, TextPart } from "@opencode-ai/sdk/v2";
-import { setStorePath, type LinearService } from "@opencode-linear-agent/core";
+import {
+  setStateRootPath,
+  type LinearService,
+} from "@opencode-linear-agent/core";
 import type { ActivityContent, IssueState } from "../../core/src/linear/types";
 import { Result } from "better-result";
 import { handleEvent } from "../src/orchestrator";
 
 const TEST_DIR = join(import.meta.dir, ".test-orchestrator");
-const TEST_STORE_PATH = join(TEST_DIR, "store.json");
+const TEST_STATE_ROOT = join(TEST_DIR, "state");
 
 interface Call {
   sessionId: string;
@@ -69,20 +72,38 @@ function createLinear(calls: Call[]): LinearService {
 }
 
 async function seedStore(workdir: string): Promise<void> {
-  const store = {
-    "token:access:org-1": { value: "token-1" },
-    "session:lin-1": {
-      value: {
-        opencodeSessionId: "oc-1",
-        linearSessionId: "lin-1",
-        issueId: "CODE-216",
-        branchName: "fix/code-216",
-        workdir,
-        lastActivityTime: Date.now(),
-      },
-    },
-  };
-  await Bun.write(TEST_STORE_PATH, JSON.stringify(store));
+  await mkdir(join(TEST_STATE_ROOT, "auth"), { recursive: true });
+  await mkdir(join(TEST_STATE_ROOT, "session"), { recursive: true });
+  await mkdir(join(TEST_STATE_ROOT, "session-by-opencode"), {
+    recursive: true,
+  });
+  await Bun.write(
+    join(TEST_STATE_ROOT, "auth", "org-1.json"),
+    JSON.stringify({
+      organizationId: "org-1",
+      accessToken: "token-1",
+      accessTokenExpiresAt: Date.now() + 60_000,
+      refreshToken: "refresh-1",
+      appId: "app-1",
+      installedAt: new Date().toISOString(),
+    }),
+  );
+  await Bun.write(
+    join(TEST_STATE_ROOT, "session", "lin-1.json"),
+    JSON.stringify({
+      opencodeSessionId: "oc-1",
+      linearSessionId: "lin-1",
+      organizationId: "org-1",
+      issueId: "CODE-216",
+      branchName: "fix/code-216",
+      workdir,
+      lastActivityTime: Date.now(),
+    }),
+  );
+  await Bun.write(
+    join(TEST_STATE_ROOT, "session-by-opencode", "oc-1.json"),
+    JSON.stringify({ linearSessionId: "lin-1" }),
+  );
 }
 
 function reasoningPart(text: string, complete = true): ReasoningPart {
@@ -126,7 +147,7 @@ describe("handleEvent", () => {
 
   beforeEach(async () => {
     await mkdir(TEST_DIR, { recursive: true });
-    setStorePath(TEST_STORE_PATH);
+    setStateRootPath(TEST_STATE_ROOT);
     await seedStore(workdir);
   });
 

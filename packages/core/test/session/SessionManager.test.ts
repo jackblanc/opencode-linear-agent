@@ -43,6 +43,7 @@ describe("SessionManager", () => {
     const existing: SessionState = {
       linearSessionId: "linear-1",
       opencodeSessionId: "opencode-old",
+      organizationId: "org-1",
       issueId: "issue-1",
       repoDirectory: "/tmp/original-repo",
       branchName: "feature/code-1",
@@ -71,6 +72,7 @@ describe("SessionManager", () => {
     const manager = new SessionManager(opencode, repository);
     const result = await manager.getOrCreateSession(
       "linear-1",
+      "org-1",
       "issue-1",
       "/tmp/new-repo-from-dispatcher",
       "feature/code-1",

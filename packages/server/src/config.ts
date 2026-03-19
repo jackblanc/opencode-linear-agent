@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
-import { getConfigPath, getStorePath } from "@opencode-linear-agent/core";
+import { getConfigPath, getStateRootPath } from "@opencode-linear-agent/core";
 
 const DEFAULT_WEBHOOK_IPS = [
   "35.231.147.226",
@@ -71,7 +71,7 @@ export function loadConfig(options: LoadConfigOptions = {}): Config {
 }
 
 function getDataDir(): string {
-  return dirname(getStorePath());
+  return dirname(getStateRootPath());
 }
 
 function formatLogTimestamp(now: Date): string {

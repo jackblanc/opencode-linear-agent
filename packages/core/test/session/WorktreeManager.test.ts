@@ -86,6 +86,7 @@ describe("WorktreeManager.cleanupSessionResources", () => {
     const state: SessionState = {
       linearSessionId: "linear-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       repoDirectory: "/tmp/repo-1",
       branchName: "feature/code-1",
@@ -122,6 +123,7 @@ describe("WorktreeManager.cleanupSessionResources", () => {
     const state: SessionState = {
       linearSessionId: "linear-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       branchName: "feature/code-1",
       workdir: "/tmp",
@@ -142,6 +144,7 @@ describe("WorktreeManager.resolveWorktree", () => {
     const state: SessionState = {
       linearSessionId: "linear-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       branchName: "feature/code-1",
       workdir: "/tmp",
@@ -219,6 +222,7 @@ describe("WorktreeManager.resolveWorktree", () => {
     const state: SessionState = {
       linearSessionId: "linear-2",
       opencodeSessionId: "opencode-2",
+      organizationId: "org-1",
       issueId: "issue-2",
       repoDirectory: "/tmp/default",
       branchName: "feature/code-2",

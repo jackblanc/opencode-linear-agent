@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
 import { handleWebhook } from "../src/webhook/handlers";
 import type { EventDispatcher } from "../src/webhook/types";
-import type { TokenStore } from "../src/storage/types";
+import type { AuthRecord, TokenStore } from "../src/storage/types";
 
 function createSignedRequest(secret: string, payload: unknown): Request {
   const body = JSON.stringify(payload);
@@ -19,11 +19,24 @@ function createSignedRequest(secret: string, payload: unknown): Request {
 }
 
 function createTokenStore(accessToken: string | null): TokenStore {
+  const auth: AuthRecord | null =
+    accessToken === null
+      ? null
+      : {
+          organizationId: "org-1",
+          accessToken,
+          accessTokenExpiresAt: Date.now() + 60_000,
+          refreshToken: "refresh-1",
+          appId: "app-1",
+          installedAt: new Date().toISOString(),
+          workspaceName: "workspace",
+        };
+
   return {
     getAccessToken: async () => accessToken,
-    setAccessToken: async () => undefined,
     getRefreshTokenData: async () => null,
-    setRefreshTokenData: async () => undefined,
+    getAuthRecord: async () => auth,
+    putAuthRecord: async () => undefined,
   };
 }
 

@@ -72,6 +72,7 @@ describe("IssueEventHandler", () => {
     const state: SessionState = {
       linearSessionId: "session-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       repoDirectory: "/tmp/repo-1",
       branchName: "feature/code-1",
@@ -128,6 +129,7 @@ describe("IssueEventHandler", () => {
     const state: SessionState = {
       linearSessionId: "session-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       repoDirectory: "/tmp/repo-1",
       branchName: "feature/code-1",
@@ -218,6 +220,7 @@ describe("IssueEventHandler", () => {
     const state: SessionState = {
       linearSessionId: "session-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       repoDirectory: "/tmp/repo-1",
       branchName: "feature/code-1",
@@ -275,6 +278,7 @@ describe("IssueEventHandler", () => {
     const state: SessionState = {
       linearSessionId: "session-1",
       opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
       issueId: "issue-1",
       repoDirectory: "/tmp/repo-1",
       branchName: "feature/code-1",

@@ -355,6 +355,7 @@ describe("dispatchAgentSessionEvent", () => {
       state: {
         linearSessionId: "session-1",
         opencodeSessionId: "opencode-1",
+        organizationId: "org-1",
         issueId: "issue-1",
         repoDirectory: "/tmp/existing-repo",
         branchName: "feature/code-1",

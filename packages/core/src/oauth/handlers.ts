@@ -4,10 +4,11 @@
 
 import { LinearClient } from "@linear/sdk";
 import type {
-  KeyValueStore,
+  AuthRecord,
   RefreshTokenData,
   TokenStore,
 } from "../storage/types";
+import type { OAuthStateStore } from "../storage/FileOAuthStateStore";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../logger";
 import {
@@ -150,13 +151,14 @@ function generateSuccessHtml(result: OAuthCallbackResult): string {
 export async function handleAuthorize(
   request: Request,
   config: OAuthConfig,
-  kv: KeyValueStore,
+  oauthStateStore: OAuthStateStore,
 ): Promise<Response> {
   // Generate CSRF state token
   const state = crypto.randomUUID();
 
   // Store state in KV with 5-minute TTL for CSRF protection
-  await kv.put(`oauth:state:${state}`, "pending", { expirationTtl: 300 });
+  const now = Date.now();
+  await oauthStateStore.issue(state, now, now + 5 * 60 * 1000);
 
   // Generate callback URL from config baseUrl or request origin
   const baseUrl = config.baseUrl ?? new URL(request.url).origin;
@@ -185,7 +187,7 @@ export async function handleAuthorize(
 export async function handleCallback(
   request: Request,
   config: OAuthConfig,
-  kv: KeyValueStore,
+  oauthStateStore: OAuthStateStore,
   tokenStore: TokenStore,
 ): Promise<Response> {
   const url = new URL(request.url);
@@ -212,13 +214,10 @@ export async function handleCallback(
   }
 
   // Validate state
-  const storedState = await kv.getString(`oauth:state:${state}`);
-  if (!storedState) {
+  const validState = await oauthStateStore.consume(state, Date.now());
+  if (!validState) {
     return new Response("Invalid or expired state parameter", { status: 403 });
   }
-
-  // Delete state (one-time use)
-  await kv.delete(`oauth:state:${state}`);
 
   try {
     const baseUrl = config.baseUrl ?? url.origin;
@@ -239,13 +238,6 @@ export async function handleCallback(
       viewerId: viewer.id,
     });
 
-    // Store tokens
-    await tokenStore.setAccessToken(
-      organization.id,
-      tokenData.accessToken,
-      ACCESS_TOKEN_TTL_SECONDS,
-    );
-
     const refreshData: RefreshTokenData = {
       refreshToken: tokenData.refreshToken,
       appId: viewer.id,
@@ -253,7 +245,16 @@ export async function handleCallback(
       installedAt: new Date().toISOString(),
       workspaceName: organization.name,
     };
-    await tokenStore.setRefreshTokenData(organization.id, refreshData);
+    const auth: AuthRecord = {
+      organizationId: organization.id,
+      accessToken: tokenData.accessToken,
+      accessTokenExpiresAt: Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000,
+      refreshToken: refreshData.refreshToken,
+      appId: refreshData.appId,
+      installedAt: refreshData.installedAt,
+      workspaceName: refreshData.workspaceName,
+    };
+    await tokenStore.putAuthRecord(auth);
 
     log.info("Tokens stored successfully");
 
@@ -328,19 +329,19 @@ export async function refreshAccessToken(
 
   const data = await parseTokenResponse(response);
 
-  // Store new tokens
-  await tokenStore.setAccessToken(
-    organizationId,
-    data.access_token,
-    ACCESS_TOKEN_TTL_SECONDS,
-  );
+  const auth = await tokenStore.getAuthRecord(organizationId);
+  if (!auth) {
+    throw new Error(
+      `No auth record found for organization ${organizationId}. Please re-authorize.`,
+    );
+  }
 
-  // Update refresh token (Linear may rotate it)
-  const updatedRefreshData: RefreshTokenData = {
-    ...refreshData,
+  await tokenStore.putAuthRecord({
+    ...auth,
+    accessToken: data.access_token,
+    accessTokenExpiresAt: Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000,
     refreshToken: data.refresh_token,
-  };
-  await tokenStore.setRefreshTokenData(organizationId, updatedRefreshData);
+  });
 
   log.info("Token refreshed successfully");
   return data.access_token;
