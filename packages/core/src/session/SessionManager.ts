@@ -6,7 +6,7 @@ import type {
   MessageWithParts,
 } from "../opencode-service/OpencodeService";
 import type { OpencodeServiceError } from "../opencode-service/errors";
-import { Log, type Logger } from "../logger";
+import { Log, type Logger } from "../utils/logger";
 
 /**
  * Result of getting or creating a session

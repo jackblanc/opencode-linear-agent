@@ -7,7 +7,7 @@ import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import type { TokenStore } from "../storage/types";
 import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
 import { isAgentSessionEventWebhook, isSupportedWebhook } from "./types";
-import { Log } from "../logger";
+import { Log } from "../utils/logger";
 
 /**
  * Handle Linear webhook - verify signature and dispatch for processing

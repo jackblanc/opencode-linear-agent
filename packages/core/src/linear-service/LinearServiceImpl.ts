@@ -17,7 +17,7 @@ import type {
   SignalMetadata,
 } from "./types";
 import { STAGE_MESSAGES } from "./types";
-import { Log, type Logger } from "../logger";
+import { Log, type Logger } from "../utils/logger";
 import type { LinearServiceError } from "./errors";
 import { mapLinearError } from "./errors";
 

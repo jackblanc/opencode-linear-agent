@@ -17,7 +17,7 @@ import { PromptBuilder, type PromptContext } from "../session/PromptBuilder";
 import { type AgentMode, determineAgentMode } from "../session/AgentMode";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import { base64Encode } from "../utils/encode";
-import { Log, type Logger } from "../logger";
+import { Log, type Logger } from "../utils/logger";
 
 /**
  * Configuration for the LinearEventProcessor

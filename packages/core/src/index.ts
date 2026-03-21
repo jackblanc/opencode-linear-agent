@@ -55,15 +55,15 @@ export type { EventDispatcher } from "./webhook/types";
 export { handleWebhook } from "./webhook/handlers";
 
 // Logging
-export { Log, createFileLogSink } from "./logger";
-export type { LogSink } from "./logger";
+export { Log, createFileLogSink } from "./utils/logger";
+export type { LogSink } from "./utils/logger";
 
 // Errors
 export { LinearForbiddenError } from "./linear-service/errors";
 export type { LinearServiceError } from "./linear-service/errors";
 
 // Paths
-export { getConfigPath, getStateRootPath } from "./paths";
+export { getConfigPath, getStateRootPath } from "./utils/paths";
 
 // OpenCode service wrapper (consumed by server)
 export { OpencodeService } from "./opencode-service/OpencodeService";

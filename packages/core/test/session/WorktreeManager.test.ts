@@ -10,7 +10,7 @@ import type {
 } from "../../src/session/SessionRepository";
 import type { SessionState } from "../../src/session/SessionState";
 import { WorktreeManager } from "../../src/session/WorktreeManager";
-import type { Logger } from "../../src/logger";
+import type { Logger } from "../../src/utils/logger";
 
 function createLogger(): Logger {
   const logger: Logger = {

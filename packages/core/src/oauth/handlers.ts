@@ -10,7 +10,7 @@ import type {
 } from "../storage/types";
 import type { OAuthStateStore } from "../storage/FileOAuthStateStore";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
-import { Log } from "../logger";
+import { Log } from "../utils/logger";
 import { type TokenResponse, TokenResponseSchema } from "./schema";
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";

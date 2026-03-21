@@ -157,7 +157,7 @@ describe("server logging", () => {
     const result = await run(
       [
         'import { readFile } from "node:fs/promises";',
-        'import { Log } from "./packages/core/src/logger";',
+        'import { Log } from "./packages/core/src/utils/logger";',
         'import { initializeServerLogging, shutdownServerLogging } from "./packages/server/src/index";',
         "const logging = await initializeServerLogging();",
         'logging.log.info("before shutdown", { ok: true });',

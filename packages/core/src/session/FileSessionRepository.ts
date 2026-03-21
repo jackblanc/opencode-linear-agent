@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 
 import type { KvError } from "../kv/errors";
-import { getStateRootPath } from "../paths";
+import { getStateRootPath } from "../utils/paths";
 import { createFileAgentState } from "../state/root";
 import type {
   PendingPermission,

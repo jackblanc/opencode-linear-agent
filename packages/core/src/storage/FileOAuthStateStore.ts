@@ -1,6 +1,6 @@
 import { Result } from "better-result";
 
-import { getStateRootPath } from "../paths";
+import { getStateRootPath } from "../utils/paths";
 import { createFileAgentState } from "../state/root";
 import type { OAuthStateRecord } from "../state/schema";
 

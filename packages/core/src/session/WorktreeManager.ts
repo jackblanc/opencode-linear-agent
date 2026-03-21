@@ -5,7 +5,7 @@ import { Result } from "better-result";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { LinearService } from "../linear-service/LinearService";
 import type { SessionRepository } from "./SessionRepository";
-import type { Logger } from "../logger";
+import type { Logger } from "../utils/logger";
 import type { SessionState } from "./SessionState";
 import { detectInstallCommand } from "../utils/package-manager";
 

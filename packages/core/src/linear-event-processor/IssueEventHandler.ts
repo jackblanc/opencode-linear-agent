@@ -1,5 +1,5 @@
 import { Result } from "better-result";
-import { Log } from "../logger";
+import { Log } from "../utils/logger";
 import type { LinearService } from "../linear-service/LinearService";
 import type { SessionRepository } from "../session/SessionRepository";
 import type { OpencodeService } from "../opencode-service/OpencodeService";

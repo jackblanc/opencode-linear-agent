@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Log, createFileLogSink } from "../src/logger";
+import { Log, createFileLogSink } from "../src/utils/logger";
 
 let dir = "";
 let lines: string[] = [];
