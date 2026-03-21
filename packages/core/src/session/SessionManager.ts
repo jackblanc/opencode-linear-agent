@@ -4,8 +4,8 @@ import type { SessionState } from "./SessionState";
 import type {
   OpencodeService,
   MessageWithParts,
-} from "../opencode/OpencodeService";
-import type { OpencodeServiceError } from "../errors/opencode";
+} from "../opencode-service/OpencodeService";
+import type { OpencodeServiceError } from "../opencode-service/errors";
 import { Log, type Logger } from "../logger";
 
 /**

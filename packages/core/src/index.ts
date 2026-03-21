@@ -66,4 +66,4 @@ export type { LinearServiceError } from "./errors/linear";
 export { getConfigPath, getStateRootPath } from "./paths";
 
 // OpenCode service wrapper (consumed by server)
-export { OpencodeService } from "./opencode/OpencodeService";
+export { OpencodeService } from "./opencode-service/OpencodeService";

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { Result } from "better-result";
-import type { OpencodeService } from "../opencode/OpencodeService";
+import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { LinearService } from "../linear/LinearService";
 import type { SessionRepository } from "./SessionRepository";
 import type { Logger } from "../logger";

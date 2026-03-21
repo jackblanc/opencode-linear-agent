@@ -2,7 +2,7 @@ import { Result } from "better-result";
 import { Log } from "./logger";
 import type { LinearService } from "./linear/LinearService";
 import type { SessionRepository } from "./session/SessionRepository";
-import type { OpencodeService } from "./opencode/OpencodeService";
+import type { OpencodeService } from "./opencode-service/OpencodeService";
 import type { WorktreeManager } from "./session/WorktreeManager";
 
 type CleanupIssueStateType = "completed" | "canceled";
