@@ -12,8 +12,8 @@
  */
 
 // Event processor
-export { LinearEventProcessor } from "./LinearEventProcessor";
-export { IssueEventHandler } from "./IssueEventHandler";
+export { LinearEventProcessor } from "./linear-event-processor/LinearEventProcessor";
+export { IssueEventHandler } from "./linear-event-processor/IssueEventHandler";
 
 // ignore knip error - used in packages/server/test/AgentSessionDispatcher.test.ts
 /** @public */

@@ -1,9 +1,9 @@
 import { Result } from "better-result";
-import { Log } from "./logger";
-import type { LinearService } from "./linear-service/LinearService";
-import type { SessionRepository } from "./session/SessionRepository";
-import type { OpencodeService } from "./opencode-service/OpencodeService";
-import type { WorktreeManager } from "./session/WorktreeManager";
+import { Log } from "../logger";
+import type { LinearService } from "../linear-service/LinearService";
+import type { SessionRepository } from "../session/SessionRepository";
+import type { OpencodeService } from "../opencode-service/OpencodeService";
+import type { WorktreeManager } from "../session/WorktreeManager";
 
 type CleanupIssueStateType = "completed" | "canceled";
 const ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS = 3;
