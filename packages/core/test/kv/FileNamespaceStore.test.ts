@@ -8,7 +8,6 @@ import { withFileLock } from "../../src/kv/file/lock";
 import { encodeKvKey } from "../../src/kv/key";
 import { writeFileAtomic } from "../../src/kv/file/atomic";
 import { FileNamespaceStore } from "../../src/kv/file/FileNamespaceStore";
-import { getStateRootPath } from "../../src/paths";
 import { createFileAgentState } from "../../src/state/root";
 
 const TEST_DIR = join(import.meta.dir, ".test-kv");
@@ -60,7 +59,7 @@ describe("FileNamespaceStore", () => {
     expect(got.value).toEqual({ value: "ok" });
   });
 
-  test("delete removes stored record", async () => {
+  test("delete makes key not found", async () => {
     const store = createStore("question");
 
     await store.put("linear-1", { value: "ok" });
@@ -68,24 +67,24 @@ describe("FileNamespaceStore", () => {
     expect(del.isOk()).toBe(true);
 
     const got = await store.get("linear-1");
-    expect(got.isOk()).toBe(true);
-    if (!got.isOk()) {
+    expect(got.isOk()).toBe(false);
+    if (got.isOk()) {
       return;
     }
 
-    expect(got.value).toBeNull();
+    expect(got.error._tag).toBe("KvNotFoundError");
   });
 
-  test("missing key returns null", async () => {
+  test("missing key returns not found", async () => {
     const store = createStore("permission");
 
     const got = await store.get("missing");
-    expect(got.isOk()).toBe(true);
-    if (!got.isOk()) {
+    expect(got.isOk()).toBe(false);
+    if (got.isOk()) {
       return;
     }
 
-    expect(got.value).toBeNull();
+    expect(got.error._tag).toBe("KvNotFoundError");
   });
 
   test("invalid json fails narrow", async () => {
@@ -272,11 +271,5 @@ describe("withFileLock", () => {
 
     expect(blocked.error._tag).toBe("KvLockError");
     await held;
-  });
-});
-
-describe("getStateRootPath", () => {
-  test("builds state root from xdg data root", () => {
-    expect(getStateRootPath()).toBe("/tmp/data/opencode-linear-agent/state");
   });
 });

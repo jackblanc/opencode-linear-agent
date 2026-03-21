@@ -1,17 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { Result } from "better-result";
 
 import {
   FileOAuthStateStore,
   FileSessionRepository,
   FileTokenStore,
-  getSessionByOpencodeSessionId,
-  setStateRootPath,
-  type PendingPermission,
-  type PendingQuestion,
   type SessionState,
 } from "../../src";
+import { createFileAgentState } from "../../src/state/root";
+import type {
+  PendingPermission,
+  PendingQuestion,
+} from "../../src/session/SessionRepository";
 import type { AuthRecord } from "../../src/storage/types";
 
 const TEST_DIR = join(import.meta.dir, ".test-state-stores");
@@ -55,6 +57,37 @@ function createSessionState(
   };
 }
 
+async function getSessionByOpencodeSessionId(
+  statePath: string,
+  opencodeSessionId: string,
+): Promise<SessionState | null> {
+  const state = createFileAgentState(statePath);
+  const index = await state.sessionByOpencode.get(opencodeSessionId);
+  if (Result.isError(index) || !index.value) {
+    return null;
+  }
+
+  const hasSession = await state.session.has(index.value.linearSessionId);
+  if (Result.isError(hasSession)) {
+    return null;
+  }
+  if (!hasSession.value) {
+    await state.sessionByOpencode.delete(opencodeSessionId);
+    return null;
+  }
+
+  const session = await state.session.get(index.value.linearSessionId);
+  if (Result.isError(session)) {
+    return null;
+  }
+  if (session.value) {
+    return session.value;
+  }
+
+  await state.sessionByOpencode.delete(opencodeSessionId);
+  return null;
+}
+
 describe("FileTokenStore", () => {
   beforeEach(async () => {
     await mkdir(TEST_STATE_ROOT, { recursive: true });
@@ -91,7 +124,7 @@ describe("FileTokenStore", () => {
     expect(await store.getAuthRecord("org-1")).not.toBeNull();
   });
 
-  test("reads access token even if refresh metadata is malformed", async () => {
+  test("rejects malformed auth record when reading access token", async () => {
     await writeJson(join(TEST_STATE_ROOT, "auth", "org-1.json"), {
       organizationId: "org-1",
       accessToken: "token-1",
@@ -101,7 +134,15 @@ describe("FileTokenStore", () => {
 
     const store = new FileTokenStore(TEST_STATE_ROOT);
 
-    expect(await store.getAccessToken("org-1")).toBe("token-1");
+    const error = await store
+      .getAccessToken("org-1")
+      .then(() => null)
+      .catch((failure: unknown) =>
+        failure instanceof Error ? failure : new Error(String(failure)),
+      );
+
+    expect(error).not.toBeNull();
+    expect(error?.message).toContain("Schema validation failed");
   });
 });
 
@@ -146,7 +187,6 @@ describe("FileOAuthStateStore", () => {
 describe("FileSessionRepository", () => {
   beforeEach(async () => {
     await mkdir(TEST_STATE_ROOT, { recursive: true });
-    setStateRootPath(TEST_STATE_ROOT);
   });
 
   afterEach(async () => {
@@ -256,7 +296,9 @@ describe("FileSessionRepository", () => {
       },
     );
 
-    expect(await getSessionByOpencodeSessionId("opencode-1")).toBeNull();
+    expect(
+      await getSessionByOpencodeSessionId(TEST_STATE_ROOT, "opencode-1"),
+    ).toBeNull();
     expect(
       await Bun.file(
         join(TEST_STATE_ROOT, "session-by-opencode", "opencode-1.json"),

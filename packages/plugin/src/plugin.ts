@@ -2,23 +2,23 @@
  * OpenCode plugin for Linear integration.
  *
  * Streams OpenCode events to Linear issues as activities.
- * Reads session state and OAuth token from shared store file.
+ * Reads session state from core-owned file namespaces.
  */
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
-import { Result } from "better-result";
 import {
-  formatStoreReadError,
-  readAccessTokenSafe,
+  getStateRootPath,
+  LinearServiceImpl,
 } from "@opencode-linear-agent/core";
-
-import { createLinearService } from "./linear";
-import { handleEvent, type Logger } from "./orchestrator";
-import { linearTools } from "./tools/index";
+import { createToolTokenProvider } from "./auth";
+import { createLinearTools } from "./tools/index";
+import { createLinearClientProvider } from "./tools/utils";
+import { OpencodeEventProcessor } from "@opencode-linear-agent/core/src/opencode-event-processor/OpencodeEventProcessor";
+import { createFileAgentState } from "@opencode-linear-agent/core/src/state/root";
 
 export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
-  const log: Logger = (message: string) => {
+  const log = (message: string) => {
     void input.client.app.log({
       body: {
         service: "linear-plugin",
@@ -28,20 +28,17 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     });
   };
 
-  const readTokenForHook = async (
-    organizationId: string,
-    hook: string,
-  ): Promise<string | null> => {
-    const tokenResult = await readAccessTokenSafe(organizationId);
-    if (Result.isError(tokenResult)) {
-      log(`${hook}: ${formatStoreReadError(tokenResult.error)}`);
-      return null;
-    }
-    return tokenResult.value;
-  };
+  const getToolToken = await createToolTokenProvider();
+  const getToolClient = createLinearClientProvider(getToolToken);
+
+  const opencodeEventProcessor = new OpencodeEventProcessor(
+    log,
+    createFileAgentState(getStateRootPath()),
+    (token) => new LinearServiceImpl(token),
+  );
 
   return {
-    tool: linearTools,
+    tool: createLinearTools(getToolClient),
 
     /**
      * Event handler for streaming OpenCode events to Linear.
@@ -50,31 +47,14 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      * using the V1 SDK types, so we cast to V2 for type accuracy.
      */
     event: async ({ event: _event }) => {
+      // THIS IS INTENTIONAL, DO NOT REMOVE IT!!!!!
       // eslint-disable-next-line no-unsafe-type-assertion
       const event = _event as unknown as Event; // Cast to V2 Event type
-      const result = await Result.tryPromise({
-        try: async () => {
-          await handleEvent(
-            event,
-            async (sessionId) => {
-              const messages = await input.client.session.messages({
-                path: { id: sessionId },
-              });
-              if (messages.error || !messages.data) {
-                return [];
-              }
-              return messages.data;
-            },
-            async (organizationId) =>
-              readTokenForHook(organizationId, "event token read failed"),
-            createLinearService,
-            log,
-          );
-        },
-        catch: (e) => (e instanceof Error ? e.message : String(e)),
-      });
-      if (Result.isError(result)) {
-        log(`event hook failed: ${result.error}`);
+
+      const result = await opencodeEventProcessor.processEvent(event);
+
+      if (result.isErr()) {
+        log(`Failed to process event [${event.type}]: ${result.error}`);
       }
     },
   };

@@ -18,12 +18,31 @@ export class FileSessionRepository implements SessionRepository {
     return createFileAgentState(this.statePath);
   }
 
-  async get(linearSessionId: string): Promise<SessionState | null> {
-    const result = await this.getState().session.get(linearSessionId);
+  private async getOptional<T>(
+    store: {
+      has(key: string): Promise<Result<boolean, KvError>>;
+      get(key: string): Promise<Result<T, KvError>>;
+    },
+    key: string,
+  ): Promise<T | null> {
+    const hasValue = await store.has(key);
+    if (Result.isError(hasValue)) {
+      throw new Error(hasValue.error.message);
+    }
+    if (!hasValue.value) {
+      return null;
+    }
+
+    const result = await store.get(key);
     if (Result.isError(result)) {
       throw new Error(result.error.message);
     }
+
     return result.value;
+  }
+
+  async get(linearSessionId: string): Promise<SessionState | null> {
+    return this.getOptional(this.getState().session, linearSessionId);
   }
 
   async save(state: SessionState): Promise<void> {
@@ -34,16 +53,25 @@ export class FileSessionRepository implements SessionRepository {
     const result = await sessionStore.withOperationLock(
       `session:${state.linearSessionId}`,
       async () => {
-        const existing = await sessionStore.get(state.linearSessionId);
-        if (Result.isError(existing)) {
-          return Result.err(existing.error);
+        const hasExisting = await sessionStore.has(state.linearSessionId);
+        if (Result.isError(hasExisting)) {
+          return Result.err(hasExisting.error);
+        }
+
+        let existingState: SessionState | null = null;
+        if (hasExisting.value) {
+          const existing = await sessionStore.get(state.linearSessionId);
+          if (Result.isError(existing)) {
+            return Result.err(existing.error);
+          }
+          existingState = existing.value;
         }
 
         const rollback = async (
           error: KvError,
         ): Promise<Result<undefined, KvError>> => {
-          const restoredSession = existing.value
-            ? await sessionStore.put(state.linearSessionId, existing.value)
+          const restoredSession = existingState
+            ? await sessionStore.put(state.linearSessionId, existingState)
             : await sessionStore.delete(state.linearSessionId);
           if (Result.isError(restoredSession)) {
             return Result.err(restoredSession.error);
@@ -56,11 +84,11 @@ export class FileSessionRepository implements SessionRepository {
             return Result.err(droppedNewIndex.error);
           }
 
-          if (existing.value) {
+          if (existingState) {
             const restoredIndex = await indexStore.put(
-              existing.value.opencodeSessionId,
+              existingState.opencodeSessionId,
               {
-                linearSessionId: existing.value.linearSessionId,
+                linearSessionId: existingState.linearSessionId,
               },
             );
             if (Result.isError(restoredIndex)) {
@@ -77,11 +105,11 @@ export class FileSessionRepository implements SessionRepository {
         }
 
         if (
-          existing.value &&
-          existing.value.opencodeSessionId !== state.opencodeSessionId
+          existingState &&
+          existingState.opencodeSessionId !== state.opencodeSessionId
         ) {
           const removed = await indexStore.delete(
-            existing.value.opencodeSessionId,
+            existingState.opencodeSessionId,
           );
           if (Result.isError(removed)) {
             return rollback(removed.error);
@@ -112,9 +140,18 @@ export class FileSessionRepository implements SessionRepository {
     const result = await sessionStore.withOperationLock(
       `session:${linearSessionId}`,
       async () => {
-        const existing = await sessionStore.get(linearSessionId);
-        if (Result.isError(existing)) {
-          return Result.err(existing.error);
+        const hasExisting = await sessionStore.has(linearSessionId);
+        if (Result.isError(hasExisting)) {
+          return Result.err(hasExisting.error);
+        }
+
+        let existingState: SessionState | null = null;
+        if (hasExisting.value) {
+          const existing = await sessionStore.get(linearSessionId);
+          if (Result.isError(existing)) {
+            return Result.err(existing.error);
+          }
+          existingState = existing.value;
         }
 
         const removed = await sessionStore.delete(linearSessionId);
@@ -122,9 +159,9 @@ export class FileSessionRepository implements SessionRepository {
           return Result.err(removed.error);
         }
 
-        if (existing.value) {
+        if (existingState) {
           const dropped = await indexStore.delete(
-            existing.value.opencodeSessionId,
+            existingState.opencodeSessionId,
           );
           if (Result.isError(dropped)) {
             return Result.err(dropped.error);
@@ -158,11 +195,7 @@ export class FileSessionRepository implements SessionRepository {
   async getPendingQuestion(
     linearSessionId: string,
   ): Promise<PendingQuestion | null> {
-    const result = await this.getState().question.get(linearSessionId);
-    if (Result.isError(result)) {
-      throw new Error(result.error.message);
-    }
-    return result.value;
+    return this.getOptional(this.getState().question, linearSessionId);
   }
 
   async savePendingQuestion(question: PendingQuestion): Promise<void> {
@@ -185,11 +218,7 @@ export class FileSessionRepository implements SessionRepository {
   async getPendingPermission(
     linearSessionId: string,
   ): Promise<PendingPermission | null> {
-    const result = await this.getState().permission.get(linearSessionId);
-    if (Result.isError(result)) {
-      throw new Error(result.error.message);
-    }
-    return result.value;
+    return this.getOptional(this.getState().permission, linearSessionId);
   }
 
   async savePendingPermission(permission: PendingPermission): Promise<void> {
@@ -212,11 +241,7 @@ export class FileSessionRepository implements SessionRepository {
   async getPendingRepoSelection(
     linearSessionId: string,
   ): Promise<PendingRepoSelection | null> {
-    const result = await this.getState().repoSelection.get(linearSessionId);
-    if (Result.isError(result)) {
-      throw new Error(result.error.message);
-    }
-    return result.value;
+    return this.getOptional(this.getState().repoSelection, linearSessionId);
   }
 
   async savePendingRepoSelection(

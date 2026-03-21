@@ -1,11 +1,11 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type { QuestionOption } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import type { LinearService } from "./linear/LinearService";
 import type {
   SessionRepository,
   PendingQuestion,
   PendingPermission,
-  QuestionOption,
 } from "./session/SessionRepository";
 import { SessionManager } from "./session/SessionManager";
 import {
@@ -130,10 +130,8 @@ function matchQuestionOptionLabel(
   }
 
   for (const opt of options) {
-    for (const alias of opt.aliases) {
-      if (normalizeMatchInput(alias) === normalizedResponse) {
-        return opt.label;
-      }
+    if (normalizeMatchInput(opt.description) === normalizedResponse) {
+      return opt.label;
     }
   }
 
@@ -144,11 +142,12 @@ function matchQuestionOptionLabel(
   }
 
   for (const opt of options) {
-    for (const alias of opt.aliases) {
-      const normalizedAlias = normalizeMatchInput(alias);
-      if (normalizedResponse.startsWith(normalizedAlias)) {
-        return opt.label;
-      }
+    const normalizedDescription = normalizeMatchInput(opt.description);
+    if (
+      normalizedDescription.length > 0 &&
+      normalizedResponse.startsWith(normalizedDescription)
+    ) {
+      return opt.label;
     }
   }
 
@@ -159,11 +158,12 @@ function matchQuestionOptionLabel(
   }
 
   for (const opt of options) {
-    for (const alias of opt.aliases) {
-      const normalizedAlias = normalizeMatchInput(alias);
-      if (hasWordBoundaryMatch(userResponse, normalizedAlias)) {
-        return opt.label;
-      }
+    const normalizedDescription = normalizeMatchInput(opt.description);
+    if (
+      normalizedDescription.length > 0 &&
+      hasWordBoundaryMatch(userResponse, normalizedDescription)
+    ) {
+      return opt.label;
     }
   }
 

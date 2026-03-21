@@ -23,12 +23,17 @@ export class FileOAuthStateStore implements OAuthStateStore {
 
   async consume(state: string, now: number): Promise<boolean> {
     const store = createFileAgentState(this.statePath).oauthState;
+    const hasRecord = await store.has(state);
+    if (Result.isError(hasRecord)) {
+      throw new Error(hasRecord.error.message);
+    }
+    if (!hasRecord.value) {
+      return false;
+    }
+
     const rec = await store.get(state);
     if (Result.isError(rec)) {
       throw new Error(rec.error.message);
-    }
-    if (!rec.value) {
-      return false;
     }
     if (rec.value.expiresAt < now) {
       const del = await store.delete(state);
