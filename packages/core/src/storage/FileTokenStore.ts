@@ -1,9 +1,7 @@
 import { Result } from "better-result";
 
-import { createFileStateRoot } from "../kv/file/FileStateRoot";
 import { getStateRootPath } from "../paths";
 import { createFileAgentState } from "../state/root";
-import { authAccessTokenSchema } from "../state/schema";
 import type { AuthRecord, RefreshTokenData, TokenStore } from "./types";
 
 function isAccessTokenValid(
@@ -20,19 +18,21 @@ export class FileTokenStore implements TokenStore {
     return createFileAgentState(this.statePath).auth;
   }
 
-  private getAccessTokenStore() {
-    return createFileStateRoot(this.statePath).namespace(
-      "auth",
-      authAccessTokenSchema,
-    );
-  }
-
   async getAccessToken(organizationId: string): Promise<string | null> {
-    const record = await this.getAccessTokenStore().get(organizationId);
+    const store = this.getStore();
+    const hasRecord = await store.has(organizationId);
+    if (Result.isError(hasRecord)) {
+      throw new Error(hasRecord.error.message);
+    }
+    if (!hasRecord.value) {
+      return null;
+    }
+
+    const record = await store.get(organizationId);
     if (Result.isError(record)) {
       throw new Error(record.error.message);
     }
-    if (!record.value || !isAccessTokenValid(record.value, Date.now())) {
+    if (!isAccessTokenValid(record.value, Date.now())) {
       return null;
     }
     return record.value.accessToken;
@@ -55,7 +55,16 @@ export class FileTokenStore implements TokenStore {
   }
 
   async getAuthRecord(organizationId: string): Promise<AuthRecord | null> {
-    const result = await this.getStore().get(organizationId);
+    const store = this.getStore();
+    const hasRecord = await store.has(organizationId);
+    if (Result.isError(hasRecord)) {
+      throw new Error(hasRecord.error.message);
+    }
+    if (!hasRecord.value) {
+      return null;
+    }
+
+    const result = await store.get(organizationId);
     if (Result.isError(result)) {
       throw new Error(result.error.message);
     }

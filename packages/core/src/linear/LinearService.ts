@@ -58,6 +58,8 @@ export interface IssueRepositorySuggestion extends IssueRepositoryCandidate {
 }
 
 /**
+ * TODO: This will be renamed to LinearClient for clarity, but in a separate commit
+ *
  * Unified interface for all Linear operations.
  *
  * Wraps the Linear SDK client and returns Result types with typed errors

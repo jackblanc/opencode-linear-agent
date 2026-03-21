@@ -15,28 +15,11 @@
 export { LinearEventProcessor } from "./LinearEventProcessor";
 export { IssueEventHandler } from "./IssueEventHandler";
 
-// Pure handler functions (consumed by plugin orchestrator)
-export { processToolPart } from "./handlers/ToolHandler";
-export { processReasoningPart } from "./handlers/ReasoningHandler";
-export { processSessionIdle } from "./handlers/TextHandler";
-export { processTodoUpdated } from "./handlers/TodoHandler";
-export { processPermissionAsked } from "./handlers/PermissionHandler";
-export { processQuestionAsked } from "./handlers/QuestionHandler";
-export { processSessionError } from "./handlers/SessionErrorHandler";
-export type { SessionErrorProperties } from "./handlers/SessionErrorHandler";
-
-// Action execution (consumed by plugin orchestrator)
-export { executeActions } from "./actions/execute";
-
-// Session state (consumed by plugin orchestrator)
-export { createInitialHandlerState } from "./session/SessionState";
 // ignore knip error - used in packages/server/test/AgentSessionDispatcher.test.ts
 /** @public */
 export type { SessionState } from "./session/SessionState";
 export type {
   SessionRepository,
-  PendingQuestion,
-  PendingPermission,
   PendingRepoSelection,
   RepoSelectionOption,
 } from "./session/SessionRepository";
@@ -57,17 +40,6 @@ export { parseRepoLabel } from "./linear/label-parser";
 // Storage interfaces
 export { FileOAuthStateStore } from "./storage/FileOAuthStateStore";
 export { FileTokenStore } from "./storage/FileTokenStore";
-export {
-  formatStoreReadError,
-  getSessionByOpencodeSessionId,
-  readAccessToken,
-  readAccessTokenSafe,
-  readAnyAccessTokenSafe,
-  savePendingPermission,
-  savePendingQuestion,
-  setStateRootPath,
-} from "./storage/plugin";
-export type { LinearContext } from "./storage/plugin";
 export type { TokenStore } from "./storage/types";
 
 // OAuth handlers (consumed by server)

@@ -4,34 +4,29 @@
 
 import { LinearClient } from "@linear/sdk";
 import { Result } from "better-result";
-import {
-  formatStoreReadError,
-  readAnyAccessTokenSafe,
-} from "@opencode-linear-agent/core";
 
-let cachedClient: { token: string; client: LinearClient } | null = null;
+export type GetLinearClient = () => Promise<Result<LinearClient, string>>;
 
-export async function getClient(): Promise<Result<LinearClient, string>> {
-  const tokenResult = await readAnyAccessTokenSafe();
-  if (Result.isError(tokenResult)) {
-    return Result.err(formatStoreReadError(tokenResult.error));
-  }
-  const token = tokenResult.value;
-  if (!token) {
-    return Result.err(
-      "No Linear access token found in store. Ensure the agent server has authenticated.",
-    );
-  }
-  if (cachedClient && cachedClient.token === token) {
-    return Result.ok(cachedClient.client);
-  }
-  const client = new LinearClient({ accessToken: token });
-  cachedClient = { token, client };
-  return Result.ok(client);
-}
+export function createLinearClientProvider(
+  getToken: () => Promise<Result<string, string>>,
+): GetLinearClient {
+  let cachedClient: { token: string; client: LinearClient } | null = null;
 
-export function resetClientCacheForTest(): void {
-  cachedClient = null;
+  return async () => {
+    const tokenResult = await getToken();
+    if (Result.isError(tokenResult)) {
+      return Result.err(tokenResult.error);
+    }
+
+    const token = tokenResult.value;
+    if (cachedClient && cachedClient.token === token) {
+      return Result.ok(cachedClient.client);
+    }
+
+    const client = new LinearClient({ accessToken: token });
+    cachedClient = { token, client };
+    return Result.ok(client);
+  };
 }
 
 export function errorJson(message: string): string {
