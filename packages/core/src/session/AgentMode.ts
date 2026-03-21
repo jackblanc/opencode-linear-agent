@@ -1,4 +1,4 @@
-import type { IssueState } from "../linear/types";
+import type { IssueState } from "../linear-service/types";
 
 /**
  * Agent operating mode

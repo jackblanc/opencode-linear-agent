@@ -10,7 +10,7 @@ import type {
   TextPart,
   ToolPart,
 } from "@opencode-ai/sdk/v2";
-import type { LinearService } from "../linear/LinearService";
+import type { LinearService } from "../linear-service/LinearService";
 import type { AgentStateNamespace } from "../state/root";
 import { Result } from "better-result";
 import type { SessionState } from "../session/SessionState";

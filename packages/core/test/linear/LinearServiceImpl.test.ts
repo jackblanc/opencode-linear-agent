@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
-import { LinearServiceImpl } from "../../src/linear/LinearServiceImpl";
+import { LinearServiceImpl } from "../../src/linear-service/LinearServiceImpl";
 
 describe("LinearServiceImpl.getIssueAgentSessionIds", () => {
   test("paginates and dedupes agent session ids", async () => {

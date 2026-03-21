@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { parseRepoLabel } from "../../src/linear/label-parser";
+import { parseRepoLabel } from "../../src/linear-service/label-parser";
 
 describe("parseRepoLabel", () => {
   test("should parse simple repo label", () => {

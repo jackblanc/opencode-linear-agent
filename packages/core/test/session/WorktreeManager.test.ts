@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
-import type { LinearService } from "../../src/linear/LinearService";
+import type { LinearService } from "../../src/linear-service/LinearService";
 import type {
   PendingPermission,
   PendingQuestion,

@@ -7,7 +7,7 @@ import type {
   EntityWebhookPayloadWithIssueData,
   LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
-import type { ProcessingStage } from "../linear/types";
+import type { ProcessingStage } from "../linear-service/types";
 
 export type SupportedWebhookPayload =
   | AgentSessionEventWebhookPayload

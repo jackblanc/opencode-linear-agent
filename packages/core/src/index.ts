@@ -30,12 +30,12 @@ export { WorktreeManager } from "./session/WorktreeManager";
 export type {
   LinearService,
   IssueRepositoryCandidate,
-} from "./linear/LinearService";
-export { LinearServiceImpl } from "./linear/LinearServiceImpl";
+} from "./linear-service/LinearService";
+export { LinearServiceImpl } from "./linear-service/LinearServiceImpl";
 
 // Label parsing
-export { findRepoLabel } from "./linear/label-parser";
-export { parseRepoLabel } from "./linear/label-parser";
+export { findRepoLabel } from "./linear-service/label-parser";
+export { parseRepoLabel } from "./linear-service/label-parser";
 
 // Storage interfaces
 export { FileOAuthStateStore } from "./storage/FileOAuthStateStore";
@@ -59,8 +59,8 @@ export { Log, createFileLogSink } from "./logger";
 export type { LogSink } from "./logger";
 
 // Errors
-export { LinearForbiddenError } from "./errors/linear";
-export type { LinearServiceError } from "./errors/linear";
+export { LinearForbiddenError } from "./linear-service/errors";
+export type { LinearServiceError } from "./linear-service/errors";
 
 // Paths
 export { getConfigPath, getStateRootPath } from "./paths";

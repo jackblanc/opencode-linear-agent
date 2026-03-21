@@ -1,9 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
-import { LinearUnknownError } from "../src/errors/linear";
+import { LinearUnknownError } from "../src/linear-service/errors";
 import { OpencodeUnknownError } from "../src/opencode-service/errors";
 import { IssueEventHandler } from "../src/IssueEventHandler";
-import type { LinearService } from "../src/linear/LinearService";
+import type { LinearService } from "../src/linear-service/LinearService";
 import type { SessionRepository } from "../src/session/SessionRepository";
 import type { SessionState } from "../src/session/SessionState";
 

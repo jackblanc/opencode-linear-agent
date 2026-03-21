@@ -18,8 +18,8 @@ import type {
 } from "./types";
 import { STAGE_MESSAGES } from "./types";
 import { Log, type Logger } from "../logger";
-import type { LinearServiceError } from "../errors/linear";
-import { mapLinearError } from "../errors/linear";
+import type { LinearServiceError } from "./errors";
+import { mapLinearError } from "./errors";
 
 interface IssueCommentPage {
   nodes: Array<{ agentSessionId?: string | null }>;

@@ -1,7 +1,7 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { QuestionOption } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
-import type { LinearService } from "./linear/LinearService";
+import type { LinearService } from "./linear-service/LinearService";
 import type {
   SessionRepository,
   PendingQuestion,
