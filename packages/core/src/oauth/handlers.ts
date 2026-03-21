@@ -11,10 +11,7 @@ import type {
 import type { OAuthStateStore } from "../storage/FileOAuthStateStore";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../logger";
-import {
-  parseTokenResponse as parseTokenResponseJson,
-  type TokenResponse,
-} from "../schemas";
+import { type TokenResponse, TokenResponseSchema } from "./schema";
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -24,7 +21,14 @@ const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
  */
 async function parseTokenResponse(response: Response): Promise<TokenResponse> {
   const json: unknown = await response.json();
-  return parseTokenResponseJson(json);
+  const result = TokenResponseSchema.safeParse(json);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid token response from Linear:\n${issues}`);
+  }
+  return result.data;
 }
 
 // Access token TTL: 23 hours (Linear tokens expire after 24 hours)
