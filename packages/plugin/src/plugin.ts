@@ -2,7 +2,7 @@
  * OpenCode plugin for Linear integration.
  *
  * Streams OpenCode events to Linear issues as activities.
- * Reads session state and OAuth token from shared store file.
+ * Reads session state from core-owned file namespaces.
  */
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
@@ -11,7 +11,9 @@ import {
   getStateRootPath,
   LinearServiceImpl,
 } from "@opencode-linear-agent/core";
-import { linearTools } from "./tools/index";
+import { createToolTokenProvider } from "./auth";
+import { createLinearTools } from "./tools/index";
+import { createLinearClientProvider } from "./tools/utils";
 import { OpencodeEventProcessor } from "@opencode-linear-agent/core/src/opencode-event-processor/OpencodeEventProcessor";
 import { createFileAgentState } from "@opencode-linear-agent/core/src/state/root";
 
@@ -26,6 +28,9 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
     });
   };
 
+  const getToolToken = await createToolTokenProvider();
+  const getToolClient = createLinearClientProvider(getToolToken);
+
   const opencodeEventProcessor = new OpencodeEventProcessor(
     log,
     createFileAgentState(getStateRootPath()),
@@ -33,7 +38,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
   );
 
   return {
-    tool: linearTools,
+    tool: createLinearTools(getToolClient),
 
     /**
      * Event handler for streaming OpenCode events to Linear.
@@ -42,10 +47,15 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
      * using the V1 SDK types, so we cast to V2 for type accuracy.
      */
     event: async ({ event: _event }) => {
+      // THIS IS INTENTIONAL, DO NOT REMOVE IT!!!!!
       // eslint-disable-next-line no-unsafe-type-assertion
       const event = _event as unknown as Event; // Cast to V2 Event type
 
-      opencodeEventProcessor.processEvent(event);
+      const result = await opencodeEventProcessor.processEvent(event);
+
+      if (result.isErr()) {
+        log(`Failed to process event [${event.type}]: ${result.error}`);
+      }
     },
   };
 }

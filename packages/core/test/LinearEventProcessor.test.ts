@@ -19,14 +19,10 @@ function createPendingQuestion(): PendingQuestion {
           {
             label: "Ship now",
             description: "Merge immediately",
-            value: "Merge immediately",
-            aliases: ["Ship now", "Merge immediately"],
           },
           {
             label: "Update docs",
             description: "Docs only",
-            value: "Docs only",
-            aliases: ["Update docs", "Docs only"],
           },
         ],
       },

@@ -1,29 +1,12 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
-import { setStateRootPath } from "@opencode-linear-agent/core";
 import {
+  createLinearClientProvider,
   parseDateFilter,
   withWarnings,
   errMsg,
   errorJson,
-  getClient,
-  resetClientCacheForTest,
 } from "../../src/tools/utils";
-
-const TEST_DIR = join(import.meta.dir, "..", ".test-tools-utils");
-const TEST_STATE_ROOT = join(TEST_DIR, "state");
-
-beforeEach(async () => {
-  await mkdir(TEST_DIR, { recursive: true });
-  setStateRootPath(TEST_STATE_ROOT);
-  resetClientCacheForTest();
-});
-
-afterEach(async () => {
-  await rm(TEST_DIR, { recursive: true, force: true });
-});
 
 describe("parseDateFilter", () => {
   test("parses ISO date string", () => {
@@ -153,30 +136,47 @@ describe("errorJson", () => {
   });
 });
 
-describe("getClient", () => {
-  test("returns structured corruption error for invalid JSON store", async () => {
-    await mkdir(join(TEST_STATE_ROOT, "auth"), { recursive: true });
-    const path = join(TEST_STATE_ROOT, "auth", "org-1.json");
-    await Bun.write(path, "{broken");
+describe("createLinearClientProvider", () => {
+  test("passes provider errors through", async () => {
+    const getClient = createLinearClientProvider(async () =>
+      Result.err("token failed"),
+    );
 
     const result = await getClient();
 
     expect(Result.isError(result)).toBe(true);
     if (Result.isError(result)) {
-      expect(result.error).toContain("Linear state read failed");
-      expect(result.error).toContain(path);
-      expect(result.error).toContain("Recovery:");
+      expect(result.error).toBe("token failed");
     }
   });
 
-  test("returns missing token error for empty store", async () => {
-    await mkdir(join(TEST_STATE_ROOT, "auth"), { recursive: true });
+  test("reuses client when token stays same", async () => {
+    const getClient = createLinearClientProvider(async () =>
+      Result.ok("token-1"),
+    );
 
-    const result = await getClient();
+    const first = await getClient();
+    const second = await getClient();
 
-    expect(Result.isError(result)).toBe(true);
-    if (Result.isError(result)) {
-      expect(result.error).toContain("No Linear access token found");
+    expect(Result.isOk(first)).toBe(true);
+    expect(Result.isOk(second)).toBe(true);
+    if (Result.isOk(first) && Result.isOk(second)) {
+      expect(first.value).toBe(second.value);
+    }
+  });
+
+  test("creates new client when token changes", async () => {
+    let token = "token-1";
+    const getClient = createLinearClientProvider(async () => Result.ok(token));
+
+    const first = await getClient();
+    token = "token-2";
+    const second = await getClient();
+
+    expect(Result.isOk(first)).toBe(true);
+    expect(Result.isOk(second)).toBe(true);
+    if (Result.isOk(first) && Result.isOk(second)) {
+      expect(first.value).not.toBe(second.value);
     }
   });
 });

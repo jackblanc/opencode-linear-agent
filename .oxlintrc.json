@@ -41,7 +41,12 @@
     "typescript/no-non-null-assertion": "error",
     "typescript/promise-function-async": "error",
     "typescript/await-thenable": "error",
-    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      {
+        "considerDefaultExhaustiveForUnions": true
+      }
+    ],
     "typescript/no-misused-promises": "error",
     "typescript/only-throw-error": "error",
     "typescript/prefer-nullish-coalescing": "error",

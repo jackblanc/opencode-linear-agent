@@ -85,18 +85,18 @@ export class OpencodeEventProcessor {
               linearSessionState,
               linearClient,
             );
+          default:
+            return Result.ok();
         }
-
-        return Result.ok(undefined);
       }.bind(this),
     );
   }
 
-  private processEventMessagePartUpdated(
+  private async processEventMessagePartUpdated(
     event: EventMessagePartUpdated,
     sessionState: SessionState,
     linearClient: LinearService,
-  ) {
+  ): Promise<Result<void, Error>> {
     switch (event.properties.part.type) {
       case "tool":
         return this.processToolPart(
@@ -116,16 +116,16 @@ export class OpencodeEventProcessor {
           sessionState,
           linearClient,
         );
+      default:
+        return Result.ok();
     }
-
-    return Result.ok();
   }
 
-  private processToolPart(
+  private async processToolPart(
     part: ToolPart,
     sessionState: SessionState,
     linearClient: LinearService,
-  ) {
+  ): Promise<Result<void, Error>> {
     if (part.state.status === "running") {
       return linearClient.postActivity(
         sessionState.linearSessionId,
@@ -176,11 +176,11 @@ export class OpencodeEventProcessor {
     return Result.ok();
   }
 
-  private processReasoningPart(
+  private async processReasoningPart(
     part: ReasoningPart,
     sessionState: SessionState,
     linearClient: LinearService,
-  ) {
+  ): Promise<Result<void, Error>> {
     return linearClient.postActivity(
       sessionState.linearSessionId,
       { type: "thought", body: part.text.trim() },
@@ -188,11 +188,11 @@ export class OpencodeEventProcessor {
     );
   }
 
-  private processTextPart(
+  private async processTextPart(
     part: TextPart,
     sessionState: SessionState,
     linearClient: LinearService,
-  ) {
+  ): Promise<Result<void, Error>> {
     return linearClient.postActivity(
       sessionState.linearSessionId,
       { type: "response", body: part.text.trim() },
@@ -200,13 +200,12 @@ export class OpencodeEventProcessor {
     );
   }
 
-  private processEventSessionError(
+  private async processEventSessionError(
     event: EventSessionError,
     sessionState: SessionState,
     linearClient: LinearService,
-  ) {
+  ): Promise<Result<void, Error>> {
     const body = `**Error: ${event.properties.error?.name ?? "UndefinedError"}**
-${event.properties.error?.data.message ?? "No error message provided"}
 \`\`\`json\n${JSON.stringify(event.properties.error?.data ?? {})}\n\`\`\``.trim();
 
     return linearClient.postActivity(
@@ -219,26 +218,30 @@ ${event.properties.error?.data.message ?? "No error message provided"}
     );
   }
 
-  private processEventQuestionAsked(
+  private async processEventQuestionAsked(
     event: EventQuestionAsked,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Result<void, Error> {
-    // Save to pending state
-    this.agentState.question.put(sessionState.linearSessionId, {
-      requestId: event.properties.id,
-      opencodeSessionId: sessionState.opencodeSessionId,
-      linearSessionId: sessionState.linearSessionId,
-      workdir: sessionState.workdir ?? "",
-      issueId: sessionState.issueId,
-      questions: event.properties.questions,
-      answers: [],
-      createdAt: Date.now(),
-    });
+  ): Promise<Result<void, Error>> {
+    const saved = await this.agentState.question.put(
+      sessionState.linearSessionId,
+      {
+        requestId: event.properties.id,
+        opencodeSessionId: sessionState.opencodeSessionId,
+        linearSessionId: sessionState.linearSessionId,
+        workdir: sessionState.workdir ?? "",
+        issueId: sessionState.issueId,
+        questions: event.properties.questions,
+        answers: event.properties.questions.map(() => null),
+        createdAt: Date.now(),
+      },
+    );
+    if (Result.isError(saved)) {
+      return Result.err(new Error(saved.error.message));
+    }
 
-    event.properties.questions.map((questionInfo) => {
-      // Post to Linear
-      linearClient.postElicitation(
+    for (const questionInfo of event.properties.questions) {
+      const posted = await linearClient.postElicitation(
         sessionState.linearSessionId,
         questionInfo.question,
         "select",
@@ -249,9 +252,12 @@ ${event.properties.error?.data.message ?? "No error message provided"}
           })),
         },
       );
-    });
+      if (Result.isError(posted)) {
+        return posted;
+      }
+    }
 
-    return Result.ok(); // TODO map actual result
+    return Result.ok();
   }
 
   private async processEventPermissionAsked(
@@ -293,11 +299,11 @@ ${event.properties.error?.data.message ?? "No error message provided"}
     );
   }
 
-  private processEventTodoUpdated(
+  private async processEventTodoUpdated(
     event: EventTodoUpdated,
     sessionState: SessionState,
     linearClient: LinearService,
-  ) {
+  ): Promise<Result<void, Error>> {
     return linearClient.updatePlan(
       sessionState.linearSessionId,
       event.properties.todos.map((opencodeTodo) => ({

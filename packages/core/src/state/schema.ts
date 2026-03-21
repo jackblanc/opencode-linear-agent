@@ -1,10 +1,10 @@
+import type { QuestionInfo } from "@opencode-ai/sdk/v2";
 import { z } from "zod";
 
 import type {
   PendingPermission,
   PendingQuestion,
   PendingRepoSelection,
-  QuestionOption,
   RepoSelectionOption,
 } from "../session/SessionRepository";
 import type { SessionState } from "../session/SessionState";
@@ -20,14 +20,12 @@ export interface OAuthStateRecord {
   expiresAt: number;
 }
 
-const questionOptionSchema: z.ZodType<QuestionOption> = z.object({
+const questionOptionSchema = z.object({
   label: z.string(),
   description: z.string(),
-  value: z.string(),
-  aliases: z.array(z.string()),
 });
 
-const questionInfoSchema = z.object({
+const questionInfoSchema: z.ZodType<QuestionInfo> = z.object({
   question: z.string(),
   header: z.string(),
   options: z.array(questionOptionSchema),
