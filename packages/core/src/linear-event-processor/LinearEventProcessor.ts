@@ -13,11 +13,11 @@ import {
   type SessionWorktreeAction,
   type WorktreeIssue,
 } from "../session/WorktreeManager";
-import { PromptBuilder, type PromptContext } from "../session/PromptBuilder";
 import { type AgentMode, determineAgentMode } from "../session/AgentMode";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import { base64Encode } from "../utils/encode";
 import { Log, type Logger } from "../utils/logger";
+import { buildCreatedPrompt } from "../session/PromptBuilder";
 
 /**
  * Configuration for the LinearEventProcessor
@@ -184,7 +184,6 @@ function matchQuestionOptionLabel(
 export class LinearEventProcessor {
   private readonly sessionManager: SessionManager;
   private readonly worktreeManager: WorktreeManager;
-  private readonly promptBuilder: PromptBuilder;
   private readonly config: LinearEventProcessorConfig;
 
   constructor(
@@ -205,7 +204,6 @@ export class LinearEventProcessor {
       sessions,
       repoDirectory,
     );
-    this.promptBuilder = new PromptBuilder();
   }
 
   /**
@@ -332,7 +330,6 @@ export class LinearEventProcessor {
     sessionLog.info("OpenCode session ready", {
       workdir,
       isNewSession: session.isNewSession,
-      hasPreviousContext: !!session.previousContext,
     });
 
     // Set external link to OpenCode UI
@@ -351,7 +348,6 @@ export class LinearEventProcessor {
           linearSessionId,
           workdir,
           mode,
-          session.previousContext,
           sessionLog,
         );
         return;
@@ -362,7 +358,6 @@ export class LinearEventProcessor {
           linearSessionId,
           workdir,
           mode,
-          session.previousContext,
           sessionLog,
         );
         return;
@@ -428,7 +423,6 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
@@ -455,24 +449,11 @@ export class LinearEventProcessor {
       return;
     }
 
-    // Build prompt context for plugin integration
-    const promptCtx: PromptContext = {
-      linearSessionId,
-      organizationId: this.config.organizationId,
-      workdir,
-    };
-
-    // Build prompt with frontmatter + mode-specific instructions + issue context + previous context
-    const prompt = this.promptBuilder.buildCreatedPrompt(
-      event,
-      promptCtx,
-      mode,
-      previousContext,
-    );
+    // Build prompt with mode-specific instructions + issue context + previous context
+    const prompt = buildCreatedPrompt(event, mode);
 
     log.info("Starting new session with prompt", {
       promptLength: prompt.length,
-      hasPreviousContext: !!previousContext,
       mode,
     });
 
@@ -496,7 +477,6 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
     // Check for stop signal
@@ -538,7 +518,6 @@ export class LinearEventProcessor {
         linearSessionId,
         workdir,
         mode,
-        previousContext,
         log,
       );
       return;
@@ -561,31 +540,13 @@ export class LinearEventProcessor {
         linearSessionId,
         workdir,
         mode,
-        previousContext,
         log,
       );
       return;
     }
 
-    // Build prompt context for plugin integration
-    const promptCtx: PromptContext = {
-      linearSessionId,
-      organizationId: this.config.organizationId,
-      workdir,
-    };
-
-    // No pending question or permission - treat as a normal follow-up prompt
-    const prompt = this.promptBuilder.buildFollowUpPrompt(
-      event,
-      userResponse,
-      promptCtx,
-      mode,
-      previousContext,
-    );
-
     log.info("Sending follow-up prompt", {
-      promptLength: prompt.length,
-      hasPreviousContext: !!previousContext,
+      promptLength: userResponse.length,
       mode,
     });
 
@@ -594,7 +555,7 @@ export class LinearEventProcessor {
       opencodeSessionId,
       linearSessionId,
       workdir,
-      prompt,
+      userResponse,
       mode,
       log,
     );
@@ -616,7 +577,6 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
     log.info("Received response while question pending", {
@@ -641,9 +601,7 @@ export class LinearEventProcessor {
         linearSessionId,
         workdir,
         mode,
-        previousContext,
         log,
-        pending.issueId,
       );
       return;
     }
@@ -678,9 +636,7 @@ export class LinearEventProcessor {
         linearSessionId,
         workdir,
         mode,
-        previousContext,
         log,
-        pending.issueId,
       );
       return;
     }
@@ -752,7 +708,6 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    previousContext: string | undefined,
     log: Logger,
   ): Promise<void> {
     log.info("Received response while permission pending", {
@@ -786,9 +741,7 @@ export class LinearEventProcessor {
         linearSessionId,
         workdir,
         mode,
-        previousContext,
         log,
-        pending.issueId,
       );
       return;
     }
@@ -885,27 +838,10 @@ export class LinearEventProcessor {
     linearSessionId: string,
     workdir: string,
     mode: AgentMode,
-    previousContext: string | undefined,
     log: Logger,
-    issueId = "unknown",
   ): Promise<void> {
-    const promptCtx: PromptContext = {
-      linearSessionId,
-      organizationId: this.config.organizationId,
-      workdir,
-    };
-
-    const prompt = this.promptBuilder.buildFollowUpWithoutEvent(
-      userResponse,
-      issueId,
-      promptCtx,
-      mode,
-      previousContext,
-    );
-
     log.info("Sending follow-up prompt", {
-      promptLength: prompt.length,
-      hasPreviousContext: !!previousContext,
+      promptLength: userResponse.length,
       mode,
     });
 
@@ -914,7 +850,7 @@ export class LinearEventProcessor {
       opencodeSessionId,
       linearSessionId,
       workdir,
-      prompt,
+      userResponse,
       mode,
       log,
     );

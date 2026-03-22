@@ -31,7 +31,7 @@ interface OpencodeSessionResult {
 /**
  * Message with parts for context retrieval
  */
-export interface MessageWithParts {
+interface MessageWithParts {
   info: Message;
   parts: Part[];
 }

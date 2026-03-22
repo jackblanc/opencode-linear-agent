@@ -1,10 +1,7 @@
 import { Result } from "better-result";
 import type { SessionRepository } from "./SessionRepository";
 import type { SessionState } from "./SessionState";
-import type {
-  OpencodeService,
-  MessageWithParts,
-} from "../opencode-service/OpencodeService";
+import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { OpencodeServiceError } from "../opencode-service/errors";
 import { Log, type Logger } from "../utils/logger";
 
@@ -14,58 +11,8 @@ import { Log, type Logger } from "../utils/logger";
 interface SessionResult {
   opencodeSessionId: string;
   existingState: SessionState | null;
-  /** True if we had to create a new OpenCode session (old one was lost) */
+  /** True if we created a new OpenCode session */
   isNewSession: boolean;
-  /** Previous message history if session was recreated */
-  previousContext?: string;
-}
-
-/**
- * Format message history into a context string for injection into new sessions
- */
-function formatMessageHistory(messages: MessageWithParts[]): string {
-  if (messages.length === 0) {
-    return "";
-  }
-
-  const formattedMessages: string[] = [];
-
-  for (const message of messages) {
-    const role = message.info.role === "user" ? "User" : "Assistant";
-    const parts: string[] = [];
-
-    for (const part of message.parts) {
-      if (part.type === "text") {
-        if (part.text && !part.synthetic && !part.ignored) {
-          parts.push(part.text);
-        }
-      } else if (part.type === "tool") {
-        if (part.state.status === "completed") {
-          parts.push(`[Used tool: ${part.tool}]`);
-        }
-      }
-    }
-
-    if (parts.length > 0) {
-      formattedMessages.push(`**${role}:**\n${parts.join("\n")}`);
-    }
-  }
-
-  if (formattedMessages.length === 0) {
-    return "";
-  }
-
-  return `## Previous Session Context
-
-The following is a summary of our previous conversation. Please continue from where we left off.
-
----
-
-${formattedMessages.join("\n\n---\n\n")}
-
----
-
-`;
 }
 
 /**
@@ -118,38 +65,12 @@ export class SessionManager {
         });
       }
 
-      // Session not found or error - log and try to fetch previous context
-      sessionLog.warn("Failed to resume session, fetching previous context", {
+      sessionLog.error("Failed to resume existing session", {
         error: sessionResult.error.message,
         errorType: sessionResult.error._tag,
       });
 
-      const previousContext = await this.fetchPreviousContext(
-        existingState.opencodeSessionId,
-        workdir,
-        sessionLog,
-      );
-
-      const sessionRepoDirectory = existingState.repoDirectory ?? repoDirectory;
-      if (!existingState.repoDirectory) {
-        log.warn("Existing session state missing repo directory", {
-          fallbackRepoDirectory: repoDirectory,
-          workdir,
-          branchName,
-        });
-      }
-
-      return this.createNewSession(
-        linearSessionId,
-        organizationId,
-        issueId,
-        sessionRepoDirectory,
-        branchName,
-        workdir,
-        existingState,
-        previousContext,
-        sessionLog,
-      );
+      return Result.err(sessionResult.error);
     }
 
     // No existing state - create fresh session
@@ -161,40 +82,8 @@ export class SessionManager {
       branchName,
       workdir,
       null,
-      undefined,
       log,
     );
-  }
-
-  /**
-   * Fetch previous message context from an old OpenCode session
-   */
-  private async fetchPreviousContext(
-    opencodeSessionId: string,
-    workdir: string,
-    log: Logger,
-  ): Promise<string | undefined> {
-    const messagesResult = await this.opencode.getMessages(
-      opencodeSessionId,
-      workdir,
-    );
-
-    if (Result.isError(messagesResult)) {
-      log.warn("Failed to fetch previous messages", {
-        error: messagesResult.error.message,
-        errorType: messagesResult.error._tag,
-      });
-      return undefined;
-    }
-
-    if (messagesResult.value.length > 0) {
-      log.info("Fetched previous messages for context", {
-        messageCount: messagesResult.value.length,
-      });
-      return formatMessageHistory(messagesResult.value);
-    }
-
-    return undefined;
   }
 
   /**
@@ -208,12 +97,9 @@ export class SessionManager {
     branchName: string,
     workdir: string,
     existingState: SessionState | null,
-    previousContext: string | undefined,
     log: Logger,
   ): Promise<Result<SessionResult, OpencodeServiceError>> {
-    log.info("Creating new OpenCode session", {
-      hasPreviousContext: !!previousContext,
-    });
+    log.info("Creating new OpenCode session");
 
     // Don't pass a title - OpenCode auto-generates titles based on the first prompt
     const sessionResult = await this.opencode.createSession(workdir);
@@ -255,7 +141,6 @@ export class SessionManager {
       opencodeSessionId: sessionId,
       existingState,
       isNewSession: true,
-      previousContext,
     });
   }
 

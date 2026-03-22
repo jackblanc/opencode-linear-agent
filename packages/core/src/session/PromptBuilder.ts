@@ -1,22 +1,6 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { AgentMode } from "./AgentMode";
 
-export interface PromptContext {
-  linearSessionId: string;
-  organizationId: string;
-  workdir: string;
-}
-
-// TODO (CODE-244): Remove this, replace with a more robust system for tracking session and issue context across prompt interactions
-function getFrontmatter(issueId: string, ctx: PromptContext): string {
-  return `---
-linear_session: ${ctx.linearSessionId}
-linear_issue: ${issueId}
-linear_organization: ${ctx.organizationId}
-workdir: ${ctx.workdir}
----`;
-}
-
 function getSystemDirective(mode: AgentMode): string {
   if (mode === "plan") {
     return `<system-reminder>
@@ -40,67 +24,16 @@ function readPromptContext(event: AgentSessionEventWebhookPayload): string {
     return event.promptContext;
   }
 
-  return "Please help with this issue.";
+  return `Please help with this issue: ${event.agentSession.issueId}`;
 }
 
 function joinSections(parts: string[]): string {
   return parts.join("\n\n");
 }
 
-export class PromptBuilder {
-  buildCreatedPrompt(
-    event: AgentSessionEventWebhookPayload,
-    ctx: PromptContext,
-    mode: AgentMode,
-    previousContext?: string,
-  ): string {
-    const issueId = event.agentSession.issue?.identifier ?? "unknown";
-
-    return joinSections([
-      getFrontmatter(issueId, ctx),
-      getSystemDirective(mode),
-      ...(previousContext ? [previousContext] : []),
-      readPromptContext(event),
-    ]);
-  }
-
-  buildFollowUpPrompt(
-    event: AgentSessionEventWebhookPayload,
-    userResponse: string,
-    ctx: PromptContext,
-    mode: AgentMode,
-    previousContext?: string,
-  ): string {
-    if (!previousContext) {
-      return userResponse;
-    }
-
-    const issueId = event.agentSession.issue?.identifier ?? "unknown";
-
-    return joinSections([
-      getFrontmatter(issueId, ctx),
-      getSystemDirective(mode),
-      previousContext,
-      userResponse,
-    ]);
-  }
-
-  buildFollowUpWithoutEvent(
-    userResponse: string,
-    issueId: string,
-    ctx: PromptContext,
-    mode: AgentMode,
-    previousContext?: string,
-  ): string {
-    if (!previousContext) {
-      return userResponse;
-    }
-
-    return joinSections([
-      getFrontmatter(issueId, ctx),
-      getSystemDirective(mode),
-      previousContext,
-      userResponse,
-    ]);
-  }
+export function buildCreatedPrompt(
+  event: AgentSessionEventWebhookPayload,
+  mode: AgentMode,
+): string {
+  return joinSections([getSystemDirective(mode), readPromptContext(event)]);
 }

@@ -86,13 +86,6 @@ function createProcessorHarness(pendingQuestion: PendingQuestion | null): {
     deletePendingPermission: async (): Promise<void> => undefined,
   };
 
-  processor.promptBuilder = {
-    buildFollowUpPrompt: (_event: unknown, userResponse: string): string =>
-      `FOLLOWUP:${userResponse}`,
-    buildFollowUpWithoutEvent: (userResponse: string): string =>
-      `FOLLOWUP:${userResponse}`,
-  };
-
   processor.config = { organizationId: "org-1" };
 
   processor.executePrompt = async (
@@ -130,7 +123,6 @@ describe("LinearEventProcessor prompted handling", () => {
       "linear-1",
       "/tmp/workdir",
       "build",
-      undefined,
       createLog(),
     ]);
 
@@ -148,13 +140,12 @@ describe("LinearEventProcessor prompted handling", () => {
       "linear-1",
       "/tmp/workdir",
       "build",
-      undefined,
       createLog(),
     ]);
 
     expect(harness.replies).toEqual([]);
     expect(harness.deleted).toEqual(["linear-1"]);
-    expect(harness.prompts[0]).toContain("FOLLOWUP:Do something else");
+    expect(harness.prompts[0]).toBe("Do something else");
   });
 
   test("prompted flow reads top-level activity body before nested fields", async () => {
@@ -172,11 +163,10 @@ describe("LinearEventProcessor prompted handling", () => {
       "linear-1",
       "/tmp/workdir",
       "build",
-      undefined,
       createLog(),
     ]);
 
-    expect(harness.prompts[0]).toContain("FOLLOWUP:Top level body");
+    expect(harness.prompts[0]).toBe("Top level body");
   });
 
   test("uses Linear issue branch name when webhook omits it", async () => {
