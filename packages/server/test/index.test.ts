@@ -50,47 +50,7 @@ afterEach(async () => {
   );
 });
 
-describe("server logging", () => {
-  test("log dir resolves from XDG data dir", async () => {
-    const dataHome = await createDataHome();
-    const result = await run(
-      [
-        'import { getLogDir } from "./packages/server/src/config";',
-        "process.stdout.write(JSON.stringify({ logDir: getLogDir() }));",
-      ].join("\n"),
-      dataHome,
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
-    expect(JSON.parse(result.stdout)).toEqual({
-      logDir: join(dataHome, "opencode-linear-agent", "log"),
-    });
-  });
-
-  test("per-start log filenames are unique within same second", async () => {
-    const dataHome = await createDataHome();
-    const result = await run(
-      [
-        'import { createServerLogPath } from "./packages/server/src/config";',
-        'const now = new Date("2026-03-06T21:57:17.187Z");',
-        "process.stdout.write(JSON.stringify({",
-        "  a: createServerLogPath(now, 111),",
-        "  b: createServerLogPath(now, 222),",
-        "}));",
-      ].join("\n"),
-      dataHome,
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
-
-    const out: { a: string; b: string } = JSON.parse(result.stdout);
-    expect(out.a).not.toBe(out.b);
-    expect(out.a).toContain("server-20260306T215717.187Z-p111.log");
-    expect(out.b).toContain("server-20260306T215717.187Z-p222.log");
-  });
-
+describe("server index", () => {
   test("startup initializes logging once and creates the log sink", async () => {
     const dataHome = await createDataHome();
     const result = await run(

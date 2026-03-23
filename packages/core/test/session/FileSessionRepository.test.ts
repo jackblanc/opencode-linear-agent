@@ -3,20 +3,15 @@ import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Result } from "better-result";
 
-import {
-  FileOAuthStateStore,
-  FileSessionRepository,
-  FileTokenStore,
-  type SessionState,
-} from "../../src";
+import { FileSessionRepository } from "../../src/session/FileSessionRepository";
 import { createFileAgentState } from "../../src/state/root";
 import type {
   PendingPermission,
   PendingQuestion,
 } from "../../src/session/SessionRepository";
-import type { AuthRecord } from "../../src/storage/types";
+import type { SessionState } from "../../src/session/SessionState";
 
-const TEST_DIR = join(import.meta.dir, ".test-state-stores");
+const TEST_DIR = join(import.meta.dir, ".test-session-repository");
 const TEST_STATE_ROOT = join(TEST_DIR, "state");
 
 async function readJson(path: string): Promise<unknown> {
@@ -26,19 +21,6 @@ async function readJson(path: string): Promise<unknown> {
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await Bun.write(path, JSON.stringify(value));
-}
-
-function createAuthRecord(overrides: Partial<AuthRecord> = {}): AuthRecord {
-  return {
-    organizationId: "org-1",
-    accessToken: "token-1",
-    accessTokenExpiresAt: Date.now() + 60_000,
-    refreshToken: "refresh-1",
-    appId: "app-1",
-    installedAt: new Date().toISOString(),
-    workspaceName: "workspace-1",
-    ...overrides,
-  };
 }
 
 function createSessionState(
@@ -87,102 +69,6 @@ async function getSessionByOpencodeSessionId(
   await state.sessionByOpencode.delete(opencodeSessionId);
   return null;
 }
-
-describe("FileTokenStore", () => {
-  beforeEach(async () => {
-    await mkdir(TEST_STATE_ROOT, { recursive: true });
-  });
-
-  afterEach(async () => {
-    await rm(TEST_DIR, { recursive: true, force: true });
-  });
-
-  test("stores one auth record per org", async () => {
-    const store = new FileTokenStore(TEST_STATE_ROOT);
-    const record = createAuthRecord();
-
-    await store.putAuthRecord(record);
-
-    expect(await store.getAuthRecord("org-1")).toEqual(record);
-    expect(await store.getAccessToken("org-1")).toBe("token-1");
-    expect(await store.getRefreshTokenData("org-1")).toEqual({
-      refreshToken: "refresh-1",
-      appId: "app-1",
-      organizationId: "org-1",
-      installedAt: record.installedAt,
-      workspaceName: "workspace-1",
-    });
-  });
-
-  test("hides expired access tokens but keeps auth record", async () => {
-    const store = new FileTokenStore(TEST_STATE_ROOT);
-    await store.putAuthRecord(
-      createAuthRecord({ accessTokenExpiresAt: Date.now() - 1 }),
-    );
-
-    expect(await store.getAccessToken("org-1")).toBeNull();
-    expect(await store.getAuthRecord("org-1")).not.toBeNull();
-  });
-
-  test("rejects malformed auth record when reading access token", async () => {
-    await writeJson(join(TEST_STATE_ROOT, "auth", "org-1.json"), {
-      organizationId: "org-1",
-      accessToken: "token-1",
-      accessTokenExpiresAt: Date.now() + 60_000,
-      refreshToken: "refresh-1",
-    });
-
-    const store = new FileTokenStore(TEST_STATE_ROOT);
-
-    const error = await store
-      .getAccessToken("org-1")
-      .then(() => null)
-      .catch((failure: unknown) =>
-        failure instanceof Error ? failure : new Error(String(failure)),
-      );
-
-    expect(error).not.toBeNull();
-    expect(error?.message).toContain("Schema validation failed");
-  });
-});
-
-describe("FileOAuthStateStore", () => {
-  beforeEach(async () => {
-    await mkdir(TEST_STATE_ROOT, { recursive: true });
-  });
-
-  afterEach(async () => {
-    await rm(TEST_DIR, { recursive: true, force: true });
-  });
-
-  test("issues and consumes valid oauth state", async () => {
-    const store = new FileOAuthStateStore(TEST_STATE_ROOT);
-    const now = Date.now();
-
-    await store.issue("state-1", now, now + 60_000);
-
-    expect(await store.consume("state-1", now + 1)).toBe(true);
-    expect(
-      await Bun.file(
-        join(TEST_STATE_ROOT, "oauth-state", "state-1.json"),
-      ).exists(),
-    ).toBe(false);
-  });
-
-  test("rejects expired oauth state and deletes it", async () => {
-    const store = new FileOAuthStateStore(TEST_STATE_ROOT);
-    const now = Date.now();
-
-    await store.issue("state-1", now, now + 10);
-
-    expect(await store.consume("state-1", now + 11)).toBe(false);
-    expect(
-      await Bun.file(
-        join(TEST_STATE_ROOT, "oauth-state", "state-1.json"),
-      ).exists(),
-    ).toBe(false);
-  });
-});
 
 describe("FileSessionRepository", () => {
   beforeEach(async () => {

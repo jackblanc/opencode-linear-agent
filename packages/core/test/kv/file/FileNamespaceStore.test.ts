@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { Result } from "better-result";
 import { z } from "zod";
 
-import { withFileLock } from "../../src/kv/file/lock";
-import { encodeKvKey } from "../../src/kv/key";
-import { writeFileAtomic } from "../../src/kv/file/atomic";
-import { FileNamespaceStore } from "../../src/kv/file/FileNamespaceStore";
-import { createFileAgentState } from "../../src/state/root";
+import { withFileLock } from "../../../src/kv/file/lock";
+import { encodeKvKey } from "../../../src/kv/key";
+import { writeFileAtomic } from "../../../src/kv/file/atomic";
+import { FileNamespaceStore } from "../../../src/kv/file/FileNamespaceStore";
+import { createFileAgentState } from "../../../src/state/root";
 
 const TEST_DIR = join(import.meta.dir, ".test-kv");
 const schema = z.object({ value: z.string() });

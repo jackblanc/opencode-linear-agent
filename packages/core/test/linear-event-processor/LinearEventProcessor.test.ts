@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
-import { LinearEventProcessor } from "../src/linear-event-processor/LinearEventProcessor";
-import type { PendingQuestion } from "../src/session/SessionRepository";
+import { LinearEventProcessor } from "../../src/linear-event-processor/LinearEventProcessor";
+import type { PendingQuestion } from "../../src/session/SessionRepository";
 
 function createPendingQuestion(): PendingQuestion {
   return {

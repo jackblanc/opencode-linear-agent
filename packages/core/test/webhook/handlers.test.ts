@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
-import { handleWebhook } from "../src/webhook/handlers";
-import type { EventDispatcher } from "../src/webhook/types";
-import type { AuthRecord, TokenStore } from "../src/storage/types";
+import { handleWebhook } from "../../src/webhook/handlers";
+import type { EventDispatcher } from "../../src/webhook/types";
+import type { AuthRecord, TokenStore } from "../../src/storage/types";
 
 function createSignedRequest(secret: string, payload: unknown): Request {
   const body = JSON.stringify(payload);

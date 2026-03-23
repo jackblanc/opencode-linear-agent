@@ -5,7 +5,8 @@ void mock.module("xdg-basedir", () => ({
   xdgData: "/tmp/data",
 }));
 
-const { getConfigPath, getStateRootPath } = await import("../src/utils/paths");
+const { getConfigPath, getStateRootPath } =
+  await import("../../src/utils/paths");
 
 describe("getAppPaths", () => {
   test("builds config path from xdg config root", () => {
