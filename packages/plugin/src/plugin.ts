@@ -53,7 +53,11 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
 
       const result = await opencodeEventProcessor.processEvent(event);
 
-      if (result.isErr()) {
+      if (
+        result.isErr() &&
+        // This case should really return a TaggedError, but this code will be refactored soon
+        !result.error.message.includes("Skipping processing for event")
+      ) {
         log(`Failed to process event [${event.type}]: ${result.error}`);
       }
     },

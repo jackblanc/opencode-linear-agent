@@ -1,6 +1,7 @@
 import type {
   Event,
   EventMessagePartUpdated,
+  EventMessageUpdated,
   EventPermissionAsked,
   EventQuestionAsked,
   EventSessionError,
@@ -24,11 +25,15 @@ import {
 } from "./formatting/tool";
 
 export class OpencodeEventProcessor {
+  private readonly messageRoleMap: Map<string, "assistant" | "user">;
+
   constructor(
     private readonly log: (message: string) => void,
     private readonly agentState: AgentStateNamespace,
     private readonly linearClientProvider: (token: string) => LinearService,
-  ) {}
+  ) {
+    this.messageRoleMap = new Map();
+  }
 
   async processEvent(event: Event): Promise<Result<void, Error>> {
     return Result.gen(
@@ -49,6 +54,8 @@ export class OpencodeEventProcessor {
         );
 
         switch (event.type) {
+          case "message.updated":
+            return this.processEventMessageUpdated(event);
           case "message.part.updated":
             return this.processEventMessagePartUpdated(
               event,
@@ -90,6 +97,17 @@ export class OpencodeEventProcessor {
         }
       }.bind(this),
     );
+  }
+
+  private async processEventMessageUpdated(
+    event: EventMessageUpdated,
+  ): Promise<Result<void, Error>> {
+    // Store the role for the message ID, used to conditionally skip sending TextPart of user messages to Linear
+    this.messageRoleMap.set(
+      event.properties.info.id,
+      event.properties.info.role,
+    );
+    return Result.ok();
   }
 
   private async processEventMessagePartUpdated(
@@ -193,6 +211,10 @@ export class OpencodeEventProcessor {
     sessionState: SessionState,
     linearClient: LinearService,
   ): Promise<Result<void, Error>> {
+    // Skip if the stored role for the messageID is "user", so we don't post it back to Linear
+    const messageRole = this.messageRoleMap.get(part.messageID);
+    if (messageRole === "user") return Result.ok();
+
     return linearClient.postActivity(
       sessionState.linearSessionId,
       { type: "response", body: part.text.trim() },
@@ -327,6 +349,8 @@ export class OpencodeEventProcessor {
   ): Result<string, Error> {
     if (event.type === "message.part.updated") {
       return Result.ok(event.properties.part.sessionID);
+    } else if (event.type === "message.updated") {
+      return Result.ok(event.properties.info.sessionID);
     } else if (
       event.type === "session.idle" ||
       event.type === "question.asked" ||
@@ -345,9 +369,8 @@ export class OpencodeEventProcessor {
     }
 
     return Result.err(
-      new Error(
-        `Failed to resolve Opencode Session ID from event: ${event.type}`,
-      ),
+      // This case should really return a TaggedError, but this code will be refactored soon
+      new Error(`Skipping processing for event: ${event.type}`),
     );
   }
 }
