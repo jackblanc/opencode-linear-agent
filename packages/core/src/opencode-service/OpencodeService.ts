@@ -175,7 +175,7 @@ export class OpencodeService {
   }
 
   /**
-   * Send a prompt to a session
+   * Send a prompt to a session and returns immediately
    *
    * @param sessionID - The session to prompt
    * @param directory - Working directory for the session
@@ -188,7 +188,7 @@ export class OpencodeService {
     parts: Array<{ type: "text"; text: string }>,
     agent?: string,
   ): Promise<Result<void, OpencodeServiceError>> {
-    const result = await this.client.session.prompt({
+    const result = await this.client.session.promptAsync({
       sessionID,
       directory,
       parts,
