@@ -7,14 +7,14 @@ import { z } from "zod";
 import { withFileLock } from "../../../src/kv/file/lock";
 import { encodeKvKey } from "../../../src/kv/key";
 import { writeFileAtomic } from "../../../src/kv/file/atomic";
-import { FileNamespaceStore } from "../../../src/kv/file/FileNamespaceStore";
+import { FileKeyValueStore } from "../../../src/kv/file/FileKeyValueStore";
 import { createFileAgentState } from "../../../src/state/root";
 
 const TEST_DIR = join(import.meta.dir, ".test-kv");
 const schema = z.object({ value: z.string() });
 
-function createStore(namespace: string): FileNamespaceStore<{ value: string }> {
-  return new FileNamespaceStore(namespace, TEST_DIR, schema);
+function createStore(namespace: string): FileKeyValueStore<{ value: string }> {
+  return new FileKeyValueStore(namespace, TEST_DIR, schema);
 }
 
 beforeEach(async () => {
@@ -43,7 +43,7 @@ describe("KV key encoding", () => {
   });
 });
 
-describe("FileNamespaceStore", () => {
+describe("FileKeyValueStore", () => {
   test("put/get roundtrip", async () => {
     const store = createStore("session");
 

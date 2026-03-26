@@ -1,12 +1,12 @@
 import type { z } from "zod";
 
-import { FileNamespaceStore } from "./FileNamespaceStore";
+import { FileKeyValueStore } from "./FileKeyValueStore";
 
 class FileStateRoot {
   constructor(readonly path: string) {}
 
-  namespace<T>(name: string, schema: z.ZodType<T>): FileNamespaceStore<T> {
-    return new FileNamespaceStore(name, this.path, schema);
+  namespace<T>(name: string, schema: z.ZodType<T>): FileKeyValueStore<T> {
+    return new FileKeyValueStore(name, this.path, schema);
   }
 }
 

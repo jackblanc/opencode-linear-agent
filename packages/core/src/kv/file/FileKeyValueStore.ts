@@ -7,7 +7,7 @@ import type { z } from "zod";
 import { KvIoError, KvNotFoundError, type KvError } from "../errors";
 import { parseJson, stringifyJson } from "../json";
 import { encodeKvKey } from "../key";
-import type { KvNamespaceStore } from "../types";
+import type { KeyValueStore } from "../types";
 import { writeFileAtomic } from "./atomic";
 import { withFileLock } from "./lock";
 
@@ -19,11 +19,11 @@ function operationKey(namespace: string, operation: string): string {
   return `op:${namespace}:${operation}`;
 }
 
-export class FileNamespaceStore<T> implements KvNamespaceStore<T> {
-  readonly namespacePath: string;
+export class FileKeyValueStore<T> implements KeyValueStore<T> {
+  private readonly namespacePath: string;
 
   constructor(
-    readonly namespace: string,
+    private readonly namespace: string,
     private readonly rootPath: string,
     private readonly schema: z.ZodType<T>,
   ) {

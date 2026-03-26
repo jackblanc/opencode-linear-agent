@@ -5,21 +5,16 @@ pre-commit:
   parallel: true
   jobs:
     - name: typecheck
-      glob: "*.{ts,tsx}"
       run: bun run typecheck
 
     - name: lint
-      glob: "*.{ts,tsx,js,jsx}"
       run: bun run lint:check
 
     - name: format
-      glob: "*.{ts,tsx,js,jsx,json,md,yml,yaml}"
       run: bun run format:check
 
     - name: knip
-      glob: "*.{ts,tsx}"
       run: bun run knip
 
     - name: test
-      glob: "*.{ts,tsx,js,jsx,json}"
       run: bun test

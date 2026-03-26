@@ -1,5 +1,5 @@
 import { createFileStateRoot } from "../kv/file/FileStateRoot";
-import type { KvNamespaceStore } from "../kv/types";
+import type { KeyValueStore } from "../kv/types";
 import {
   authRecordSchema,
   oauthStateRecordSchema,
@@ -30,13 +30,13 @@ const STATE_NAMESPACES = {
 } as const;
 
 export interface AgentStateNamespace {
-  auth: KvNamespaceStore<AuthRecord>;
-  oauthState: KvNamespaceStore<OAuthStateRecord>;
-  session: KvNamespaceStore<SessionState>;
-  sessionByOpencode: KvNamespaceStore<SessionByOpencodeRecord>;
-  question: KvNamespaceStore<PendingQuestion>;
-  permission: KvNamespaceStore<PendingPermission>;
-  repoSelection: KvNamespaceStore<PendingRepoSelection>;
+  auth: KeyValueStore<AuthRecord>;
+  oauthState: KeyValueStore<OAuthStateRecord>;
+  session: KeyValueStore<SessionState>;
+  sessionByOpencode: KeyValueStore<SessionByOpencodeRecord>;
+  question: KeyValueStore<PendingQuestion>;
+  permission: KeyValueStore<PendingPermission>;
+  repoSelection: KeyValueStore<PendingRepoSelection>;
 }
 
 export function createFileAgentState(path: string): AgentStateNamespace {
