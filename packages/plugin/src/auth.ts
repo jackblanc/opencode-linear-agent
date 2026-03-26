@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { Result } from "better-result";
 import {
-  FileTokenStore,
+  type AuthRepository,
   getConfigPath,
   getStateRootPath,
 } from "@opencode-linear-agent/core";
@@ -123,11 +123,9 @@ async function inferOrganizationIdFromAuthState(): Promise<
   return Result.ok(organizationId);
 }
 
-export async function createToolTokenProvider(): Promise<
-  () => Promise<Result<string, string>>
-> {
-  const tokenStore = new FileTokenStore();
-
+export async function createToolTokenProvider(
+  authRepository: AuthRepository,
+): Promise<() => Promise<Result<string, string>>> {
   return async () => {
     const configuredOrganizationId = await readConfiguredOrganizationId();
     const organizationId = Result.isError(configuredOrganizationId)
@@ -140,7 +138,7 @@ export async function createToolTokenProvider(): Promise<
       return Result.err(organizationId.error);
     }
 
-    const token = await tokenStore.getAccessToken(organizationId.value);
+    const token = await authRepository.getAccessToken(organizationId.value);
     if (!token) {
       return Result.err(
         `No valid Linear access token found for organization ${organizationId.value}.`,

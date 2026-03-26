@@ -35,9 +35,8 @@ export { findRepoLabel } from "./linear-service/label-parser";
 export { parseRepoLabel } from "./linear-service/label-parser";
 
 // Storage interfaces
-export { FileOAuthStateStore } from "./storage/FileOAuthStateStore";
-export { FileTokenStore } from "./storage/FileTokenStore";
-export type { TokenStore } from "./storage/types";
+export { OAuthStateRepository } from "./state/OAuthStateRepository";
+export { AuthRepository } from "./state/AuthRepository";
 
 // OAuth handlers (consumed by server)
 export type { OAuthConfig } from "./oauth/types";

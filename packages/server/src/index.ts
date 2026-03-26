@@ -28,13 +28,12 @@ import {
   LinearService,
   OpencodeService,
   Log,
-  FileOAuthStateStore,
-  FileTokenStore,
+  AuthRepository,
   FileSessionRepository,
   type EventDispatcher,
   type LogSink,
   type OAuthConfig,
-  type TokenStore,
+  OAuthStateRepository,
 } from "@opencode-linear-agent/core";
 import {
   createServerLogPath,
@@ -44,6 +43,7 @@ import {
 } from "./config";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
 import { mkdir } from "node:fs/promises";
+import { createFileAgentState } from "@opencode-linear-agent/core/src/state/root";
 
 export interface ServerLoggingRuntime {
   log: ReturnType<typeof Log.create>;
@@ -159,7 +159,7 @@ function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
  */
 function createDirectDispatcher(
   config: Config,
-  tokenStore: TokenStore,
+  authRepository: AuthRepository,
   sessionRepository: FileSessionRepository,
 ): EventDispatcher {
   const opencodeClient = createOpencodeClient({
@@ -177,7 +177,7 @@ function createDirectDispatcher(
 
       if (event.type === "Issue") {
         // Get or refresh access token
-        let accessToken = await tokenStore.getAccessToken(organizationId);
+        let accessToken = await authRepository.getAccessToken(organizationId);
         if (!accessToken) {
           const oauthConfig: OAuthConfig = {
             clientId: config.linearClientId,
@@ -185,7 +185,7 @@ function createDirectDispatcher(
           };
           accessToken = await refreshAccessToken(
             oauthConfig,
-            tokenStore,
+            authRepository,
             organizationId,
           );
         }
@@ -209,7 +209,7 @@ function createDirectDispatcher(
       }
 
       // Get or refresh access token
-      let accessToken = await tokenStore.getAccessToken(organizationId);
+      let accessToken = await authRepository.getAccessToken(organizationId);
       if (!accessToken) {
         Log.create({ service: "dispatcher" })
           .tag("organizationId", organizationId)
@@ -222,7 +222,7 @@ function createDirectDispatcher(
 
         accessToken = await refreshAccessToken(
           oauthConfig,
-          tokenStore,
+          authRepository,
           organizationId,
         );
       }
@@ -249,8 +249,8 @@ function createDirectDispatcher(
  */
 function createServer(
   config: Config,
-  oauthStateStore: FileOAuthStateStore,
-  tokenStore: TokenStore,
+  oauthStateRepository: OAuthStateRepository,
+  authRepository: AuthRepository,
   dispatcher: EventDispatcher,
 ): ReturnType<typeof Bun.serve> {
   const oauthConfig: OAuthConfig = {
@@ -287,7 +287,7 @@ function createServer(
       // OAuth authorize - start the OAuth flow
       if (pathname === "/api/oauth/authorize") {
         return respond(
-          await handleAuthorize(request, oauthConfig, oauthStateStore),
+          await handleAuthorize(request, oauthConfig, oauthStateRepository),
         );
       }
 
@@ -297,8 +297,8 @@ function createServer(
           await handleCallback(
             request,
             oauthConfig,
-            oauthStateStore,
-            tokenStore,
+            oauthStateRepository,
+            authRepository,
           ),
         );
       }
@@ -318,7 +318,7 @@ function createServer(
           await handleWebhook(
             request,
             config.linearWebhookSecret,
-            tokenStore,
+            authRepository,
             dispatcher,
             undefined, // statusPosterFactory
             config.linearOrganizationId, // only accept webhooks from this org
@@ -336,7 +336,10 @@ function createServer(
  * always has a valid token in the shared store.
  * Token TTL is 23 hours; we refresh every 20 hours for a 3-hour buffer.
  */
-function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
+function startTokenRefreshTimer(
+  config: Config,
+  authRepository: AuthRepository,
+): void {
   const log = Log.create({ service: "token-refresh" });
   const organizationId = config.linearOrganizationId;
   if (!organizationId) {
@@ -354,7 +357,7 @@ function startTokenRefreshTimer(config: Config, tokenStore: TokenStore): void {
 
   const refresh = async (): Promise<void> => {
     try {
-      await refreshAccessToken(oauthConfig, tokenStore, organizationId);
+      await refreshAccessToken(oauthConfig, authRepository, organizationId);
       log.info("Proactive token refresh succeeded");
     } catch (error) {
       log.error("Proactive token refresh failed", {
@@ -386,24 +389,31 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     projectsPath: config.projectsPath,
   });
 
-  const oauthStateStore = new FileOAuthStateStore();
-  const tokenStore = new FileTokenStore();
+  const agentState = createFileAgentState();
+
+  const oauthStateRepository = new OAuthStateRepository(agentState);
+  const authRepository = new AuthRepository(agentState);
   const sessionRepository = new FileSessionRepository();
 
   log.info("Storage initialized", { logPath });
 
   // Start proactive token refresh so the plugin always has a valid token
-  startTokenRefreshTimer(config, tokenStore);
+  startTokenRefreshTimer(config, authRepository);
 
   // Create event dispatcher
   const dispatcher = createDirectDispatcher(
     config,
-    tokenStore,
+    authRepository,
     sessionRepository,
   );
 
   // Start server
-  const server = createServer(config, oauthStateStore, tokenStore, dispatcher);
+  const server = createServer(
+    config,
+    oauthStateRepository,
+    authRepository,
+    dispatcher,
+  );
   registerShutdownHandlers(server, logging);
 
   const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;

@@ -2,7 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
 import { handleWebhook } from "../../src/webhook/handlers";
 import type { EventDispatcher } from "../../src/webhook/types";
-import type { AuthRecord, TokenStore } from "../../src/storage/types";
+import { AuthRepository } from "../../src";
+import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
 function createSignedRequest(secret: string, payload: unknown): Request {
   const body = JSON.stringify(payload);
@@ -18,8 +19,8 @@ function createSignedRequest(secret: string, payload: unknown): Request {
   });
 }
 
-function createTokenStore(accessToken: string | null): TokenStore {
-  const auth: AuthRecord | null =
+function createTokenStore(accessToken: string | null): AuthRepository {
+  const auth =
     accessToken === null
       ? null
       : {
@@ -32,12 +33,13 @@ function createTokenStore(accessToken: string | null): TokenStore {
           workspaceName: "workspace",
         };
 
-  return {
-    getAccessToken: async () => accessToken,
-    getRefreshTokenData: async () => null,
-    getAuthRecord: async () => auth,
-    putAuthRecord: async () => undefined,
-  };
+  const state = createInMemoryAgentState();
+  const store = new AuthRepository(state);
+  if (auth) {
+    void store.putAuthRecord(auth);
+  }
+
+  return store;
 }
 
 describe("handleWebhook", () => {

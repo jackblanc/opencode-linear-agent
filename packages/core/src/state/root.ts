@@ -9,6 +9,7 @@ import {
   sessionStateSchema,
   type OAuthStateRecord,
   type SessionByOpencodeRecord,
+  type AuthRecord,
 } from "./schema";
 import type {
   PendingPermission,
@@ -16,8 +17,8 @@ import type {
   PendingRepoSelection,
 } from "../session/SessionRepository";
 import type { SessionState } from "../session/SessionState";
-import type { AuthRecord } from "../storage/types";
 import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
+import { getStateRootPath } from "../utils/paths";
 
 export interface AgentStateNamespace {
   auth: KeyValueStore<AuthRecord>;
@@ -29,7 +30,9 @@ export interface AgentStateNamespace {
   repoSelection: KeyValueStore<PendingRepoSelection>;
 }
 
-export function createFileAgentState(path: string): AgentStateNamespace {
+export function createFileAgentState(
+  path: string = getStateRootPath(),
+): AgentStateNamespace {
   return {
     auth: new FileKeyValueStore("auth", path, authRecordSchema),
     oauthState: new FileKeyValueStore(

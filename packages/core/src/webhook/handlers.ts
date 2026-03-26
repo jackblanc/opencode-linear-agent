@@ -4,10 +4,10 @@
 
 import { LinearWebhookClient } from "@linear/sdk/webhooks";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import type { TokenStore } from "../storage/types";
 import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
 import { isAgentSessionEventWebhook, isSupportedWebhook } from "./types";
 import { Log } from "../utils/logger";
+import type { AuthRepository } from "../state/AuthRepository";
 
 /**
  * Handle Linear webhook - verify signature and dispatch for processing
@@ -20,14 +20,14 @@ import { Log } from "../utils/logger";
  *
  * @param request - The incoming HTTP request
  * @param webhookSecret - Linear webhook secret for signature verification
- * @param tokenStore - Store for OAuth tokens
+ * @param authRepository - Store for OAuth tokens
  * @param dispatcher - Event dispatcher (queue for Cloudflare, direct for local)
  * @param statusPosterFactory - Factory to create Linear status poster from access token
  */
 export async function handleWebhook(
   request: Request,
   webhookSecret: string,
-  tokenStore: TokenStore,
+  authRepository: AuthRepository,
   dispatcher: EventDispatcher,
   statusPosterFactory?: LinearStatusPosterFactory,
   allowedOrganizationId?: string,
@@ -119,7 +119,7 @@ export async function handleWebhook(
 
   // Post immediate status activity to Linear
   if (isAgentSessionEventWebhook(webhookPayload) && statusPosterFactory) {
-    const accessToken = await tokenStore.getAccessToken(organizationId);
+    const accessToken = await authRepository.getAccessToken(organizationId);
     if (accessToken) {
       const statusPoster = statusPosterFactory(accessToken);
       await statusPoster.postStageActivity(sessionId, "webhook_received");

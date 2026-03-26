@@ -3,15 +3,11 @@
  */
 
 import { LinearClient } from "@linear/sdk";
-import type {
-  AuthRecord,
-  RefreshTokenData,
-  TokenStore,
-} from "../storage/types";
-import type { OAuthStateStore } from "../storage/FileOAuthStateStore";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
 import { Log } from "../utils/logger";
 import { type TokenResponse, TokenResponseSchema } from "./schema";
+import type { OAuthStateRepository } from "../state/OAuthStateRepository";
+import type { AuthRepository } from "../state/AuthRepository";
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -155,14 +151,14 @@ function generateSuccessHtml(result: OAuthCallbackResult): string {
 export async function handleAuthorize(
   request: Request,
   config: OAuthConfig,
-  oauthStateStore: OAuthStateStore,
+  oauthStateRepository: OAuthStateRepository,
 ): Promise<Response> {
   // Generate CSRF state token
   const state = crypto.randomUUID();
 
   // Store state in KV with 5-minute TTL for CSRF protection
   const now = Date.now();
-  await oauthStateStore.issue(state, now, now + 5 * 60 * 1000);
+  await oauthStateRepository.issue(state, now, now + 5 * 60 * 1000);
 
   // Generate callback URL from config baseUrl or request origin
   const baseUrl = config.baseUrl ?? new URL(request.url).origin;
@@ -191,8 +187,8 @@ export async function handleAuthorize(
 export async function handleCallback(
   request: Request,
   config: OAuthConfig,
-  oauthStateStore: OAuthStateStore,
-  tokenStore: TokenStore,
+  oauthStateRepository: OAuthStateRepository,
+  authRepository: AuthRepository,
 ): Promise<Response> {
   const url = new URL(request.url);
 
@@ -218,7 +214,7 @@ export async function handleCallback(
   }
 
   // Validate state
-  const validState = await oauthStateStore.consume(state, Date.now());
+  const validState = await oauthStateRepository.consume(state, Date.now());
   if (!validState) {
     return new Response("Invalid or expired state parameter", { status: 403 });
   }
@@ -242,23 +238,16 @@ export async function handleCallback(
       viewerId: viewer.id,
     });
 
-    const refreshData: RefreshTokenData = {
-      refreshToken: tokenData.refreshToken,
-      appId: viewer.id,
-      organizationId: organization.id,
-      installedAt: new Date().toISOString(),
-      workspaceName: organization.name,
-    };
-    const auth: AuthRecord = {
+    const auth = {
       organizationId: organization.id,
       accessToken: tokenData.accessToken,
       accessTokenExpiresAt: Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000,
-      refreshToken: refreshData.refreshToken,
-      appId: refreshData.appId,
-      installedAt: refreshData.installedAt,
-      workspaceName: refreshData.workspaceName,
+      refreshToken: tokenData.refreshToken,
+      appId: viewer.id,
+      installedAt: new Date().toISOString(),
+      workspaceName: organization.name,
     };
-    await tokenStore.putAuthRecord(auth);
+    await authRepository.putAuthRecord(auth);
 
     log.info("Tokens stored successfully");
 
@@ -292,7 +281,7 @@ export async function handleCallback(
  */
 export async function refreshAccessToken(
   config: OAuthConfig,
-  tokenStore: TokenStore,
+  authRepository: AuthRepository,
   organizationId: string,
 ): Promise<string> {
   const log = Log.create({ service: "oauth" }).tag(
@@ -302,7 +291,7 @@ export async function refreshAccessToken(
 
   log.info("Refreshing access token");
 
-  const refreshData = await tokenStore.getRefreshTokenData(organizationId);
+  const refreshData = await authRepository.getRefreshTokenData(organizationId);
   if (!refreshData) {
     throw new Error(
       `No refresh token found for organization ${organizationId}. Please re-authorize.`,
@@ -333,14 +322,14 @@ export async function refreshAccessToken(
 
   const data = await parseTokenResponse(response);
 
-  const auth = await tokenStore.getAuthRecord(organizationId);
+  const auth = await authRepository.getAuthRecord(organizationId);
   if (!auth) {
     throw new Error(
       `No auth record found for organization ${organizationId}. Please re-authorize.`,
     );
   }
 
-  await tokenStore.putAuthRecord({
+  await authRepository.putAuthRecord({
     ...auth,
     accessToken: data.access_token,
     accessTokenExpiresAt: Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000,

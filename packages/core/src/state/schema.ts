@@ -8,7 +8,6 @@ import type {
   RepoSelectionOption,
 } from "../session/SessionRepository";
 import type { SessionState } from "../session/SessionState";
-import type { AuthRecord } from "../storage/types";
 
 export interface SessionByOpencodeRecord {
   linearSessionId: string;
@@ -54,7 +53,7 @@ export const sessionByOpencodeRecordSchema: z.ZodType<SessionByOpencodeRecord> =
     linearSessionId: z.string(),
   });
 
-const authRecordObjectSchema = z.object({
+export const authRecordSchema = z.object({
   organizationId: z.string(),
   accessToken: z.string(),
   accessTokenExpiresAt: z.number(),
@@ -64,7 +63,7 @@ const authRecordObjectSchema = z.object({
   workspaceName: z.string().optional(),
 });
 
-export const authRecordSchema: z.ZodType<AuthRecord> = authRecordObjectSchema;
+export type AuthRecord = z.infer<typeof authRecordSchema>;
 
 export const oauthStateRecordSchema: z.ZodType<OAuthStateRecord> = z.object({
   state: z.string(),
