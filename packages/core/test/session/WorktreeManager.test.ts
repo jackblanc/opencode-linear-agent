@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
-import type { LinearService } from "../../src/linear-service/LinearService";
+import type { LinearService } from "../../src";
 import type {
   PendingPermission,
   PendingQuestion,
@@ -11,6 +11,7 @@ import type {
 import type { SessionState } from "../../src/session/SessionState";
 import { WorktreeManager } from "../../src/session/WorktreeManager";
 import type { Logger } from "../../src/utils/logger";
+import { TestLinearService } from "../linear-service/TestLinearService";
 
 function createLogger(): Logger {
   const logger: Logger = {
@@ -25,29 +26,7 @@ function createLogger(): Logger {
 }
 
 function createLinearService(): LinearService {
-  return {
-    postActivity: async () => Result.ok(undefined),
-    postStageActivity: async () => Result.ok(undefined),
-    postError: async () => Result.ok(undefined),
-    postElicitation: async () => Result.ok(undefined),
-    setExternalLink: async () => Result.ok(undefined),
-    updatePlan: async () => Result.ok(undefined),
-    getIssue: async () =>
-      Result.ok({
-        id: "issue-1",
-        identifier: "CODE-1",
-        title: "x",
-        url: "https://linear.app",
-      }),
-    getIssueLabels: async () => Result.ok([]),
-    getIssueAttachments: async () => Result.ok([]),
-    getIssueRepositorySuggestions: async () => Result.ok([]),
-    setIssueRepoLabel: async () => Result.ok(undefined),
-    getIssueAgentSessionIds: async () => Result.ok([]),
-    moveIssueToInProgress: async () => Result.ok(undefined),
-    getIssueState: async () =>
-      Result.ok({ id: "state-1", name: "Started", type: "started" }),
-  };
+  return new TestLinearService();
 }
 
 function createRepository(): SessionRepository {

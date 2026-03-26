@@ -7,10 +7,7 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
-import {
-  getStateRootPath,
-  LinearServiceImpl,
-} from "@opencode-linear-agent/core";
+import { getStateRootPath, LinearService } from "@opencode-linear-agent/core";
 import { createToolTokenProvider } from "./auth";
 import { createLinearTools } from "./tools/index";
 import { createLinearClientProvider } from "./tools/utils";
@@ -34,7 +31,7 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
   const opencodeEventProcessor = new OpencodeEventProcessor(
     log,
     createFileAgentState(getStateRootPath()),
-    (token) => new LinearServiceImpl(token),
+    (token) => new LinearService(token),
   );
 
   return {

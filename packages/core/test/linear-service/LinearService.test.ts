@@ -1,11 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
-import { LinearServiceImpl } from "../../src/linear-service/LinearServiceImpl";
+import { LinearService } from "../../src/linear-service/LinearService";
 
-describe("LinearServiceImpl.getIssueAgentSessionIds", () => {
+describe("LinearService.getIssueAgentSessionIds", () => {
   test("paginates and dedupes agent session ids", async () => {
     const calls: Array<string | undefined> = [];
-    const svc = new LinearServiceImpl("token");
+    const svc = new LinearService("token");
 
     type Page = {
       nodes: Array<{ agentSessionId?: string | null }>;
@@ -79,7 +79,7 @@ describe("LinearServiceImpl.getIssueAgentSessionIds", () => {
   });
 });
 
-describe("LinearServiceImpl.moveIssueToInProgress", () => {
+describe("LinearService.moveIssueToInProgress", () => {
   const skippedTypes = [
     "started",
     "completed",
@@ -90,7 +90,7 @@ describe("LinearServiceImpl.moveIssueToInProgress", () => {
 
   test("moves unstarted issues to first started state", async () => {
     const updates: Array<{ stateId: string }> = [];
-    const svc = new LinearServiceImpl("token");
+    const svc = new LinearService("token");
 
     const fakeClient = {
       issue: async (): Promise<{
@@ -131,7 +131,7 @@ describe("LinearServiceImpl.moveIssueToInProgress", () => {
     test(`does not move issues in '${type}' category`, async () => {
       const updates: Array<{ stateId: string }> = [];
       const stateCalls: Array<string> = [];
-      const svc = new LinearServiceImpl("token");
+      const svc = new LinearService("token");
 
       const fakeClient = {
         issue: async (): Promise<{
@@ -177,7 +177,7 @@ describe("LinearServiceImpl.moveIssueToInProgress", () => {
   test("does not move issues with unknown category", async () => {
     const updates: Array<{ stateId: string }> = [];
     const stateCalls: Array<string> = [];
-    const svc = new LinearServiceImpl("token");
+    const svc = new LinearService("token");
 
     const fakeClient = {
       issue: async (): Promise<{
@@ -220,7 +220,7 @@ describe("LinearServiceImpl.moveIssueToInProgress", () => {
   });
 
   test("preserves unknown state types in getIssueState", async () => {
-    const svc = new LinearServiceImpl("token");
+    const svc = new LinearService("token");
 
     const fakeClient = {
       issue: async (): Promise<{

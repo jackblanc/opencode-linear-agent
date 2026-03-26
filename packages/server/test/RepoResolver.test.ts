@@ -3,28 +3,15 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Result } from "better-result";
 import type { LinearService } from "@opencode-linear-agent/core";
+import { TestLinearService } from "../../core/test/linear-service/TestLinearService";
 import { resolveRepoPath } from "../src/RepoResolver";
 
 const TEST_DIR = join(import.meta.dir, ".test-repo-resolver");
 
 function createLinear(labels: string[]): LinearService {
-  return {
-    postActivity: async () => Result.ok(undefined),
-    postStageActivity: async () => Result.ok(undefined),
-    postError: async () => Result.ok(undefined),
-    postElicitation: async () => Result.ok(undefined),
-    setExternalLink: async () => Result.ok(undefined),
-    updatePlan: async () => Result.ok(undefined),
-    getIssue: async () =>
-      Result.ok({
-        id: "issue-1",
-        identifier: "CODE-1",
-        title: "t",
-        url: "https://linear.app",
-      }),
+  return new TestLinearService({
     getIssueLabels: async () =>
       Result.ok(labels.map((name, i) => ({ id: `label-${i}`, name }))),
-    getIssueAttachments: async () => Result.ok([]),
     getIssueRepositorySuggestions: async (
       _issueId,
       _agentSessionId,
@@ -38,12 +25,7 @@ function createLinear(labels: string[]): LinearService {
           }))
           .toReversed(),
       ),
-    setIssueRepoLabel: async () => Result.ok(undefined),
-    getIssueAgentSessionIds: async () => Result.ok([]),
-    moveIssueToInProgress: async () => Result.ok(undefined),
-    getIssueState: async () =>
-      Result.ok({ id: "state-1", name: "Todo", type: "unstarted" }),
-  };
+  });
 }
 
 describe("resolveRepoPath", () => {

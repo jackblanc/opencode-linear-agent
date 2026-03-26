@@ -6,31 +6,14 @@ import { IssueEventHandler } from "../../src/linear-event-processor/IssueEventHa
 import type { LinearService } from "../../src/linear-service/LinearService";
 import type { SessionRepository } from "../../src/session/SessionRepository";
 import type { SessionState } from "../../src/session/SessionState";
+import { TestLinearService } from "../linear-service/TestLinearService";
 
 function createLinear(ids: string[]): LinearService {
-  return {
-    postActivity: async () => Result.ok(undefined),
-    postStageActivity: async () => Result.ok(undefined),
-    postError: async () => Result.ok(undefined),
-    postElicitation: async () => Result.ok(undefined),
-    setExternalLink: async () => Result.ok(undefined),
-    updatePlan: async () => Result.ok(undefined),
-    getIssue: async () =>
-      Result.ok({
-        id: "issue-1",
-        identifier: "CODE-1",
-        title: "x",
-        url: "https://linear.app",
-      }),
-    getIssueLabels: async () => Result.ok([]),
-    getIssueAttachments: async () => Result.ok([]),
-    getIssueRepositorySuggestions: async () => Result.ok([]),
-    setIssueRepoLabel: async () => Result.ok(undefined),
+  return new TestLinearService({
     getIssueAgentSessionIds: async () => Result.ok(ids),
-    moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>
       Result.ok({ id: "s1", name: "Done", type: "completed" }),
-  };
+  });
 }
 
 function createRepo(state: SessionState | null): SessionRepository {
@@ -231,8 +214,7 @@ describe("IssueEventHandler", () => {
     const lookups: string[] = [];
     const cleanups: string[] = [];
 
-    const linear: LinearService = {
-      ...createLinear(["session-1"]),
+    const linear = new TestLinearService({
       getIssueAgentSessionIds: async () => {
         lookups.push("call");
         if (lookups.length < 2) {
@@ -240,7 +222,7 @@ describe("IssueEventHandler", () => {
         }
         return Result.ok(["session-1"]);
       },
-    };
+    });
 
     const handler = new IssueEventHandler(
       linear,

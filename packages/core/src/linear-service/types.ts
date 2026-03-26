@@ -1,4 +1,24 @@
 /**
+ * Agent-to-human signals for elicitation activities
+ *
+ * Per Linear docs, these are the only valid signals an agent can send:
+ * - auth: Waiting for user to authenticate/link account
+ * - select: Waiting for user to select from options
+ *
+ * Note: "stop" and "continue" are human-to-agent signals only
+ */
+export type ElicitationSignal = "auth" | "select";
+
+export interface IssueRepositoryCandidate {
+  hostname: string;
+  repositoryFullName: string;
+}
+
+export interface IssueRepositorySuggestion extends IssueRepositoryCandidate {
+  confidence: number;
+}
+
+/**
  * Metadata for auth signal
  */
 interface AuthSignalMetadata {

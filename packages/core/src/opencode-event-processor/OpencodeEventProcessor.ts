@@ -35,7 +35,7 @@ export class OpencodeEventProcessor {
     this.messageRoleMap = new Map();
   }
 
-  async processEvent(event: Event): Promise<Result<void, Error>> {
+  async processEvent(event: Event) {
     return Result.gen(
       async function* (this: OpencodeEventProcessor) {
         const opencodeSessionId =
@@ -99,9 +99,7 @@ export class OpencodeEventProcessor {
     );
   }
 
-  private async processEventMessageUpdated(
-    event: EventMessageUpdated,
-  ): Promise<Result<void, Error>> {
+  private async processEventMessageUpdated(event: EventMessageUpdated) {
     // Store the role for the message ID, used to conditionally skip sending TextPart of user messages to Linear
     this.messageRoleMap.set(
       event.properties.info.id,
@@ -114,7 +112,7 @@ export class OpencodeEventProcessor {
     event: EventMessagePartUpdated,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     switch (event.properties.part.type) {
       case "tool":
         return this.processToolPart(
@@ -143,7 +141,7 @@ export class OpencodeEventProcessor {
     part: ToolPart,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     if (part.state.status === "running") {
       return linearClient.postActivity(
         sessionState.linearSessionId,
@@ -198,7 +196,7 @@ export class OpencodeEventProcessor {
     part: ReasoningPart,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     return linearClient.postActivity(
       sessionState.linearSessionId,
       { type: "thought", body: part.text.trim() },
@@ -210,7 +208,7 @@ export class OpencodeEventProcessor {
     part: TextPart,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     // Skip if the stored role for the messageID is "user", so we don't post it back to Linear
     const messageRole = this.messageRoleMap.get(part.messageID);
     if (messageRole === "user") return Result.ok();
@@ -226,7 +224,7 @@ export class OpencodeEventProcessor {
     event: EventSessionError,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     const body = `**Error: ${event.properties.error?.name ?? "UndefinedError"}**
 \`\`\`json\n${JSON.stringify(event.properties.error?.data ?? {})}\n\`\`\``.trim();
 
@@ -244,7 +242,7 @@ export class OpencodeEventProcessor {
     event: EventQuestionAsked,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     const saved = await this.agentState.question.put(
       sessionState.linearSessionId,
       {
@@ -286,7 +284,7 @@ export class OpencodeEventProcessor {
     event: EventPermissionAsked,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     const { id, sessionID, permission, patterns, metadata } = event.properties;
 
     const patternsList =
@@ -325,7 +323,7 @@ export class OpencodeEventProcessor {
     event: EventTodoUpdated,
     sessionState: SessionState,
     linearClient: LinearService,
-  ): Promise<Result<void, Error>> {
+  ) {
     return linearClient.updatePlan(
       sessionState.linearSessionId,
       event.properties.todos.map((opencodeTodo) => ({

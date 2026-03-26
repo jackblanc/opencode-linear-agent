@@ -12,6 +12,7 @@ import {
   type SessionRepository,
   type SessionState,
 } from "@opencode-linear-agent/core";
+import { TestLinearService } from "../../core/test/linear-service/TestLinearService";
 import { dispatchAgentSessionEvent } from "../src/AgentSessionDispatcher";
 
 const TEST_DIR = join(import.meta.dir, ".test-agent-dispatcher");
@@ -123,43 +124,39 @@ function createLinear(
     return Result.ok(undefined);
   },
 ): LinearService {
-  return {
-    postActivity: async (sessionId, content) => {
+  return new TestLinearService({
+    postActivity: async (sessionId, content, ephemeral) => {
       calls.activities.push({
         sessionId,
         body: content.body ?? "",
         type: content.type,
       });
-      return Result.ok(undefined);
+      return new TestLinearService().postActivity(
+        sessionId,
+        content,
+        ephemeral,
+      );
     },
-    postStageActivity: async () => Result.ok(undefined),
-    postError: async (_sessionId, error) => {
+    postError: async (sessionId, error) => {
       calls.errors.push(error instanceof Error ? error.message : String(error));
-      return Result.ok(undefined);
+      return new TestLinearService().postError(sessionId, error);
     },
     postElicitation: async (sessionId, body, signal, metadata) => {
       calls.elicitations.push({ sessionId, body, signal, metadata });
-      return Result.ok(undefined);
+      return new TestLinearService().postElicitation(
+        sessionId,
+        body,
+        signal,
+        metadata,
+      );
     },
-    setExternalLink: async () => Result.ok(undefined),
-    updatePlan: async () => Result.ok(undefined),
-    getIssue: async () =>
-      Result.ok({
-        id: "issue-1",
-        identifier: "CODE-1",
-        title: "t",
-        url: "https://linear.app",
-      }),
     getIssueLabels: async () =>
       Result.ok(labels.map((name, i) => ({ id: `label-${i}`, name }))),
-    getIssueAttachments: async () => Result.ok([]),
     getIssueRepositorySuggestions: async () => Result.ok(suggestions),
     setIssueRepoLabel,
-    getIssueAgentSessionIds: async () => Result.ok([]),
-    moveIssueToInProgress: async () => Result.ok(undefined),
     getIssueState: async () =>
       Result.ok({ id: "state-1", name: "Todo", type: "unstarted" }),
-  };
+  });
 }
 
 describe("dispatchAgentSessionEvent", () => {

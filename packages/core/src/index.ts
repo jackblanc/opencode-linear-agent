@@ -27,11 +27,8 @@ export { FileSessionRepository } from "./session/FileSessionRepository";
 export { WorktreeManager } from "./session/WorktreeManager";
 
 // Linear service interface and implementation
-export type {
-  LinearService,
-  IssueRepositoryCandidate,
-} from "./linear-service/LinearService";
-export { LinearServiceImpl } from "./linear-service/LinearServiceImpl";
+export type { IssueRepositoryCandidate } from "./linear-service/types";
+export { LinearService } from "./linear-service/LinearService";
 
 // Label parsing
 export { findRepoLabel } from "./linear-service/label-parser";

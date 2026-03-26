@@ -25,7 +25,7 @@ import {
   handleCallback,
   handleWebhook,
   refreshAccessToken,
-  LinearServiceImpl,
+  LinearService,
   OpencodeService,
   Log,
   FileOAuthStateStore,
@@ -190,7 +190,7 @@ function createDirectDispatcher(
           );
         }
 
-        const linear = new LinearServiceImpl(accessToken);
+        const linear = new LinearService(accessToken);
         const worktreeManager = new WorktreeManager(
           opencode,
           linear,
@@ -228,7 +228,7 @@ function createDirectDispatcher(
       }
 
       // Create Linear service (unified interface for all Linear operations)
-      const linear = new LinearServiceImpl(accessToken);
+      const linear = new LinearService(accessToken);
 
       await dispatchAgentSessionEvent(
         event,
