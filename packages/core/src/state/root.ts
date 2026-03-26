@@ -1,4 +1,3 @@
-import { createFileStateRoot } from "../kv/file/FileStateRoot";
 import type { KeyValueStore } from "../kv/types";
 import {
   authRecordSchema,
@@ -18,16 +17,7 @@ import type {
 } from "../session/SessionRepository";
 import type { SessionState } from "../session/SessionState";
 import type { AuthRecord } from "../storage/types";
-
-const STATE_NAMESPACES = {
-  auth: "auth",
-  oauthState: "oauth-state",
-  session: "session",
-  sessionByOpencode: "session-by-opencode",
-  question: "question",
-  permission: "permission",
-  repoSelection: "repo-selection",
-} as const;
+import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
 
 export interface AgentStateNamespace {
   auth: KeyValueStore<AuthRecord>;
@@ -40,26 +30,28 @@ export interface AgentStateNamespace {
 }
 
 export function createFileAgentState(path: string): AgentStateNamespace {
-  const root = createFileStateRoot(path);
-
   return {
-    auth: root.namespace(STATE_NAMESPACES.auth, authRecordSchema),
-    oauthState: root.namespace(
-      STATE_NAMESPACES.oauthState,
+    auth: new FileKeyValueStore("auth", path, authRecordSchema),
+    oauthState: new FileKeyValueStore(
+      "oauth-state",
+      path,
       oauthStateRecordSchema,
     ),
-    session: root.namespace(STATE_NAMESPACES.session, sessionStateSchema),
-    sessionByOpencode: root.namespace(
-      STATE_NAMESPACES.sessionByOpencode,
+    session: new FileKeyValueStore("session", path, sessionStateSchema),
+    sessionByOpencode: new FileKeyValueStore(
+      "session-by-opencode",
+      path,
       sessionByOpencodeRecordSchema,
     ),
-    question: root.namespace(STATE_NAMESPACES.question, pendingQuestionSchema),
-    permission: root.namespace(
-      STATE_NAMESPACES.permission,
+    question: new FileKeyValueStore("question", path, pendingQuestionSchema),
+    permission: new FileKeyValueStore(
+      "permission",
+      path,
       pendingPermissionSchema,
     ),
-    repoSelection: root.namespace(
-      STATE_NAMESPACES.repoSelection,
+    repoSelection: new FileKeyValueStore(
+      "repo-selection",
+      path,
       pendingRepoSelectionSchema,
     ),
   };
