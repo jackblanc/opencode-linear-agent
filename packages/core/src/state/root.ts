@@ -8,15 +8,13 @@ import {
   sessionByOpencodeRecordSchema,
   sessionStateSchema,
   type OAuthStateRecord,
-  type SessionByOpencodeRecord,
   type AuthRecord,
+  type SessionState,
+  type SessionByOpencodeRecord,
+  type PendingPermission,
+  type PendingQuestion,
+  type PendingRepoSelection,
 } from "./schema";
-import type {
-  PendingPermission,
-  PendingQuestion,
-  PendingRepoSelection,
-} from "../session/SessionRepository";
-import type { SessionState } from "../session/SessionState";
 import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
 import { getStateRootPath } from "../utils/paths";
 

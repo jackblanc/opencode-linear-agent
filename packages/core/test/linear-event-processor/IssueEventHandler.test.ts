@@ -4,9 +4,10 @@ import { LinearUnknownError } from "../../src/linear-service/errors";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { IssueEventHandler } from "../../src/linear-event-processor/IssueEventHandler";
 import type { LinearService } from "../../src/linear-service/LinearService";
-import type { SessionRepository } from "../../src/session/SessionRepository";
-import type { SessionState } from "../../src/session/SessionState";
+import { SessionRepository } from "../../src/state/SessionRepository";
+import type { SessionState } from "../../src/state/schema";
 import { TestLinearService } from "../linear-service/TestLinearService";
+import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
 function createLinear(ids: string[]): LinearService {
   return new TestLinearService({
@@ -16,26 +17,16 @@ function createLinear(ids: string[]): LinearService {
   });
 }
 
-function createRepo(state: SessionState | null): SessionRepository {
-  return {
-    get: async (linearSessionId) => {
-      if (!state || linearSessionId !== state.linearSessionId) {
-        return null;
-      }
-      return state;
-    },
-    save: async () => undefined,
-    delete: async () => undefined,
-    getPendingQuestion: async () => null,
-    savePendingQuestion: async () => undefined,
-    deletePendingQuestion: async () => undefined,
-    getPendingPermission: async () => null,
-    savePendingPermission: async () => undefined,
-    deletePendingPermission: async () => undefined,
-    getPendingRepoSelection: async () => null,
-    savePendingRepoSelection: async () => undefined,
-    deletePendingRepoSelection: async () => undefined,
-  };
+async function createRepo(state: SessionState | null): Promise<{
+  agentState: ReturnType<typeof createInMemoryAgentState>;
+  repository: SessionRepository;
+}> {
+  const agentState = createInMemoryAgentState();
+  const repository = new SessionRepository(agentState);
+  if (state) {
+    await repository.save(state);
+  }
+  return { agentState, repository };
 }
 
 function buildIssueEvent(stateType: string) {
@@ -65,9 +56,7 @@ describe("IssueEventHandler", () => {
 
     const aborts: Array<{ sessionID: string; directory: string }> = [];
     const cleanups: SessionState[] = [];
-    const deletions: string[] = [];
-
-    const repo = createRepo(state);
+    const { repository } = await createRepo(state);
     const opencode = {
       abortSession: async (
         sessionID: string,
@@ -90,12 +79,7 @@ describe("IssueEventHandler", () => {
     const handler = new IssueEventHandler(
       createLinear(["session-1", "session-missing"]),
       opencode,
-      {
-        ...repo,
-        delete: async (linearSessionId: string): Promise<void> => {
-          deletions.push(linearSessionId);
-        },
-      },
+      repository,
       worktree,
     );
 
@@ -105,7 +89,7 @@ describe("IssueEventHandler", () => {
       { sessionID: "opencode-1", directory: "/tmp/worktree-1" },
     ]);
     expect(cleanups).toEqual([state]);
-    expect(deletions).toEqual(["session-1"]);
+    expect(await repository.get("session-1")).toBeNull();
   });
 
   test("preserves session state when cleanup is incomplete", async () => {
@@ -120,7 +104,7 @@ describe("IssueEventHandler", () => {
       lastActivityTime: Date.now(),
     };
 
-    const deletions: string[] = [];
+    const { repository } = await createRepo(state);
 
     const handler = new IssueEventHandler(
       createLinear(["session-1"]),
@@ -128,12 +112,7 @@ describe("IssueEventHandler", () => {
         abortSession: async (): Promise<Result<void, never>> =>
           Result.ok(undefined),
       },
-      {
-        ...createRepo(state),
-        delete: async (linearSessionId: string): Promise<void> => {
-          deletions.push(linearSessionId);
-        },
-      },
+      repository,
       {
         cleanupSessionResources: async () => ({
           worktreeRemoved: true,
@@ -145,7 +124,7 @@ describe("IssueEventHandler", () => {
 
     await handler.process(buildIssueEvent("completed"));
 
-    expect(deletions).toEqual([]);
+    expect(await repository.get("session-1")).toEqual(state);
   });
 
   test("ignores issue updates outside completed/canceled", async () => {
@@ -158,7 +137,7 @@ describe("IssueEventHandler", () => {
           return Result.ok(undefined);
         },
       },
-      createRepo(null),
+      (await createRepo(null)).repository,
       {
         cleanupSessionResources: async () => ({
           worktreeRemoved: true,
@@ -182,7 +161,7 @@ describe("IssueEventHandler", () => {
           return Result.ok(undefined);
         },
       },
-      createRepo(null),
+      (await createRepo(null)).repository,
       {
         cleanupSessionResources: async () => ({
           worktreeRemoved: true,
@@ -224,16 +203,15 @@ describe("IssueEventHandler", () => {
       },
     });
 
+    const { repository } = await createRepo(state);
+
     const handler = new IssueEventHandler(
       linear,
       {
         abortSession: async (): Promise<Result<void, never>> =>
           Result.ok(undefined),
       },
-      {
-        ...createRepo(state),
-        delete: async (): Promise<void> => undefined,
-      },
+      repository,
       {
         cleanupSessionResources: async (session: SessionState) => {
           cleanups.push(session.linearSessionId);
@@ -268,19 +246,14 @@ describe("IssueEventHandler", () => {
       lastActivityTime: Date.now(),
     };
 
-    const deletions: string[] = [];
+    const { repository } = await createRepo(state);
     const handler = new IssueEventHandler(
       createLinear(["session-1"]),
       {
         abortSession: async (): Promise<Result<void, OpencodeUnknownError>> =>
           Result.err(new OpencodeUnknownError({ reason: "timeout" })),
       },
-      {
-        ...createRepo(state),
-        delete: async (linearSessionId: string): Promise<void> => {
-          deletions.push(linearSessionId);
-        },
-      },
+      repository,
       {
         cleanupSessionResources: async () => ({
           worktreeRemoved: true,
@@ -292,6 +265,6 @@ describe("IssueEventHandler", () => {
 
     await handler.process(buildIssueEvent("completed"));
 
-    expect(deletions).toEqual([]);
+    expect(await repository.get("session-1")).toEqual(state);
   });
 });

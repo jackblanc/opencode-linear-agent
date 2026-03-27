@@ -7,12 +7,13 @@ import { Result } from "better-result";
 import {
   LinearForbiddenError,
   OpencodeService,
+  SessionRepository,
   type LinearService,
   type PendingRepoSelection,
-  type SessionRepository,
   type SessionState,
 } from "@opencode-linear-agent/core";
 import { TestLinearService } from "../../core/test/linear-service/TestLinearService";
+import { createInMemoryAgentState } from "../../core/test/state/InMemoryAgentNamespace";
 import { dispatchAgentSessionEvent } from "../src/AgentSessionDispatcher";
 
 const TEST_DIR = join(import.meta.dir, ".test-agent-dispatcher");
@@ -32,8 +33,6 @@ interface LinearCallState {
 interface RepoState {
   state: SessionState | null;
   pendingSelection: PendingRepoSelection | null;
-  savedSelections: PendingRepoSelection[];
-  deletedSelections: string[];
 }
 
 function createEvent(
@@ -83,27 +82,21 @@ function createOpencode(): OpencodeService {
   );
 }
 
-function createSessionRepository(repo: RepoState): SessionRepository {
-  return {
-    get: async () => repo.state,
-    save: async () => undefined,
-    delete: async () => undefined,
-    getPendingQuestion: async () => null,
-    savePendingQuestion: async () => undefined,
-    deletePendingQuestion: async () => undefined,
-    getPendingPermission: async () => null,
-    savePendingPermission: async () => undefined,
-    deletePendingPermission: async () => undefined,
-    getPendingRepoSelection: async () => repo.pendingSelection,
-    savePendingRepoSelection: async (selection) => {
-      repo.pendingSelection = selection;
-      repo.savedSelections.push(selection);
-    },
-    deletePendingRepoSelection: async (linearSessionId) => {
-      repo.deletedSelections.push(linearSessionId);
-      repo.pendingSelection = null;
-    },
-  };
+async function createSessionRepository(repo: RepoState): Promise<{
+  repository: SessionRepository;
+}> {
+  const agentState = createInMemoryAgentState();
+  const repository = new SessionRepository(agentState);
+
+  if (repo.state) {
+    await repository.save(repo.state);
+  }
+
+  if (repo.pendingSelection) {
+    await repository.savePendingRepoSelection(repo.pendingSelection);
+  }
+
+  return { repository };
 }
 
 function createLinear(
@@ -179,16 +172,15 @@ describe("dispatchAgentSessionEvent", () => {
     const repo: RepoState = {
       state: null,
       pendingSelection: null,
-      savedSelections: [],
-      deletedSelections: [],
     };
     const processed: string[] = [];
+    const { repository } = await createSessionRepository(repo);
 
     await dispatchAgentSessionEvent(
       createEvent(),
       createLinear([], calls),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: TEST_DIR,
@@ -202,8 +194,9 @@ describe("dispatchAgentSessionEvent", () => {
     expect(calls.errors).toEqual([]);
     expect(calls.elicitations).toHaveLength(1);
     expect(calls.elicitations[0]?.signal).toBe("select");
-    expect(repo.savedSelections).toHaveLength(1);
-    expect(repo.savedSelections[0]?.options[0]?.labelValue).toBe(
+    const pendingSelection =
+      await repository.getPendingRepoSelection("session-1");
+    expect(pendingSelection?.options[0]?.labelValue).toBe(
       "repo:opencode-linear-agent",
     );
   });
@@ -218,15 +211,14 @@ describe("dispatchAgentSessionEvent", () => {
     const repo: RepoState = {
       state: null,
       pendingSelection: null,
-      savedSelections: [],
-      deletedSelections: [],
     };
+    const { repository } = await createSessionRepository(repo);
 
     await dispatchAgentSessionEvent(
       createEvent(),
       createLinear([], calls, []),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: TEST_DIR,
@@ -235,7 +227,7 @@ describe("dispatchAgentSessionEvent", () => {
 
     expect(calls.elicitations).toEqual([]);
     expect(calls.errors[0]).toContain("Missing repository label");
-    expect(repo.savedSelections).toEqual([]);
+    expect(await repository.getPendingRepoSelection("session-1")).toBeNull();
   });
 
   test("uses selected repo label and starts session as created", async () => {
@@ -260,16 +252,15 @@ describe("dispatchAgentSessionEvent", () => {
         promptContext: "<issue>saved</issue>",
         createdAt: Date.now(),
       },
-      savedSelections: [],
-      deletedSelections: [],
     };
     const processed: Array<{ action: string; repoPath: string }> = [];
+    const { repository } = await createSessionRepository(repo);
 
     await dispatchAgentSessionEvent(
       createEvent("prompted", "repo:opencode-linear-agent"),
       createLinear([], calls),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: TEST_DIR,
@@ -282,7 +273,7 @@ describe("dispatchAgentSessionEvent", () => {
     expect(calls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
     ]);
-    expect(repo.deletedSelections).toEqual(["session-1"]);
+    expect(await repository.getPendingRepoSelection("session-1")).toBeNull();
     expect(processed).toEqual([
       {
         action: "created",
@@ -313,16 +304,15 @@ describe("dispatchAgentSessionEvent", () => {
         promptContext: "<issue>saved</issue>",
         createdAt: Date.now(),
       },
-      savedSelections: [],
-      deletedSelections: [],
     };
     const processed: string[] = [];
+    const { repository } = await createSessionRepository(repo);
 
     await dispatchAgentSessionEvent(
       createEvent("prompted", "jackblanc/opencode-linear-agent"),
       createLinear([], calls),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: TEST_DIR,
@@ -360,16 +350,15 @@ describe("dispatchAgentSessionEvent", () => {
         lastActivityTime: Date.now(),
       },
       pendingSelection: null,
-      savedSelections: [],
-      deletedSelections: [],
     };
     const processed: Array<{ action: string; repoPath: string }> = [];
+    const { repository } = await createSessionRepository(repo);
 
     await dispatchAgentSessionEvent(
       createEvent("prompted", "continue"),
       createLinear([], calls),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: "/tmp/projects",
@@ -408,10 +397,9 @@ describe("dispatchAgentSessionEvent", () => {
         promptContext: "<issue>saved</issue>",
         createdAt: Date.now(),
       },
-      savedSelections: [],
-      deletedSelections: [],
     };
     const processed: string[] = [];
+    const { repository } = await createSessionRepository(repo);
 
     await dispatchAgentSessionEvent(
       createEvent("prompted", "repo:opencode-linear-agent"),
@@ -425,7 +413,7 @@ describe("dispatchAgentSessionEvent", () => {
         );
       }),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: TEST_DIR,
@@ -438,7 +426,7 @@ describe("dispatchAgentSessionEvent", () => {
     expect(calls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
     ]);
-    expect(repo.deletedSelections).toEqual(["session-1"]);
+    expect(await repository.getPendingRepoSelection("session-1")).toBeNull();
     expect(processed).toEqual([join(TEST_DIR, "opencode-linear-agent")]);
     expect(calls.errors).toEqual([]);
     expect(calls.activities).toEqual([
@@ -474,9 +462,8 @@ describe("dispatchAgentSessionEvent", () => {
         promptContext: "<issue>saved</issue>",
         createdAt: Date.now(),
       },
-      savedSelections: [],
-      deletedSelections: [],
     };
+    const { repository } = await createSessionRepository(repo);
 
     const err = await dispatchAgentSessionEvent(
       createEvent("prompted", "repo:opencode-linear-agent"),
@@ -490,7 +477,7 @@ describe("dispatchAgentSessionEvent", () => {
         );
       }),
       createOpencode(),
-      createSessionRepository(repo),
+      repository,
       {
         organizationId: "org-1",
         projectsPath: TEST_DIR,
@@ -511,8 +498,9 @@ describe("dispatchAgentSessionEvent", () => {
     expect(calls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
     ]);
-    expect(repo.pendingSelection?.issueId).toBe("issue-1");
-    expect(repo.deletedSelections).toEqual([]);
+    expect(
+      (await repository.getPendingRepoSelection("session-1"))?.issueId,
+    ).toBe("issue-1");
     expect(calls.activities).toEqual([
       {
         sessionId: "session-1",

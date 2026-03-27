@@ -4,9 +4,9 @@ import { promisify } from "node:util";
 import { Result } from "better-result";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { LinearService } from "../linear-service/LinearService";
-import type { SessionRepository } from "./SessionRepository";
+import type { SessionRepository } from "../state/SessionRepository";
 import type { Logger } from "../utils/logger";
-import type { SessionState } from "./SessionState";
+import type { SessionState } from "../state/schema";
 import { detectInstallCommand } from "../utils/package-manager";
 
 const execFileAsync = promisify(execFile);

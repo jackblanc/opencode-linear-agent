@@ -1,6 +1,6 @@
 import { Result } from "better-result";
-import type { SessionRepository } from "./SessionRepository";
-import type { SessionState } from "./SessionState";
+import type { SessionRepository } from "../state/SessionRepository";
+import type { SessionState } from "../state/schema";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { OpencodeServiceError } from "../opencode-service/errors";
 import { Log, type Logger } from "../utils/logger";

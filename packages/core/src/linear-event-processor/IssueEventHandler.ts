@@ -1,7 +1,7 @@
 import { Result } from "better-result";
 import { Log } from "../utils/logger";
 import type { LinearService } from "../linear-service/LinearService";
-import type { SessionRepository } from "../session/SessionRepository";
+import type { SessionRepository } from "../state/SessionRepository";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { WorktreeManager } from "../session/WorktreeManager";
 

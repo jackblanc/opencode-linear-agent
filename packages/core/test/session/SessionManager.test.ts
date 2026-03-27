@@ -4,54 +4,45 @@ import { Result } from "better-result";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import { SessionManager } from "../../src/session/SessionManager";
-import type {
-  PendingPermission,
-  PendingQuestion,
-  SessionRepository,
-} from "../../src/session/SessionRepository";
-import type { SessionState } from "../../src/session/SessionState";
+import { SessionRepository } from "../../src/state/SessionRepository";
+import type { SessionState } from "../../src/state/schema";
+import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
-function createRepository(state: SessionState): {
+function createSessionState(
+  overrides: Partial<SessionState> = {},
+): SessionState {
+  return {
+    linearSessionId: "linear-1",
+    opencodeSessionId: "opencode-old",
+    organizationId: "org-1",
+    issueId: "issue-1",
+    repoDirectory: "/tmp/original-repo",
+    branchName: "feature/code-1",
+    workdir: "/tmp/worktree-1",
+    lastActivityTime: Date.now(),
+    ...overrides,
+  };
+}
+
+async function createRepository(state?: SessionState): Promise<{
   repository: SessionRepository;
-  saves: SessionState[];
-} {
-  const saves: SessionState[] = [];
+}> {
+  const agentState = createInMemoryAgentState();
+  const repository = new SessionRepository(agentState);
+  if (state) {
+    await repository.save(state);
+  }
 
   return {
-    repository: {
-      get: async (): Promise<SessionState | null> => state,
-      save: async (next: SessionState): Promise<void> => {
-        saves.push(next);
-      },
-      delete: async (): Promise<void> => undefined,
-      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
-      savePendingQuestion: async (): Promise<void> => undefined,
-      deletePendingQuestion: async (): Promise<void> => undefined,
-      getPendingPermission: async (): Promise<PendingPermission | null> => null,
-      savePendingPermission: async (): Promise<void> => undefined,
-      deletePendingPermission: async (): Promise<void> => undefined,
-      getPendingRepoSelection: async (): Promise<null> => null,
-      savePendingRepoSelection: async (): Promise<void> => undefined,
-      deletePendingRepoSelection: async (): Promise<void> => undefined,
-    },
-    saves,
+    repository,
   };
 }
 
 describe("SessionManager", () => {
   test("returns resume error instead of recreating existing session", async () => {
-    const existing: SessionState = {
-      linearSessionId: "linear-1",
-      opencodeSessionId: "opencode-old",
-      organizationId: "org-1",
-      issueId: "issue-1",
-      repoDirectory: "/tmp/original-repo",
-      branchName: "feature/code-1",
-      workdir: "/tmp/worktree-1",
-      lastActivityTime: Date.now(),
-    };
+    const existing = createSessionState();
 
-    const { repository, saves } = createRepository(existing);
+    const { repository } = await createRepository(existing);
     const opencode = new OpencodeService(
       createOpencodeClient({ baseUrl: "http://localhost:4096" }),
     );
@@ -72,27 +63,12 @@ describe("SessionManager", () => {
     );
 
     expect(Result.isError(result)).toBe(true);
-    expect(saves).toHaveLength(0);
+    expect(await repository.get("linear-1")).toEqual(existing);
   });
 
   test("creates fresh session when no existing state", async () => {
-    const saves: SessionState[] = [];
-    const repository: SessionRepository = {
-      get: async (): Promise<SessionState | null> => null,
-      save: async (next: SessionState): Promise<void> => {
-        saves.push(next);
-      },
-      delete: async (): Promise<void> => undefined,
-      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
-      savePendingQuestion: async (): Promise<void> => undefined,
-      deletePendingQuestion: async (): Promise<void> => undefined,
-      getPendingPermission: async (): Promise<PendingPermission | null> => null,
-      savePendingPermission: async (): Promise<void> => undefined,
-      deletePendingPermission: async (): Promise<void> => undefined,
-      getPendingRepoSelection: async (): Promise<null> => null,
-      savePendingRepoSelection: async (): Promise<void> => undefined,
-      deletePendingRepoSelection: async (): Promise<void> => undefined,
-    };
+    const agentState = createInMemoryAgentState();
+    const repository = new SessionRepository(agentState);
     const opencode = new OpencodeService(
       createOpencodeClient({ baseUrl: "http://localhost:4096" }),
     );
@@ -116,7 +92,16 @@ describe("SessionManager", () => {
       expect(result.value.isNewSession).toBe(true);
       expect(result.value.existingState).toBeNull();
     }
-    expect(saves).toHaveLength(1);
-    expect(saves[0]?.repoDirectory).toBe("/tmp/repo");
+
+    expect(await repository.get("linear-1")).toEqual({
+      linearSessionId: "linear-1",
+      opencodeSessionId: "opencode-new",
+      organizationId: "org-1",
+      issueId: "issue-1",
+      repoDirectory: "/tmp/repo",
+      branchName: "feature/code-1",
+      workdir: "/tmp/worktree-1",
+      lastActivityTime: expect.any(Number),
+    });
   });
 });

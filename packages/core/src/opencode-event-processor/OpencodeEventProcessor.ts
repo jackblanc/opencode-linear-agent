@@ -14,7 +14,7 @@ import type {
 import type { LinearService } from "../linear-service/LinearService";
 import type { AgentStateNamespace } from "../state/root";
 import { Result } from "better-result";
-import type { SessionState } from "../session/SessionState";
+import type { SessionState } from "../state/schema";
 import { mapTodoStatus } from "./formatting/todo";
 import {
   extractToolParameter,

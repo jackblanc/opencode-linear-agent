@@ -1,22 +1,16 @@
 import { Result } from "better-result";
 
 import type { KvError } from "../kv/errors";
-import { getStateRootPath } from "../utils/paths";
-import { createFileAgentState } from "../state/root";
+import { type AgentStateNamespace } from "./root";
 import type {
   PendingPermission,
   PendingQuestion,
   PendingRepoSelection,
-  SessionRepository,
-} from "./SessionRepository";
-import type { SessionState } from "./SessionState";
+  SessionState,
+} from "./schema";
 
-export class FileSessionRepository implements SessionRepository {
-  constructor(private readonly statePath = getStateRootPath()) {}
-
-  private getState() {
-    return createFileAgentState(this.statePath);
-  }
+export class SessionRepository {
+  constructor(private readonly agentState: AgentStateNamespace) {}
 
   private async getOptional<T>(
     store: {
@@ -42,11 +36,11 @@ export class FileSessionRepository implements SessionRepository {
   }
 
   async get(linearSessionId: string): Promise<SessionState | null> {
-    return this.getOptional(this.getState().session, linearSessionId);
+    return this.getOptional(this.agentState.session, linearSessionId);
   }
 
   async save(state: SessionState): Promise<void> {
-    const root = this.getState();
+    const root = this.agentState;
     const sessionStore = root.session;
     const indexStore = root.sessionByOpencode;
 
@@ -133,7 +127,7 @@ export class FileSessionRepository implements SessionRepository {
   }
 
   async delete(linearSessionId: string): Promise<void> {
-    const root = this.getState();
+    const root = this.agentState;
     const sessionStore = root.session;
     const indexStore = root.sessionByOpencode;
 
@@ -195,11 +189,11 @@ export class FileSessionRepository implements SessionRepository {
   async getPendingQuestion(
     linearSessionId: string,
   ): Promise<PendingQuestion | null> {
-    return this.getOptional(this.getState().question, linearSessionId);
+    return this.getOptional(this.agentState.question, linearSessionId);
   }
 
   async savePendingQuestion(question: PendingQuestion): Promise<void> {
-    const result = await this.getState().question.put(
+    const result = await this.agentState.question.put(
       question.linearSessionId,
       question,
     );
@@ -209,7 +203,7 @@ export class FileSessionRepository implements SessionRepository {
   }
 
   async deletePendingQuestion(linearSessionId: string): Promise<void> {
-    const result = await this.getState().question.delete(linearSessionId);
+    const result = await this.agentState.question.delete(linearSessionId);
     if (Result.isError(result)) {
       throw new Error(result.error.message);
     }
@@ -218,11 +212,11 @@ export class FileSessionRepository implements SessionRepository {
   async getPendingPermission(
     linearSessionId: string,
   ): Promise<PendingPermission | null> {
-    return this.getOptional(this.getState().permission, linearSessionId);
+    return this.getOptional(this.agentState.permission, linearSessionId);
   }
 
   async savePendingPermission(permission: PendingPermission): Promise<void> {
-    const result = await this.getState().permission.put(
+    const result = await this.agentState.permission.put(
       permission.linearSessionId,
       permission,
     );
@@ -232,7 +226,7 @@ export class FileSessionRepository implements SessionRepository {
   }
 
   async deletePendingPermission(linearSessionId: string): Promise<void> {
-    const result = await this.getState().permission.delete(linearSessionId);
+    const result = await this.agentState.permission.delete(linearSessionId);
     if (Result.isError(result)) {
       throw new Error(result.error.message);
     }
@@ -241,13 +235,13 @@ export class FileSessionRepository implements SessionRepository {
   async getPendingRepoSelection(
     linearSessionId: string,
   ): Promise<PendingRepoSelection | null> {
-    return this.getOptional(this.getState().repoSelection, linearSessionId);
+    return this.getOptional(this.agentState.repoSelection, linearSessionId);
   }
 
   async savePendingRepoSelection(
     selection: PendingRepoSelection,
   ): Promise<void> {
-    const result = await this.getState().repoSelection.put(
+    const result = await this.agentState.repoSelection.put(
       selection.linearSessionId,
       selection,
     );
@@ -257,7 +251,7 @@ export class FileSessionRepository implements SessionRepository {
   }
 
   async deletePendingRepoSelection(linearSessionId: string): Promise<void> {
-    const result = await this.getState().repoSelection.delete(linearSessionId);
+    const result = await this.agentState.repoSelection.delete(linearSessionId);
     if (Result.isError(result)) {
       throw new Error(result.error.message);
     }

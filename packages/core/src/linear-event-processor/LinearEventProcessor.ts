@@ -2,18 +2,18 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { QuestionOption } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import type { LinearService } from "../linear-service/LinearService";
-import type {
-  SessionRepository,
-  PendingQuestion,
-  PendingPermission,
-} from "../session/SessionRepository";
+import type { SessionRepository } from "../state/SessionRepository";
+import type { PendingQuestion, PendingPermission } from "../state/schema";
 import { SessionManager } from "../session/SessionManager";
 import {
   WorktreeManager,
   type SessionWorktreeAction,
   type WorktreeIssue,
 } from "../session/WorktreeManager";
-import { type AgentMode, determineAgentMode } from "../session/AgentMode";
+import {
+  type AgentMode,
+  determineAgentMode,
+} from "../utils/determineAgentMode";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import { base64Encode } from "../utils/encode";
 import { Log, type Logger } from "../utils/logger";

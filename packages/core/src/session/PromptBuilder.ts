@@ -1,5 +1,5 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
-import type { AgentMode } from "./AgentMode";
+import type { AgentMode } from "../utils/determineAgentMode";
 
 function getSystemDirective(mode: AgentMode): string {
   if (mode === "plan") {

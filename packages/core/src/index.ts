@@ -30,20 +30,18 @@ export { OpencodeEventProcessor } from "./opencode-event-processor/OpencodeEvent
 export { OpencodeService } from "./opencode-service/OpencodeService";
 
 // Session State Module
-// ignore knip error - used in packages/server/test/AgentSessionDispatcher.test.ts
-/** @public */
-export type { SessionState } from "./session/SessionState";
-export type {
-  SessionRepository,
-  PendingRepoSelection,
-  RepoSelectionOption,
-} from "./session/SessionRepository";
-export { FileSessionRepository } from "./session/FileSessionRepository";
 export { WorktreeManager } from "./session/WorktreeManager";
 
 // Application State Module
 export { OAuthStateRepository } from "./state/OAuthStateRepository";
 export { AuthRepository } from "./state/AuthRepository";
+export { SessionRepository } from "./state/SessionRepository";
+/** @public */
+export type {
+  SessionState,
+  PendingRepoSelection,
+  RepoSelectionOption,
+} from "./state/schema";
 export { createFileAgentState } from "./state/root";
 
 // Util Module

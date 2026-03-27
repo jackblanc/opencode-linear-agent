@@ -3,15 +3,12 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import type { LinearService } from "../../src";
-import type {
-  PendingPermission,
-  PendingQuestion,
-  SessionRepository,
-} from "../../src/session/SessionRepository";
-import type { SessionState } from "../../src/session/SessionState";
+import { SessionRepository } from "../../src/state/SessionRepository";
+import type { SessionState } from "../../src/state/schema";
 import { WorktreeManager } from "../../src/session/WorktreeManager";
 import type { Logger } from "../../src/utils/logger";
 import { TestLinearService } from "../linear-service/TestLinearService";
+import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
 function createLogger(): Logger {
   const logger: Logger = {
@@ -30,20 +27,7 @@ function createLinearService(): LinearService {
 }
 
 function createRepository(): SessionRepository {
-  return {
-    get: async (): Promise<SessionState | null> => null,
-    save: async (): Promise<void> => undefined,
-    delete: async (): Promise<void> => undefined,
-    getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
-    savePendingQuestion: async (): Promise<void> => undefined,
-    deletePendingQuestion: async (): Promise<void> => undefined,
-    getPendingPermission: async (): Promise<PendingPermission | null> => null,
-    savePendingPermission: async (): Promise<void> => undefined,
-    deletePendingPermission: async (): Promise<void> => undefined,
-    getPendingRepoSelection: async (): Promise<null> => null,
-    savePendingRepoSelection: async (): Promise<void> => undefined,
-    deletePendingRepoSelection: async (): Promise<void> => undefined,
-  };
+  return new SessionRepository(createInMemoryAgentState());
 }
 
 describe("WorktreeManager.cleanupSessionResources", () => {
@@ -120,6 +104,8 @@ describe("WorktreeManager.cleanupSessionResources", () => {
 
 describe("WorktreeManager.resolveWorktree", () => {
   test("migrates legacy sessions without repoDirectory", async () => {
+    const agentState = createInMemoryAgentState();
+    const repository = new SessionRepository(agentState);
     const state: SessionState = {
       linearSessionId: "linear-1",
       opencodeSessionId: "opencode-1",
@@ -130,26 +116,7 @@ describe("WorktreeManager.resolveWorktree", () => {
       lastActivityTime: Date.now(),
     };
 
-    const deletes: string[] = [];
-    const saves: SessionState[] = [];
-    const repository: SessionRepository = {
-      get: async (): Promise<SessionState | null> => state,
-      save: async (next: SessionState): Promise<void> => {
-        saves.push(next);
-      },
-      delete: async (linearSessionId: string): Promise<void> => {
-        deletes.push(linearSessionId);
-      },
-      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
-      savePendingQuestion: async (): Promise<void> => undefined,
-      deletePendingQuestion: async (): Promise<void> => undefined,
-      getPendingPermission: async (): Promise<PendingPermission | null> => null,
-      savePendingPermission: async (): Promise<void> => undefined,
-      deletePendingPermission: async (): Promise<void> => undefined,
-      getPendingRepoSelection: async (): Promise<null> => null,
-      savePendingRepoSelection: async (): Promise<void> => undefined,
-      deletePendingRepoSelection: async (): Promise<void> => undefined,
-    };
+    await repository.save(state);
 
     const createCalls: string[] = [];
     const opencode = new OpencodeService(
@@ -191,13 +158,16 @@ describe("WorktreeManager.resolveWorktree", () => {
       branchName: "feature/code-1",
       source: "existing_session",
     });
-    expect(deletes).toHaveLength(0);
-    expect(saves).toHaveLength(1);
-    expect(saves[0]?.repoDirectory).toBe("/tmp/default");
+    expect(await repository.get("linear-1")).toEqual({
+      ...state,
+      repoDirectory: "/tmp/default",
+    });
     expect(createCalls).toHaveLength(0);
   });
 
   test("reuses existing state for retried created events", async () => {
+    const agentState = createInMemoryAgentState();
+    const repository = new SessionRepository(agentState);
     const state: SessionState = {
       linearSessionId: "linear-2",
       opencodeSessionId: "opencode-2",
@@ -210,20 +180,7 @@ describe("WorktreeManager.resolveWorktree", () => {
     };
 
     const creates: string[] = [];
-    const repository: SessionRepository = {
-      get: async (): Promise<SessionState | null> => state,
-      save: async (): Promise<void> => undefined,
-      delete: async (): Promise<void> => undefined,
-      getPendingQuestion: async (): Promise<PendingQuestion | null> => null,
-      savePendingQuestion: async (): Promise<void> => undefined,
-      deletePendingQuestion: async (): Promise<void> => undefined,
-      getPendingPermission: async (): Promise<PendingPermission | null> => null,
-      savePendingPermission: async (): Promise<void> => undefined,
-      deletePendingPermission: async (): Promise<void> => undefined,
-      getPendingRepoSelection: async (): Promise<null> => null,
-      savePendingRepoSelection: async (): Promise<void> => undefined,
-      deletePendingRepoSelection: async (): Promise<void> => undefined,
-    };
+    await repository.save(state);
 
     const opencode = new OpencodeService(
       createOpencodeClient({ baseUrl: "http://localhost:4096" }),

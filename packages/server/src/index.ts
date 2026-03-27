@@ -30,7 +30,7 @@ import {
   createFileAgentState,
   Log,
   AuthRepository,
-  FileSessionRepository,
+  SessionRepository,
   type ApplicationConfig,
   type EventDispatcher,
   type OAuthConfig,
@@ -77,7 +77,7 @@ function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
 function createDirectDispatcher(
   config: ApplicationConfig,
   authRepository: AuthRepository,
-  sessionRepository: FileSessionRepository,
+  sessionRepository: SessionRepository,
 ): EventDispatcher {
   const opencodeClient = createOpencodeClient({
     baseUrl: config.opencodeServerUrl,
@@ -310,7 +310,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 
   const oauthStateRepository = new OAuthStateRepository(agentState);
   const authRepository = new AuthRepository(agentState);
-  const sessionRepository = new FileSessionRepository();
+  const sessionRepository = new SessionRepository(agentState);
 
   log.info("Storage initialized", { logPath });
 
