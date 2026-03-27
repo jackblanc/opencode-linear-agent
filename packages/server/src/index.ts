@@ -20,7 +20,6 @@ import type {
 import {
   IssueEventHandler,
   WorktreeManager,
-  createFileLogSink,
   handleAuthorize,
   handleCallback,
   handleWebhook,
@@ -34,90 +33,11 @@ import {
   FileSessionRepository,
   type ApplicationConfig,
   type EventDispatcher,
-  type LogSink,
   type OAuthConfig,
   OAuthStateRepository,
 } from "@opencode-linear-agent/core";
-import { createServerLogPath, getLogDir } from "./config";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
-import { mkdir } from "node:fs/promises";
-
-export interface ServerLoggingRuntime {
-  log: ReturnType<typeof Log.create>;
-  logPath: string;
-  sink: LogSink;
-}
-
-let serverLoggingRuntime: ServerLoggingRuntime | null = null;
-let serverLoggingRuntimePromise: Promise<ServerLoggingRuntime> | null = null;
-
-async function createServerLoggingRuntime(): Promise<ServerLoggingRuntime> {
-  const logDir = getLogDir();
-  const logPath = createServerLogPath();
-
-  await mkdir(logDir, { recursive: true });
-
-  const sink = await createFileLogSink(logPath);
-  Log.init({ sink });
-
-  const runtime = {
-    log: Log.create({ service: "startup" }),
-    logPath,
-    sink,
-  } satisfies ServerLoggingRuntime;
-
-  serverLoggingRuntime = runtime;
-  return runtime;
-}
-
-export async function initializeServerLogging(): Promise<ServerLoggingRuntime> {
-  if (serverLoggingRuntime) {
-    return serverLoggingRuntime;
-  }
-
-  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch(
-    async (error: unknown) => {
-      serverLoggingRuntimePromise = null;
-      throw error;
-    },
-  );
-
-  return serverLoggingRuntimePromise;
-}
-
-export async function shutdownServerLogging(
-  logging: ServerLoggingRuntime,
-  signal: string,
-): Promise<void> {
-  logging.log.info("Shutting down", { signal });
-  await Log.shutdown();
-}
-
-function registerShutdownHandlers(
-  server: ReturnType<typeof Bun.serve>,
-  logging: ServerLoggingRuntime,
-): void {
-  let shutdown: Promise<void> | null = null;
-
-  const run = (signal: string): void => {
-    shutdown ??= shutdownServerLogging(logging, signal).then(
-      () => {
-        void server.stop(true);
-        process.exit(0);
-      },
-      (error: unknown) => {
-        void server.stop(true);
-        process.stderr.write(
-          `shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
-        );
-        process.exit(1);
-      },
-    );
-  };
-
-  process.once("SIGINT", () => run("SIGINT"));
-  process.once("SIGTERM", () => run("SIGTERM"));
-}
+import { initializeServerLogging, registerShutdownHandlers } from "./logging";
 
 /**
  * Extract client IP from request headers
@@ -445,9 +365,7 @@ if (import.meta.main) {
       stack: error instanceof Error ? error.stack : undefined,
     });
 
-    if (serverLoggingRuntime) {
-      await Log.shutdown();
-    }
+    await Log.shutdown();
 
     process.exit(1);
   });
