@@ -5,7 +5,7 @@
 import { tool } from "@opencode-ai/plugin";
 import { PaginationOrderBy } from "@linear/sdk";
 import { Result } from "better-result";
-import type { GetLinearClient } from "./utils";
+import type { GetLinearClient } from "./index";
 import { errorJson, withWarnings, errMsg, parseDateFilter } from "./utils";
 import {
   resolveTeam,
@@ -16,7 +16,7 @@ import {
 
 const z = tool.schema;
 
-export function createProjectTools(getClient: GetLinearClient) {
+export function createProjectTools(getLinearClient: GetLinearClient) {
   return {
     linear_list_projects: tool({
       description:
@@ -64,8 +64,8 @@ export function createProjectTools(getClient: GetLinearClient) {
           .describe("Pagination cursor from previous result"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -159,8 +159,8 @@ export function createProjectTools(getClient: GetLinearClient) {
           .describe("Include project milestones"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -253,8 +253,8 @@ export function createProjectTools(getClient: GetLinearClient) {
         icon: z.string().optional().describe("Icon emoji"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -351,8 +351,8 @@ export function createProjectTools(getClient: GetLinearClient) {
         icon: z.string().optional().describe("Icon emoji"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({

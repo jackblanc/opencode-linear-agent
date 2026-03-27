@@ -7,39 +7,48 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
-import { AuthRepository, LinearService } from "@opencode-linear-agent/core";
-import { createToolTokenProvider } from "./auth";
+import {
+  AuthRepository,
+  LinearService,
+  OpencodeEventProcessor,
+  createFileAgentState,
+  loadApplicationConfig,
+} from "@opencode-linear-agent/core";
 import { createLinearTools } from "./tools/index";
-import { createLinearClientProvider } from "./tools/utils";
-import { OpencodeEventProcessor } from "@opencode-linear-agent/core/src/opencode-event-processor/OpencodeEventProcessor";
-import { createFileAgentState } from "@opencode-linear-agent/core/src/state/root";
+import { Result } from "better-result";
+import { LinearClient } from "@linear/sdk";
 
-export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
-  const log = (message: string) => {
-    void input.client.app.log({
-      body: {
-        service: "linear-plugin",
-        level: "error",
-        message,
-      },
-    });
-  };
-
+export async function LinearPlugin({ client }: PluginInput): Promise<Hooks> {
   const agentState = createFileAgentState();
-
   const authRepository = new AuthRepository(agentState);
 
-  const getToolToken = await createToolTokenProvider(authRepository);
-  const getToolClient = createLinearClientProvider(getToolToken);
+  async function getLinearToolClient() {
+    const applicationConfig = loadApplicationConfig();
+    if (!applicationConfig.linearOrganizationId) {
+      return Result.err(
+        "applicationConfig is missing linearOrganizationId, please set linearOrganizationId to enable plugin's Linear tools",
+      );
+    }
+
+    const token = await authRepository.getAccessToken(
+      applicationConfig.linearOrganizationId,
+    );
+    if (!token) {
+      return Result.err(
+        `Failed to find accessToken for Linear organization ${applicationConfig.linearOrganizationId}, please re-authenticate OAuth application`,
+      );
+    }
+
+    return Result.ok(new LinearClient({ accessToken: token }));
+  }
 
   const opencodeEventProcessor = new OpencodeEventProcessor(
-    log,
     agentState,
     (token) => new LinearService(token),
   );
 
   return {
-    tool: createLinearTools(getToolClient),
+    tool: createLinearTools(getLinearToolClient),
 
     /**
      * Event handler for streaming OpenCode events to Linear.
@@ -59,7 +68,13 @@ export async function LinearPlugin(input: PluginInput): Promise<Hooks> {
         // This case should really return a TaggedError, but this code will be refactored soon
         !result.error.message.includes("Skipping processing for event")
       ) {
-        log(`Failed to process event [${event.type}]: ${result.error}`);
+        await client.app.log({
+          body: {
+            service: "linear-plugin",
+            message: `Failed to process event [${event.type}]: ${result.error}`,
+            level: "error",
+          },
+        });
       }
     },
   };

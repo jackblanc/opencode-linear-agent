@@ -4,12 +4,12 @@
 
 import { tool } from "@opencode-ai/plugin";
 import { Result } from "better-result";
-import type { GetLinearClient } from "./utils";
 import { errorJson, errMsg } from "./utils";
+import type { GetLinearClient } from "./index";
 
 const z = tool.schema;
 
-export function createCommentTools(getClient: GetLinearClient) {
+export function createCommentTools(getLinearClient: GetLinearClient) {
   return {
     linear_create_comment: tool({
       description: "Create a comment on a Linear issue",
@@ -22,8 +22,8 @@ export function createCommentTools(getClient: GetLinearClient) {
           .describe("Parent comment ID for threaded replies"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -49,8 +49,8 @@ export function createCommentTools(getClient: GetLinearClient) {
         issueId: z.string().describe("Issue ID or identifier"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({

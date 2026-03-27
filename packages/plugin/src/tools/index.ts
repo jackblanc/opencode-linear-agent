@@ -1,18 +1,17 @@
-/**
- * Linear tools — re-exports all tool definitions as a single object.
- */
-
-import type { GetLinearClient } from "./utils";
 import { createIssueTools } from "./issues";
 import { createCommentTools } from "./comments";
 import { createProjectTools } from "./projects";
 import { createGraphqlTools } from "./graphql";
+import type { LinearClient } from "@linear/sdk";
+import type { Result } from "better-result";
 
-export function createLinearTools(getClient: GetLinearClient) {
+export type GetLinearClient = () => Promise<Result<LinearClient, string>>;
+
+export function createLinearTools(getLinearClient: GetLinearClient) {
   return {
-    ...createIssueTools(getClient),
-    ...createCommentTools(getClient),
-    ...createProjectTools(getClient),
-    ...createGraphqlTools(getClient),
+    ...createIssueTools(getLinearClient),
+    ...createCommentTools(getLinearClient),
+    ...createProjectTools(getLinearClient),
+    ...createGraphqlTools(getLinearClient),
   };
 }

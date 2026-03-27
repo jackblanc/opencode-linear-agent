@@ -5,7 +5,7 @@
 import { tool } from "@opencode-ai/plugin";
 import { PaginationOrderBy } from "@linear/sdk";
 import { Result } from "better-result";
-import type { GetLinearClient } from "./utils";
+import type { GetLinearClient } from "./index";
 import { errorJson, withWarnings, errMsg, parseDateFilter } from "./utils";
 import {
   resolveTeam,
@@ -19,7 +19,7 @@ import { syncRelations } from "./relations";
 
 const z = tool.schema;
 
-export function createIssueTools(getClient: GetLinearClient) {
+export function createIssueTools(getLinearClient: GetLinearClient) {
   return {
     linear_get_issue: tool({
       description:
@@ -32,8 +32,8 @@ export function createIssueTools(getClient: GetLinearClient) {
           .describe("Include blocking/blocked by/related/duplicate relations"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -269,8 +269,8 @@ export function createIssueTools(getClient: GetLinearClient) {
           .describe("Duplicate of issue ID/identifier. Null to remove"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -433,8 +433,8 @@ export function createIssueTools(getClient: GetLinearClient) {
           .describe("Link attachments [{url, title}]"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({
@@ -594,8 +594,8 @@ export function createIssueTools(getClient: GetLinearClient) {
           .describe("Pagination cursor from previous result"),
       },
       async execute(args): Promise<string> {
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({

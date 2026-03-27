@@ -50,16 +50,13 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
      "webhookServerPublicHostname": "your-hostname.example.com",
      "webhookServerPort": 3210,
      "opencodeServerUrl": "http://localhost:4096",
+     "linearOrganizationId": "<linear-organization-id>",
      "linearClientId": "<linear-client-id>",
      "linearClientSecret": "<linear-client-secret>",
      "linearWebhookSecret": "<linear-webhook-secret>",
      "projectsPath": "/Users/you/projects"
    }
    ```
-
-   Optional keys:
-   - `linearOrganizationId`: restrict webhook processing to one Linear org
-   - `linearWebhookIps`: override the default Linear webhook IP allowlist
 
 3. Run OpenCode server:
 
@@ -93,7 +90,7 @@ Use `@stable` instead of `@latest` if you prefer tagged releases only.
    - Client ID -> `linearClientId`
    - Client Secret -> `linearClientSecret`
 
-Optional org allowlist ID:
+Fetch org ID:
 
 ```bash
 curl -X POST https://api.linear.app/graphql \
@@ -102,7 +99,7 @@ curl -X POST https://api.linear.app/graphql \
   -d '{"query":"{ organization { id name } }"}'
 ```
 
-Use `organization.id` as `linearOrganizationId` if you want to restrict webhooks to one org.
+Use `organization.id` as `linearOrganizationId`.
 
 ### 2) Linear webhook
 

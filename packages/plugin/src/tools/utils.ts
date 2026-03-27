@@ -1,34 +1,3 @@
-/**
- * Shared utilities for Linear tools.
- */
-
-import { LinearClient } from "@linear/sdk";
-import { Result } from "better-result";
-
-export type GetLinearClient = () => Promise<Result<LinearClient, string>>;
-
-export function createLinearClientProvider(
-  getToken: () => Promise<Result<string, string>>,
-): GetLinearClient {
-  let cachedClient: { token: string; client: LinearClient } | null = null;
-
-  return async () => {
-    const tokenResult = await getToken();
-    if (Result.isError(tokenResult)) {
-      return Result.err(tokenResult.error);
-    }
-
-    const token = tokenResult.value;
-    if (cachedClient && cachedClient.token === token) {
-      return Result.ok(cachedClient.client);
-    }
-
-    const client = new LinearClient({ accessToken: token });
-    cachedClient = { token, client };
-    return Result.ok(client);
-  };
-}
-
 export function errorJson(message: string): string {
   return JSON.stringify({ error: message });
 }

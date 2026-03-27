@@ -4,12 +4,12 @@
 
 import { tool } from "@opencode-ai/plugin";
 import { Result } from "better-result";
-import type { GetLinearClient } from "./utils";
+import type { GetLinearClient } from "./index";
 import { errorJson, errMsg } from "./utils";
 
 const z = tool.schema;
 
-export function createGraphqlTools(getClient: GetLinearClient) {
+export function createGraphqlTools(getLinearClient: GetLinearClient) {
   return {
     linear_graphql: tool({
       description:
@@ -43,8 +43,8 @@ export function createGraphqlTools(getClient: GetLinearClient) {
           return errorJson("Subscriptions are not supported.");
         }
 
-        const clientResult = await getClient();
-        if (Result.isError(clientResult)) return errorJson(clientResult.error);
+        const clientResult = await getLinearClient();
+        if (Result.isError(clientResult)) return clientResult.error;
         const client = clientResult.value;
 
         const result = await Result.tryPromise({

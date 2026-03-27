@@ -1,7 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { Result } from "better-result";
 import {
-  createLinearClientProvider,
   parseDateFilter,
   withWarnings,
   errMsg,
@@ -133,50 +131,5 @@ describe("errorJson", () => {
   test("returns JSON with error field", () => {
     const result = JSON.parse(errorJson("bad input"));
     expect(result).toEqual({ error: "bad input" });
-  });
-});
-
-describe("createLinearClientProvider", () => {
-  test("passes provider errors through", async () => {
-    const getClient = createLinearClientProvider(async () =>
-      Result.err("token failed"),
-    );
-
-    const result = await getClient();
-
-    expect(Result.isError(result)).toBe(true);
-    if (Result.isError(result)) {
-      expect(result.error).toBe("token failed");
-    }
-  });
-
-  test("reuses client when token stays same", async () => {
-    const getClient = createLinearClientProvider(async () =>
-      Result.ok("token-1"),
-    );
-
-    const first = await getClient();
-    const second = await getClient();
-
-    expect(Result.isOk(first)).toBe(true);
-    expect(Result.isOk(second)).toBe(true);
-    if (Result.isOk(first) && Result.isOk(second)) {
-      expect(first.value).toBe(second.value);
-    }
-  });
-
-  test("creates new client when token changes", async () => {
-    let token = "token-1";
-    const getClient = createLinearClientProvider(async () => Result.ok(token));
-
-    const first = await getClient();
-    token = "token-2";
-    const second = await getClient();
-
-    expect(Result.isOk(first)).toBe(true);
-    expect(Result.isOk(second)).toBe(true);
-    if (Result.isOk(first) && Result.isOk(second)) {
-      expect(first.value).not.toBe(second.value);
-    }
   });
 });

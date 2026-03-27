@@ -51,7 +51,6 @@
         "@opencode-ai/sdk": "catalog:",
         "@opencode-linear-agent/core": "workspace:*",
         "better-result": "catalog:",
-        "zod": "catalog:",
       },
       "optionalDependencies": {
         "@opencode-linear-agent/server-darwin-arm64": "0.1.3",

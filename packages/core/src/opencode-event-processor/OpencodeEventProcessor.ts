@@ -28,9 +28,8 @@ export class OpencodeEventProcessor {
   private readonly messageRoleMap: Map<string, "assistant" | "user">;
 
   constructor(
-    private readonly log: (message: string) => void,
     private readonly agentState: AgentStateNamespace,
-    private readonly linearClientProvider: (token: string) => LinearService,
+    private readonly getLinearService: (token: string) => LinearService,
   ) {
     this.messageRoleMap = new Map();
   }
@@ -49,7 +48,7 @@ export class OpencodeEventProcessor {
         const linearAuthRecord = yield* Result.await(
           this.agentState.auth.get(linearSessionState.organizationId),
         );
-        const linearClient = this.linearClientProvider(
+        const linearClient = this.getLinearService(
           linearAuthRecord.accessToken,
         );
 

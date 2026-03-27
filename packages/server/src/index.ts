@@ -27,23 +27,20 @@ import {
   refreshAccessToken,
   LinearService,
   OpencodeService,
+  loadApplicationConfig,
+  createFileAgentState,
   Log,
   AuthRepository,
   FileSessionRepository,
+  type ApplicationConfig,
   type EventDispatcher,
   type LogSink,
   type OAuthConfig,
   OAuthStateRepository,
 } from "@opencode-linear-agent/core";
-import {
-  createServerLogPath,
-  getLogDir,
-  loadConfig,
-  type Config,
-} from "./config";
+import { createServerLogPath, getLogDir } from "./config";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
 import { mkdir } from "node:fs/promises";
-import { createFileAgentState } from "@opencode-linear-agent/core/src/state/root";
 
 export interface ServerLoggingRuntime {
   log: ReturnType<typeof Log.create>;
@@ -158,7 +155,7 @@ function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
  * (no queue, unlike Cloudflare)
  */
 function createDirectDispatcher(
-  config: Config,
+  config: ApplicationConfig,
   authRepository: AuthRepository,
   sessionRepository: FileSessionRepository,
 ): EventDispatcher {
@@ -248,7 +245,7 @@ function createDirectDispatcher(
  * Create the HTTP server
  */
 function createServer(
-  config: Config,
+  config: ApplicationConfig,
   oauthStateRepository: OAuthStateRepository,
   authRepository: AuthRepository,
   dispatcher: EventDispatcher,
@@ -337,7 +334,7 @@ function createServer(
  * Token TTL is 23 hours; we refresh every 20 hours for a 3-hour buffer.
  */
 function startTokenRefreshTimer(
-  config: Config,
+  config: ApplicationConfig,
   authRepository: AuthRepository,
 ): void {
   const log = Log.create({ service: "token-refresh" });
@@ -380,7 +377,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   log.info("Starting Linear OpenCode Agent (Local)");
 
   // Load configuration
-  const config = loadConfig();
+  const config = loadApplicationConfig();
 
   log.info("Configuration loaded", {
     port: config.webhookServerPort,
