@@ -2,8 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
 import { handleWebhook } from "../../src/webhook/handlers";
 import type { EventDispatcher } from "../../src/webhook/types";
-import { AuthRepository } from "../../src";
-import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
+import { AuthRepository } from "@opencode-linear-agent/core";
+import { createInMemoryAgentState } from "../../../core/test/state/InMemoryAgentNamespace";
 
 function createSignedRequest(secret: string, payload: unknown): Request {
   const body = JSON.stringify(payload);

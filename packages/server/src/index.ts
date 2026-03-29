@@ -20,10 +20,6 @@ import type {
 import {
   IssueEventHandler,
   WorktreeManager,
-  handleAuthorize,
-  handleCallback,
-  handleWebhook,
-  refreshAccessToken,
   LinearService,
   OpencodeService,
   loadApplicationConfig,
@@ -32,10 +28,16 @@ import {
   AuthRepository,
   SessionRepository,
   type ApplicationConfig,
-  type EventDispatcher,
-  type OAuthConfig,
   OAuthStateRepository,
 } from "@opencode-linear-agent/core";
+import { handleWebhook } from "./webhook/handlers";
+import type { EventDispatcher } from "./webhook/types";
+import {
+  handleAuthorize,
+  handleCallback,
+  refreshAccessToken,
+} from "./oauth/handlers";
+import type { OAuthConfig } from "./oauth/types";
 import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
 import { initializeServerLogging, registerShutdownHandlers } from "./logging";
 

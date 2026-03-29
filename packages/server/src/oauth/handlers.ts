@@ -4,10 +4,12 @@
 
 import { LinearClient } from "@linear/sdk";
 import type { OAuthConfig, OAuthCallbackResult } from "./types";
-import { Log } from "../utils/logger";
+import {
+  Log,
+  type OAuthStateRepository,
+  type AuthRepository,
+} from "@opencode-linear-agent/core";
 import { type TokenResponse, TokenResponseSchema } from "./schema";
-import type { OAuthStateRepository } from "../state/OAuthStateRepository";
-import type { AuthRepository } from "../state/AuthRepository";
 
 const LINEAR_OAUTH_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -118,7 +120,7 @@ function generateSuccessHtml(result: OAuthCallbackResult): string {
   <div class="card">
     <h1>Setup Complete!</h1>
     <p class="success">Your Linear OpenCode Agent is now connected.</p>
-    
+
     <h2>Next Steps:</h2>
     <ul>
       <li><strong>Optional:</strong> set <code>linearOrganizationId</code> in <code>$XDG_CONFIG_HOME/opencode-linear-agent/config.json</code> (default <code>~/.config/opencode-linear-agent/config.json</code>) to restrict to one org:

@@ -6,8 +6,7 @@ import { LinearWebhookClient } from "@linear/sdk/webhooks";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
 import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
 import { isAgentSessionEventWebhook, isSupportedWebhook } from "./types";
-import { Log } from "../utils/logger";
-import type { AuthRepository } from "../state/AuthRepository";
+import { Log, type AuthRepository } from "@opencode-linear-agent/core";
 
 /**
  * Handle Linear webhook - verify signature and dispatch for processing

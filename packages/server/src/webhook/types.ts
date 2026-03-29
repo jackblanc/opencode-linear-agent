@@ -7,7 +7,7 @@ import type {
   EntityWebhookPayloadWithIssueData,
   LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
-import type { ProcessingStage } from "../linear-service/types";
+import type { ProcessingStage } from "@opencode-linear-agent/core";
 
 export type SupportedWebhookPayload =
   | AgentSessionEventWebhookPayload

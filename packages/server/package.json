@@ -37,7 +37,8 @@
     "@opencode-linear-agent/core": "workspace:*",
     "@linear/sdk": "catalog:",
     "@opencode-ai/sdk": "catalog:",
-    "better-result": "catalog:"
+    "better-result": "catalog:",
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "typescript": "^5"
