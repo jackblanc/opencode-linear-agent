@@ -2,8 +2,6 @@ import { describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
 import { handleWebhook } from "../../src/webhook/handlers";
 import type { EventDispatcher } from "../../src/webhook/types";
-import { AuthRepository } from "@opencode-linear-agent/core";
-import { createInMemoryAgentState } from "../../../core/test/state/InMemoryAgentNamespace";
 
 function createSignedRequest(secret: string, payload: unknown): Request {
   const body = JSON.stringify(payload);
@@ -17,29 +15,6 @@ function createSignedRequest(secret: string, payload: unknown): Request {
     },
     body,
   });
-}
-
-function createTokenStore(accessToken: string | null): AuthRepository {
-  const auth =
-    accessToken === null
-      ? null
-      : {
-          organizationId: "org-1",
-          accessToken,
-          accessTokenExpiresAt: Date.now() + 60_000,
-          refreshToken: "refresh-1",
-          appId: "app-1",
-          installedAt: new Date().toISOString(),
-          workspaceName: "workspace",
-        };
-
-  const state = createInMemoryAgentState();
-  const store = new AuthRepository(state);
-  if (auth) {
-    void store.putAuthRecord(auth);
-  }
-
-  return store;
 }
 
 describe("handleWebhook", () => {
@@ -64,14 +39,7 @@ describe("handleWebhook", () => {
       webhookTimestamp: Date.now(),
     });
 
-    const response = await handleWebhook(
-      request,
-      secret,
-      createTokenStore(null),
-      dispatcher,
-      undefined,
-      "org-1",
-    );
+    const response = await handleWebhook(request, secret, dispatcher, "org-1");
 
     expect(response.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -94,54 +62,9 @@ describe("handleWebhook", () => {
       webhookTimestamp: Date.now(),
     });
 
-    const response = await handleWebhook(
-      request,
-      secret,
-      createTokenStore(null),
-      dispatcher,
-      undefined,
-      "org-1",
-    );
+    const response = await handleWebhook(request, secret, dispatcher, "org-1");
 
     expect(response.status).toBe(200);
     expect(dispatched).toHaveLength(0);
-  });
-
-  test("posts webhook received stage for agent session events", async () => {
-    const secret = "test-secret";
-    const stages: Array<{ sessionId: string; stage: string }> = [];
-    const dispatcher: EventDispatcher = {
-      dispatch: async () => undefined,
-    };
-
-    const request = createSignedRequest(secret, {
-      type: "AgentSessionEvent",
-      action: "created",
-      organizationId: "org-1",
-      agentSession: {
-        id: "session-1",
-        issueId: "issue-1",
-        issue: { id: "issue-1", identifier: "CODE-1" },
-      },
-      webhookTimestamp: Date.now(),
-    });
-
-    const response = await handleWebhook(
-      request,
-      secret,
-      createTokenStore("token-1"),
-      dispatcher,
-      () => ({
-        postStageActivity: async (sessionId, stage): Promise<void> => {
-          stages.push({ sessionId, stage });
-        },
-      }),
-      "org-1",
-    );
-
-    expect(response.status).toBe(200);
-    expect(stages).toEqual([
-      { sessionId: "session-1", stage: "webhook_received" },
-    ]);
   });
 });

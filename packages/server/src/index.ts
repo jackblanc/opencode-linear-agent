@@ -237,9 +237,7 @@ function createServer(
           await handleWebhook(
             request,
             config.linearWebhookSecret,
-            authRepository,
             dispatcher,
-            undefined, // statusPosterFactory
             config.linearOrganizationId, // only accept webhooks from this org
           ),
         );

@@ -4,9 +4,9 @@
 
 import { LinearWebhookClient } from "@linear/sdk/webhooks";
 import type { LinearWebhookPayload } from "@linear/sdk/webhooks";
-import type { EventDispatcher, LinearStatusPosterFactory } from "./types";
+import type { EventDispatcher } from "./types";
 import { isAgentSessionEventWebhook, isSupportedWebhook } from "./types";
-import { Log, type AuthRepository } from "@opencode-linear-agent/core";
+import { Log } from "@opencode-linear-agent/core";
 
 /**
  * Handle Linear webhook - verify signature and dispatch for processing
@@ -19,16 +19,12 @@ import { Log, type AuthRepository } from "@opencode-linear-agent/core";
  *
  * @param request - The incoming HTTP request
  * @param webhookSecret - Linear webhook secret for signature verification
- * @param authRepository - Store for OAuth tokens
  * @param dispatcher - Event dispatcher (queue for Cloudflare, direct for local)
- * @param statusPosterFactory - Factory to create Linear status poster from access token
  */
 export async function handleWebhook(
   request: Request,
   webhookSecret: string,
-  authRepository: AuthRepository,
   dispatcher: EventDispatcher,
-  statusPosterFactory?: LinearStatusPosterFactory,
   allowedOrganizationId?: string,
 ): Promise<Response> {
   if (request.method !== "POST") {
@@ -115,17 +111,6 @@ export async function handleWebhook(
     action,
     webhookType: webhookPayload.type,
   });
-
-  // Post immediate status activity to Linear
-  if (isAgentSessionEventWebhook(webhookPayload) && statusPosterFactory) {
-    const accessToken = await authRepository.getAccessToken(organizationId);
-    if (accessToken) {
-      const statusPoster = statusPosterFactory(accessToken);
-      await statusPoster.postStageActivity(sessionId, "webhook_received");
-    } else {
-      log.info("No access token available for webhook activity");
-    }
-  }
 
   // Dispatch for processing in background (fire-and-forget)
   // We return 200 immediately to prevent Linear webhook timeouts and retries.

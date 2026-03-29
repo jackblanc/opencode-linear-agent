@@ -7,7 +7,6 @@ import type {
   EntityWebhookPayloadWithIssueData,
   LinearWebhookPayload,
 } from "@linear/sdk/webhooks";
-import type { ProcessingStage } from "@opencode-linear-agent/core";
 
 export type SupportedWebhookPayload =
   | AgentSessionEventWebhookPayload
@@ -40,24 +39,3 @@ export interface EventDispatcher {
    */
   dispatch(event: SupportedWebhookPayload): Promise<void>;
 }
-
-/**
- * Interface for posting immediate status updates to Linear
- * Used to acknowledge webhook receipt before async processing
- */
-export interface LinearStatusPoster {
-  /**
-   * Post a stage activity to Linear
-   *
-   * @param sessionId - Linear session ID
-   * @param stage - The processing stage
-   */
-  postStageActivity(sessionId: string, stage: ProcessingStage): Promise<void>;
-}
-
-/**
- * Factory function to create a LinearStatusPoster from an access token
- */
-export type LinearStatusPosterFactory = (
-  accessToken: string,
-) => LinearStatusPoster;
