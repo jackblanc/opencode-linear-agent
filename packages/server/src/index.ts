@@ -1,252 +1,18 @@
-/**
- * Local server entry point for Linear OpenCode Agent
- *
- * Handles:
- * - Linear OAuth flow
- * - Linear webhooks (exposed publicly via Cloudflare Tunnel)
- * - Event processing (directly, no queue)
- *
- * Prerequisites:
- * - OpenCode running separately via `opencode serve`
- * - Configuration file at XDG config directory with necessary values (see README)
- * - Local repository at the configured projects path
- */
-
-import { createOpencodeClient } from "@opencode-ai/sdk/v2";
-import type {
-  AgentSessionEventWebhookPayload,
-  EntityWebhookPayloadWithIssueData,
-} from "@linear/sdk/webhooks";
 import {
-  IssueEventHandler,
-  WorktreeManager,
-  LinearService,
-  OpencodeService,
   loadApplicationConfig,
   createFileAgentState,
   Log,
   AuthRepository,
   SessionRepository,
+  OpencodeService,
   type ApplicationConfig,
   OAuthStateRepository,
 } from "@opencode-linear-agent/core";
-import { handleWebhook } from "./webhook/handlers";
-import type { EventDispatcher } from "./webhook/types";
-import {
-  handleAuthorize,
-  handleCallback,
-  refreshAccessToken,
-} from "./oauth/handlers";
-import type { OAuthConfig } from "./oauth/types";
-import { dispatchAgentSessionEvent } from "./AgentSessionDispatcher";
+import { createOpencodeClient } from "@opencode-ai/sdk/v2";
+import { getConnInfo } from "hono/bun";
+import { refreshAccessToken } from "./token";
 import { initializeServerLogging, registerShutdownHandlers } from "./logging";
-
-/**
- * Extract client IP from request headers
- * Cloudflare Tunnel sets CF-Connecting-IP header with the original client IP
- */
-function getClientIp(request: Request): string | null {
-  // Cloudflare sets CF-Connecting-IP with the original client IP
-  const cfIp = request.headers.get("cf-connecting-ip");
-  if (cfIp) {
-    return cfIp;
-  }
-
-  // Fallback to X-Forwarded-For (can contain multiple IPs: "client, proxy1, proxy2")
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const firstIp = xff.split(",")[0]?.trim();
-    return firstIp ?? null;
-  }
-
-  return null;
-}
-
-/**
- * Check if an IP is in the allowlist
- */
-function isAllowedIp(ip: string | null, allowlist: string[]): boolean {
-  if (!ip) {
-    return false;
-  }
-  return allowlist.includes(ip);
-}
-
-/**
- * Create a direct event dispatcher that processes events immediately
- * (no queue, unlike Cloudflare)
- */
-function createDirectDispatcher(
-  config: ApplicationConfig,
-  authRepository: AuthRepository,
-  sessionRepository: SessionRepository,
-): EventDispatcher {
-  const opencodeClient = createOpencodeClient({
-    baseUrl: config.opencodeServerUrl,
-  });
-  const opencode = new OpencodeService(opencodeClient);
-
-  return {
-    async dispatch(
-      event:
-        | AgentSessionEventWebhookPayload
-        | EntityWebhookPayloadWithIssueData,
-    ): Promise<void> {
-      const organizationId = event.organizationId;
-
-      if (event.type === "Issue") {
-        // Get or refresh access token
-        let accessToken = await authRepository.getAccessToken(organizationId);
-        if (!accessToken) {
-          const oauthConfig: OAuthConfig = {
-            clientId: config.linearClientId,
-            clientSecret: config.linearClientSecret,
-          };
-          accessToken = await refreshAccessToken(
-            oauthConfig,
-            authRepository,
-            organizationId,
-          );
-        }
-
-        const linear = new LinearService(accessToken);
-        const worktreeManager = new WorktreeManager(
-          opencode,
-          linear,
-          sessionRepository,
-          config.projectsPath,
-        );
-
-        const issueHandler = new IssueEventHandler(
-          linear,
-          opencode,
-          sessionRepository,
-          worktreeManager,
-        );
-        await issueHandler.process(event);
-        return;
-      }
-
-      // Get or refresh access token
-      let accessToken = await authRepository.getAccessToken(organizationId);
-      if (!accessToken) {
-        Log.create({ service: "dispatcher" })
-          .tag("organizationId", organizationId)
-          .info("No access token, attempting refresh");
-
-        const oauthConfig: OAuthConfig = {
-          clientId: config.linearClientId,
-          clientSecret: config.linearClientSecret,
-        };
-
-        accessToken = await refreshAccessToken(
-          oauthConfig,
-          authRepository,
-          organizationId,
-        );
-      }
-
-      // Create Linear service (unified interface for all Linear operations)
-      const linear = new LinearService(accessToken);
-
-      await dispatchAgentSessionEvent(
-        event,
-        linear,
-        opencode,
-        sessionRepository,
-        {
-          organizationId,
-          projectsPath: config.projectsPath,
-        },
-      );
-    },
-  };
-}
-
-/**
- * Create the HTTP server
- */
-function createServer(
-  config: ApplicationConfig,
-  oauthStateRepository: OAuthStateRepository,
-  authRepository: AuthRepository,
-  dispatcher: EventDispatcher,
-): ReturnType<typeof Bun.serve> {
-  const oauthConfig: OAuthConfig = {
-    clientId: config.linearClientId,
-    clientSecret: config.linearClientSecret,
-    baseUrl: `https://${config.webhookServerPublicHostname}`,
-  };
-
-  return Bun.serve({
-    port: config.webhookServerPort,
-    async fetch(request: Request): Promise<Response> {
-      const url = new URL(request.url);
-      const pathname = url.pathname;
-
-      const clientIp = getClientIp(request);
-
-      const log = Log.create({ service: "server" });
-
-      // Helper to log and return response
-      const respond = (response: Response): Response => {
-        log.info("Request", {
-          method: request.method,
-          pathname,
-          status: response.status,
-          clientIp,
-        });
-        return response;
-      };
-
-      if (pathname === "/health") {
-        return respond(new Response("OK", { status: 200 }));
-      }
-
-      // OAuth authorize - start the OAuth flow
-      if (pathname === "/api/oauth/authorize") {
-        return respond(
-          await handleAuthorize(request, oauthConfig, oauthStateRepository),
-        );
-      }
-
-      // OAuth callback - handle the redirect from Linear
-      if (pathname === "/api/oauth/callback") {
-        return respond(
-          await handleCallback(
-            request,
-            oauthConfig,
-            oauthStateRepository,
-            authRepository,
-          ),
-        );
-      }
-
-      // Linear webhook endpoint - receive events from Linear (issue updates, agent events, etc.)
-      if (pathname === "/api/webhook/linear") {
-        // IP allowlist check - only Linear's servers can call this endpoint
-        if (!isAllowedIp(clientIp, config.linearWebhookIps)) {
-          log.warn("Webhook request from unauthorized IP", {
-            clientIp,
-            allowedIps: config.linearWebhookIps,
-          });
-          return respond(new Response("Forbidden", { status: 403 }));
-        }
-
-        return respond(
-          await handleWebhook(
-            request,
-            config.linearWebhookSecret,
-            dispatcher,
-            config.linearOrganizationId, // only accept webhooks from this org
-          ),
-        );
-      }
-
-      return respond(new Response("Not found", { status: 404 }));
-    },
-  });
-}
+import { createApp } from "./app";
 
 /**
  * Proactively refresh the access token on a timer so the plugin
@@ -265,7 +31,7 @@ function startTokenRefreshTimer(
     );
     return;
   }
-  const oauthConfig: OAuthConfig = {
+  const oauthConfig = {
     clientId: config.linearClientId,
     clientSecret: config.linearClientSecret,
   };
@@ -274,7 +40,7 @@ function startTokenRefreshTimer(
 
   const refresh = async (): Promise<void> => {
     try {
-      await refreshAccessToken(oauthConfig, authRepository, organizationId);
+      await refreshAccessToken(authRepository, oauthConfig, organizationId);
       log.info("Proactive token refresh succeeded");
     } catch (error) {
       log.error("Proactive token refresh failed", {
@@ -291,14 +57,12 @@ function startTokenRefreshTimer(
  * Main entry point
  */
 async function main(): Promise<ReturnType<typeof Bun.serve>> {
-  const logging = await initializeServerLogging();
-  const log = logging.log;
-  const logPath = logging.logPath;
-  log.info("Starting Linear OpenCode Agent (Local)");
+  const serverLoggingRuntime = await initializeServerLogging();
+  const log = serverLoggingRuntime.log;
 
+  log.info("Starting Linear OpenCode Agent (Local)");
   // Load configuration
   const config = loadApplicationConfig();
-
   log.info("Configuration loaded", {
     port: config.webhookServerPort,
     publicHostname: config.webhookServerPublicHostname,
@@ -312,26 +76,27 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const authRepository = new AuthRepository(agentState);
   const sessionRepository = new SessionRepository(agentState);
 
-  log.info("Storage initialized", { logPath });
-
   // Start proactive token refresh so the plugin always has a valid token
   startTokenRefreshTimer(config, authRepository);
 
-  // Create event dispatcher
-  const dispatcher = createDirectDispatcher(
-    config,
-    authRepository,
-    sessionRepository,
-  );
-
   // Start server
-  const server = createServer(
+  const opencodeClient = createOpencodeClient({
+    baseUrl: config.opencodeServerUrl,
+  });
+  const opencode = new OpencodeService(opencodeClient);
+  const app = createApp(
     config,
     oauthStateRepository,
     authRepository,
-    dispatcher,
+    sessionRepository,
+    opencode,
+    getConnInfo,
   );
-  registerShutdownHandlers(server, logging);
+  const server = Bun.serve({
+    port: config.webhookServerPort,
+    fetch: app.fetch,
+  });
+  registerShutdownHandlers(server, serverLoggingRuntime);
 
   const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;
   log.info("Server started", {

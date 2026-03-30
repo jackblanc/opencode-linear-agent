@@ -32,7 +32,10 @@
     "@opencode-linear-agent/server-linux-arm64": "0.1.3",
     "@opencode-linear-agent/server-linux-x64": "0.1.3"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
+    "hono": "^4.12.9"
+  },
   "devDependencies": {
     "@opencode-linear-agent/core": "workspace:*",
     "@linear/sdk": "catalog:",

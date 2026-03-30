@@ -75,15 +75,7 @@ Update Linear webhook URL to:
 
 ## Verification
 
-```bash
-# Local health
-curl http://localhost:3210/health
-
-# Public health
-curl https://linear-webhook.yourdomain.com/health
-```
-
-Then send a Linear webhook test event and verify request logs in your webhook server.
+Send a Linear webhook test event and verify request logs in your webhook server.
 
 ## Troubleshooting
 

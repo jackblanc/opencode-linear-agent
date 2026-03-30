@@ -8,10 +8,6 @@ export const configFileSchema = z.object({
   linearClientId: z.string().min(1),
   linearClientSecret: z.string().min(1),
   linearWebhookSecret: z.string().min(1),
-  linearWebhookIps: z
-    .array(z.string())
-    .min(1)
-    .default(["35.231.147.226", "35.243.134.228", "34.145.29.68"]),
   linearOrganizationId: z.string().optional(),
 
   projectsPath: z.string().min(1),
