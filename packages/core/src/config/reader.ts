@@ -1,15 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { getConfigPath } from "../utils/paths";
 import { configFileSchema, type ApplicationConfig } from "./schema";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
-
-function normalizeProjectsPath(projectsPath: string) {
-  if (!projectsPath.startsWith("~/")) {
-    return projectsPath;
-  }
-  return resolve(homedir(), projectsPath.slice(2));
-}
 
 export function loadApplicationConfig(
   path: string = getConfigPath(),
@@ -40,8 +31,5 @@ export function loadApplicationConfig(
     throw new Error(`Invalid configuration:\n${issues}`);
   }
 
-  return {
-    ...result.data,
-    projectsPath: normalizeProjectsPath(result.data.projectsPath),
-  };
+  return result.data;
 }

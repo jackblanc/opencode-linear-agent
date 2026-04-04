@@ -3,7 +3,6 @@ import { Log } from "../utils/logger";
 import type { LinearService } from "../linear-service/LinearService";
 import type { SessionRepository } from "../state/SessionRepository";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
-import type { WorktreeManager } from "../session/WorktreeManager";
 
 type CleanupIssueStateType = "completed" | "canceled";
 const ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS = 3;
@@ -27,12 +26,11 @@ interface IssueCleanupWebhookPayload {
 export class IssueEventHandler {
   constructor(
     private readonly linear: LinearService,
-    private readonly opencode: Pick<OpencodeService, "abortSession">,
-    private readonly repository: SessionRepository,
-    private readonly worktreeManager: Pick<
-      WorktreeManager,
-      "cleanupSessionResources"
+    private readonly opencode: Pick<
+      OpencodeService,
+      "abortSession" | "removeWorktree"
     >,
+    private readonly repository: SessionRepository,
   ) {}
 
   async process(event: IssueCleanupWebhookPayload): Promise<void> {
@@ -94,21 +92,14 @@ export class IssueEventHandler {
         });
       }
 
-      const cleanupResult = await this.worktreeManager.cleanupSessionResources(
-        state,
-        sessionLog,
-      );
-
-      if (!cleanupResult.fullyCleaned) {
-        sessionLog.warn(
-          "Session cleanup incomplete; preserving session state",
-          {
-            branchName: state.branchName,
-            workdir: state.workdir,
-            worktreeRemoved: cleanupResult.worktreeRemoved,
-            branchRemoved: cleanupResult.branchRemoved,
-          },
-        );
+      const removeResult = await this.opencode.removeWorktree(state.workdir);
+      if (Result.isError(removeResult)) {
+        sessionLog.warn("Failed to remove OpenCode worktree", {
+          branchName: state.branchName,
+          workdir: state.workdir,
+          error: removeResult.error.message,
+          errorType: removeResult.error._tag,
+        });
         continue;
       }
 

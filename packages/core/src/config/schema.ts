@@ -9,8 +9,6 @@ export const configFileSchema = z.object({
   linearClientSecret: z.string().min(1),
   linearWebhookSecret: z.string().min(1),
   linearOrganizationId: z.string().optional(),
-
-  projectsPath: z.string().min(1),
 });
 
 export type ApplicationConfig = z.infer<typeof configFileSchema>;

@@ -5,8 +5,8 @@ import {
   type AuthRepository,
   type SessionRepository,
   type OpencodeService,
+  LinearEventProcessor,
   LinearService,
-  WorktreeManager,
   IssueEventHandler,
   Log,
 } from "@opencode-linear-agent/core";
@@ -18,9 +18,17 @@ import {
 } from "@linear/sdk/webhooks";
 import { Result } from "better-result";
 import { z } from "zod";
-import { dispatchAgentSessionEvent } from "../../AgentSessionDispatcher";
 import { refreshAccessToken } from "../../token";
 import type { GetConnInfo } from "hono/conninfo";
+
+interface WebhookHandlerFactories {
+  createProcessor?: (
+    opencode: OpencodeService,
+    linear: LinearService,
+    sessions: SessionRepository,
+    config: { organizationId: string; opencodeUrl?: string },
+  ) => { process(event: AgentSessionEventWebhookPayload): Promise<void> };
+}
 
 const webhookTimestampSchema = z.object({
   webhookTimestamp: z.number(),
@@ -56,6 +64,7 @@ export function createWebhookApp(
   sessionRepository: SessionRepository,
   opencode: OpencodeService,
   getConnInfo: GetConnInfo,
+  factories?: WebhookHandlerFactories,
 ) {
   const app = new Hono();
   const linearWebhookClient = new LinearWebhookClient(
@@ -146,16 +155,24 @@ export function createWebhookApp(
     const linearService = new LinearService(accessToken);
 
     if (isAgentSessionEventWebhook(webhookPayload)) {
-      dispatchAgentSessionEvent(
-        webhookPayload,
-        linearService,
-        opencode,
-        sessionRepository,
-        {
-          organizationId: webhookPayload.organizationId,
-          projectsPath: config.projectsPath,
-        },
-      ).catch((error: unknown) => {
+      const processorConfig = {
+        organizationId: webhookPayload.organizationId,
+        opencodeUrl: config.opencodeServerUrl,
+      };
+      const handler =
+        factories?.createProcessor?.(
+          opencode,
+          linearService,
+          sessionRepository,
+          processorConfig,
+        ) ??
+        new LinearEventProcessor(
+          opencode,
+          linearService,
+          sessionRepository,
+          processorConfig,
+        );
+      handler.process(webhookPayload).catch((error: unknown) => {
         log.error("Agent session dispatch failed", {
           error: error instanceof Error ? error.message : String(error),
         });
@@ -163,17 +180,10 @@ export function createWebhookApp(
     }
 
     if (isIssueWebhook(webhookPayload)) {
-      const worktreeManager = new WorktreeManager(
-        opencode,
-        linearService,
-        sessionRepository,
-        config.projectsPath,
-      );
       const issueHandler = new IssueEventHandler(
         linearService,
         opencode,
         sessionRepository,
-        worktreeManager,
       );
       issueHandler.process(webhookPayload).catch((error: unknown) => {
         log.error("Issue event processing failed", {

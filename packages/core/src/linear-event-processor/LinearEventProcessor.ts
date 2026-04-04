@@ -1,15 +1,16 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
-import type { QuestionOption } from "@opencode-ai/sdk/v2";
+import type { Project } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
+import { basename } from "node:path";
 import type { LinearService } from "../linear-service/LinearService";
 import type { SessionRepository } from "../state/SessionRepository";
-import type { PendingQuestion, PendingPermission } from "../state/schema";
+import type {
+  PendingPermission,
+  PendingQuestion,
+  PendingRepoSelection,
+  RepoSelectionOption,
+} from "../state/schema";
 import { SessionManager } from "../session/SessionManager";
-import {
-  WorktreeManager,
-  type SessionWorktreeAction,
-  type WorktreeIssue,
-} from "../session/WorktreeManager";
 import {
   type AgentMode,
   determineAgentMode,
@@ -18,6 +19,8 @@ import type { OpencodeService } from "../opencode-service/OpencodeService";
 import { base64Encode } from "../utils/encode";
 import { Log, type Logger } from "../utils/logger";
 import { buildCreatedPrompt } from "../session/PromptBuilder";
+import { LinearForbiddenError } from "../linear-service/errors";
+import { findRepoLabel, parseRepoLabel } from "../linear-service/label-parser";
 
 /**
  * Configuration for the LinearEventProcessor
@@ -29,7 +32,7 @@ interface LinearEventProcessorConfig {
   organizationId: string;
 }
 
-const DEFAULT_CONFIG: Omit<LinearEventProcessorConfig, "organizationId"> = {
+const DEFAULT_CONFIG: Pick<LinearEventProcessorConfig, "opencodeUrl"> = {
   opencodeUrl: "http://localhost:4096",
 };
 
@@ -98,7 +101,7 @@ function extractPromptedUserResponse(event: {
     return promptContextBody;
   }
 
-  return "Please continue.";
+  return "";
 }
 
 function normalizeMatchInput(value: string): string {
@@ -114,9 +117,36 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function matchQuestionOptionLabel(
+interface MatchOptionConfig<T> {
+  getLabel: (option: T) => string;
+  getAliases?: (option: T) => string[];
+  exactOnly?: boolean;
+}
+
+interface ProjectResolution {
+  reason: "missing" | "invalid" | "no_match";
+  invalidLabel?: string;
+  unmatchedLabel?: string;
+  exampleLabel: string;
+  options: RepoSelectionOption[];
+}
+
+interface ProjectRef {
+  id: string;
+  worktree: string;
+}
+
+interface WorktreeIssue {
+  identifier: string;
+  branchName?: string;
+}
+
+type SessionWorktreeAction = "created" | "prompted";
+
+function matchOption<T>(
   userResponse: string,
-  options: QuestionOption[],
+  options: T[],
+  config: MatchOptionConfig<T>,
 ): string | null {
   const normalizedResponse = normalizeMatchInput(userResponse);
   if (normalizedResponse.length === 0) {
@@ -124,86 +154,195 @@ function matchQuestionOptionLabel(
   }
 
   for (const opt of options) {
-    if (normalizeMatchInput(opt.label) === normalizedResponse) {
-      return opt.label;
+    const label = config.getLabel(opt);
+    if (normalizeMatchInput(label) === normalizedResponse) {
+      return label;
     }
   }
 
   for (const opt of options) {
-    if (normalizeMatchInput(opt.description) === normalizedResponse) {
-      return opt.label;
+    const aliases = config.getAliases?.(opt) ?? [];
+    for (const alias of aliases) {
+      if (normalizeMatchInput(alias) === normalizedResponse) {
+        return config.getLabel(opt);
+      }
+    }
+  }
+
+  if (config.exactOnly) {
+    return null;
+  }
+
+  for (const opt of options) {
+    const label = config.getLabel(opt);
+    if (normalizedResponse.startsWith(normalizeMatchInput(label))) {
+      return label;
     }
   }
 
   for (const opt of options) {
-    if (normalizedResponse.startsWith(normalizeMatchInput(opt.label))) {
-      return opt.label;
+    const aliases = config.getAliases?.(opt) ?? [];
+    for (const alias of aliases) {
+      const normalizedAlias = normalizeMatchInput(alias);
+      if (
+        normalizedAlias.length > 0 &&
+        normalizedResponse.startsWith(normalizedAlias)
+      ) {
+        return config.getLabel(opt);
+      }
     }
   }
 
   for (const opt of options) {
-    const normalizedDescription = normalizeMatchInput(opt.description);
-    if (
-      normalizedDescription.length > 0 &&
-      normalizedResponse.startsWith(normalizedDescription)
-    ) {
-      return opt.label;
+    const label = config.getLabel(opt);
+    if (hasWordBoundaryMatch(userResponse, normalizeMatchInput(label))) {
+      return label;
     }
   }
 
   for (const opt of options) {
-    if (hasWordBoundaryMatch(userResponse, normalizeMatchInput(opt.label))) {
-      return opt.label;
-    }
-  }
-
-  for (const opt of options) {
-    const normalizedDescription = normalizeMatchInput(opt.description);
-    if (
-      normalizedDescription.length > 0 &&
-      hasWordBoundaryMatch(userResponse, normalizedDescription)
-    ) {
-      return opt.label;
+    const aliases = config.getAliases?.(opt) ?? [];
+    for (const alias of aliases) {
+      const normalizedAlias = normalizeMatchInput(alias);
+      if (
+        normalizedAlias.length > 0 &&
+        hasWordBoundaryMatch(userResponse, normalizedAlias)
+      ) {
+        return config.getLabel(opt);
+      }
     }
   }
 
   return null;
 }
 
+function getProjectRepositoryName(project: Project): string {
+  return basename(project.worktree);
+}
+
+function getProjectLabel(project: Project): string {
+  const name = project.name?.trim();
+  return name && name.length > 0 ? name : getProjectRepositoryName(project);
+}
+
+function toRepoSelectionOption(project: Project): RepoSelectionOption {
+  const repositoryName = getProjectRepositoryName(project);
+  const label = getProjectLabel(project);
+  return {
+    label,
+    projectId: project.id,
+    worktree: project.worktree,
+    repoLabel: `repo:${repositoryName}`,
+    aliases: [label, repositoryName],
+  };
+}
+
+function buildRepoSelectionBody(
+  resolution: ProjectResolution,
+  invalidResponse?: string,
+): string {
+  const lines = [
+    resolution.reason === "invalid"
+      ? `Replace invalid label \`${resolution.invalidLabel ?? "repo:"}\` by picking a repository or replying with a label like \`${resolution.exampleLabel}\`.`
+      : resolution.reason === "no_match"
+        ? `No OpenCode project matches \`${resolution.unmatchedLabel ?? "the current repo label"}\`. Pick a project or reply with a label like \`${resolution.exampleLabel}\`.`
+        : `Pick a repository or reply with a label like \`${resolution.exampleLabel}\`.`,
+  ];
+
+  if (invalidResponse) {
+    lines.push(
+      "",
+      `I couldn't use \`${invalidResponse}\`. Reply with \`repo:name\`, \`name\`, or pick one below.`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function normalizeRepoLabelInput(userResponse: string): string | null {
+  const trimmed = userResponse.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const label = trimmed.startsWith("repo:") ? trimmed : `repo:${trimmed}`;
+  const parsed = parseRepoLabel([{ name: label }]);
+  if (!parsed) {
+    return null;
+  }
+
+  return `repo:${parsed.repositoryName}`;
+}
+
+function matchProjectByRepoName(
+  repositoryName: string,
+  projects: Project[],
+): Project | null {
+  const target = normalizeMatchInput(repositoryName);
+  for (const project of projects) {
+    if (normalizeMatchInput(getProjectLabel(project)) === target) {
+      return project;
+    }
+    if (normalizeMatchInput(getProjectRepositoryName(project)) === target) {
+      return project;
+    }
+  }
+
+  return null;
+}
+
+function buildProjectResolution(
+  projects: Project[],
+  reason: ProjectResolution["reason"],
+  invalidLabel?: string,
+  unmatchedLabel?: string,
+): ProjectResolution {
+  const options = projects.map(toRepoSelectionOption);
+  return {
+    reason,
+    invalidLabel,
+    unmatchedLabel,
+    exampleLabel: options[0]?.repoLabel ?? "repo:opencode-linear-agent",
+    options,
+  };
+}
+
+function toStartupEvent(
+  event: AgentSessionEventWebhookPayload,
+  promptContext?: string,
+): AgentSessionEventWebhookPayload {
+  return {
+    ...event,
+    action: "created",
+    promptContext: promptContext ?? event.promptContext,
+  };
+}
+
 /**
  * Main entry point for processing Linear webhook events.
  *
  * This class is platform-agnostic and receives all dependencies via constructor injection.
- * Uses OpenCode's native worktree management instead of custom git operations.
+ * Uses OpenCode's native worktree and project APIs.
  *
  * Delegates to specialized managers:
- * - WorktreeManager: Worktree creation/reuse logic
  * - SessionManager: OpenCode session lifecycle
  * - PromptBuilder: Context injection and prompt construction
  */
 export class LinearEventProcessor {
   private readonly sessionManager: SessionManager;
-  private readonly worktreeManager: WorktreeManager;
   private readonly config: LinearEventProcessorConfig;
 
   constructor(
     private readonly opencode: OpencodeService,
     private readonly linear: LinearService,
     private readonly sessions: SessionRepository,
-    private readonly repoDirectory: string,
     config: LinearEventProcessorConfig,
   ) {
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
-    } as LinearEventProcessorConfig;
+    };
     this.sessionManager = new SessionManager(opencode, sessions);
-    this.worktreeManager = new WorktreeManager(
-      opencode,
-      linear,
-      sessions,
-      repoDirectory,
-    );
   }
 
   /**
@@ -214,10 +353,150 @@ export class LinearEventProcessor {
   async process(event: AgentSessionEventWebhookPayload): Promise<void> {
     const linearSessionId = event.agentSession.id;
     const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
-    const fallbackIssueIdentifier =
+    const issueIdentifier =
       event.agentSession.issue?.identifier ?? issueId ?? "unknown";
+    const log = Log.create({ service: "processor" })
+      .tag("issue", issueIdentifier)
+      .tag("sessionId", linearSessionId);
+
+    log.info("Processing event", { action: event.action });
+
+    const action = this.toSessionWorktreeAction(event.action);
+    if (!action) {
+      log.info("Ignoring unsupported agent session action", {
+        action: event.action,
+      });
+      return;
+    }
+
+    const pendingSelection =
+      await this.sessions.getPendingRepoSelection(linearSessionId);
+    if (pendingSelection) {
+      await this.handleRepoSelectionPrompt(event, pendingSelection, log);
+      return;
+    }
+
+    const sessionState = await this.sessions.get(linearSessionId);
+    if (action === "prompted" && sessionState) {
+      log.info("Using existing session project", {
+        projectId: sessionState.projectId,
+        workdir: sessionState.workdir,
+      });
+      const ok = await this.processWithProject(
+        event,
+        {
+          id: sessionState.projectId,
+          worktree: sessionState.workdir,
+        },
+        log,
+      );
+      if (!ok) {
+        await this.linear.postError(
+          linearSessionId,
+          new Error("Session startup failed"),
+        );
+      }
+      return;
+    }
+
+    if (!issueId) {
+      await this.linear.postError(
+        linearSessionId,
+        new Error("Missing issue id"),
+      );
+      return;
+    }
+
+    const projectsResult = await this.opencode.listProjects();
+    if (Result.isError(projectsResult)) {
+      log.error("Failed to list OpenCode projects", {
+        error: projectsResult.error.message,
+      });
+      await this.linear.postError(linearSessionId, projectsResult.error);
+      return;
+    }
+
+    const projects = projectsResult.value.projects;
+    if (projects.length === 0) {
+      await this.linear.postError(
+        linearSessionId,
+        new Error(
+          "No OpenCode projects found. Open the repo in OpenCode first, then retry.",
+        ),
+      );
+      return;
+    }
+
+    const labelsResult = await this.linear.getIssueLabels(issueId);
+    if (Result.isError(labelsResult)) {
+      await this.linear.postError(linearSessionId, labelsResult.error);
+      return;
+    }
+
+    const parsedRepoLabel = parseRepoLabel(labelsResult.value);
+    const repoLabel = findRepoLabel(labelsResult.value);
+
+    if (!parsedRepoLabel) {
+      await this.promptForRepoSelection(
+        linearSessionId,
+        issueId,
+        buildProjectResolution(
+          projects,
+          repoLabel.status === "invalid" ? "invalid" : "missing",
+          repoLabel.status === "invalid" ? repoLabel.label : undefined,
+        ),
+        readPromptContextText(event.promptContext) ?? undefined,
+      );
+      return;
+    }
+
+    const matchedProject = matchProjectByRepoName(
+      parsedRepoLabel.repositoryName,
+      projects,
+    );
+
+    if (!matchedProject) {
+      const unmatchedLabel =
+        repoLabel.status === "valid" || repoLabel.status === "invalid"
+          ? repoLabel.label
+          : undefined;
+      await this.promptForRepoSelection(
+        linearSessionId,
+        issueId,
+        buildProjectResolution(projects, "no_match", undefined, unmatchedLabel),
+        readPromptContextText(event.promptContext) ?? undefined,
+      );
+      return;
+    }
+
+    log.info("Using matched OpenCode project", {
+      projectId: matchedProject.id,
+      worktree: matchedProject.worktree,
+    });
+
+    const ok = await this.processWithProject(
+      sessionState ? event : toStartupEvent(event),
+      { id: matchedProject.id, worktree: matchedProject.worktree },
+      log,
+    );
+    if (!ok) {
+      await this.linear.postError(
+        linearSessionId,
+        new Error("Session startup failed"),
+      );
+    }
+  }
+
+  private async processWithProject(
+    event: AgentSessionEventWebhookPayload,
+    project: ProjectRef,
+    log: Logger,
+  ): Promise<boolean> {
+    const linearSessionId = event.agentSession.id;
+    const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
+    const sessionState = await this.sessions.get(linearSessionId);
     let issue: WorktreeIssue = {
-      identifier: fallbackIssueIdentifier,
+      identifier: event.agentSession.issue?.identifier ?? issueId ?? "unknown",
       branchName:
         readStringField(event.agentSession.issue, "branchName") ?? undefined,
     };
@@ -232,37 +511,31 @@ export class LinearEventProcessor {
       }
     }
 
-    // Create a tagged logger for this processing context
-    const log = Log.create({ service: "processor" })
-      .tag("issue", issue.identifier)
-      .tag("sessionId", linearSessionId);
-
-    log.info("Processing event", { action: event.action });
-
     const action = this.toSessionWorktreeAction(event.action);
     if (!action) {
-      log.info("Ignoring unsupported agent session action", {
-        action: event.action,
-      });
-      return;
+      return true;
     }
 
-    // Resolve or create worktree
-    const worktreeResult = await this.worktreeManager.resolveWorktree(
-      linearSessionId,
-      issue,
-      action,
-      log,
-    );
+    let workdir = sessionState?.workdir;
+    let branchName = sessionState?.branchName;
 
-    if (Result.isError(worktreeResult)) {
-      await this.linear.postError(linearSessionId, worktreeResult.error);
-      return;
+    if (!workdir || !branchName || sessionState?.projectId !== project.id) {
+      await this.linear.postStageActivity(linearSessionId, "git_setup");
+      const worktreeName = this.buildWorktreeName(issue, linearSessionId);
+      const worktreeResult = await this.opencode.createWorktree(
+        project.worktree,
+        worktreeName,
+      );
+
+      if (Result.isError(worktreeResult)) {
+        await this.linear.postError(linearSessionId, worktreeResult.error);
+        return false;
+      }
+
+      workdir = worktreeResult.value.directory;
+      branchName = worktreeResult.value.branch;
     }
 
-    const { workdir, branchName } = worktreeResult.value;
-
-    // Determine agent mode based on issue state
     let mode: AgentMode = "build";
 
     if (issueId) {
@@ -281,7 +554,6 @@ export class LinearEventProcessor {
         });
       }
 
-      // Only move to In Progress in build mode
       if (mode === "build") {
         const statusResult = await this.linear.moveIssueToInProgress(issueId);
         if (Result.isError(statusResult)) {
@@ -293,19 +565,17 @@ export class LinearEventProcessor {
       }
     }
 
-    // Post session ready stage activity with branch info
     await this.linear.postStageActivity(
       linearSessionId,
       "session_ready",
       `Branch: \`${branchName}\``,
     );
 
-    // Get or create OpenCode session
     const sessionResult = await this.sessionManager.getOrCreateSession(
       linearSessionId,
       this.config.organizationId,
       issueId ?? "unknown",
-      this.repoDirectory,
+      project.id,
       branchName,
       workdir,
     );
@@ -316,13 +586,11 @@ export class LinearEventProcessor {
         errorType: sessionResult.error._tag,
       });
       await this.linear.postError(linearSessionId, sessionResult.error);
-      return;
+      return false;
     }
 
     const session = sessionResult.value;
     const opencodeSessionId = session.opencodeSessionId;
-
-    // Add OpenCode session ID to logger context
     const sessionLog = log
       .tag("opencodeSession", opencodeSessionId.slice(0, 8))
       .tag("opencodeSessionId", opencodeSessionId);
@@ -332,9 +600,6 @@ export class LinearEventProcessor {
       isNewSession: session.isNewSession,
     });
 
-    // Set external link to OpenCode UI
-    // Format: /{base64_encoded_workdir}/session/{sessionId}
-    // Use configured OpenCode URL (should be localhost for security)
     const opencodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
     const encodedWorkdir = base64Encode(workdir);
     const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
@@ -350,7 +615,7 @@ export class LinearEventProcessor {
           mode,
           sessionLog,
         );
-        return;
+        return true;
       case "prompted":
         await this.handlePrompted(
           event,
@@ -360,7 +625,140 @@ export class LinearEventProcessor {
           mode,
           sessionLog,
         );
-        return;
+        return true;
+    }
+  }
+
+  private async promptForRepoSelection(
+    linearSessionId: string,
+    issueId: string,
+    resolution: ProjectResolution,
+    promptContext?: string,
+    invalidResponse?: string,
+  ): Promise<void> {
+    const pendingSelection: PendingRepoSelection = {
+      linearSessionId,
+      issueId,
+      options: resolution.options,
+      promptContext,
+      createdAt: Date.now(),
+    };
+
+    await this.sessions.savePendingRepoSelection(pendingSelection);
+    await this.linear.postElicitation(
+      linearSessionId,
+      buildRepoSelectionBody(resolution, invalidResponse),
+      "select",
+      {
+        options: resolution.options.map((option) => ({
+          label: option.label,
+          value: option.repoLabel,
+        })),
+      },
+    );
+  }
+
+  private async handleRepoSelectionPrompt(
+    event: AgentSessionEventWebhookPayload,
+    pendingSelection: PendingRepoSelection,
+    log: Logger,
+  ): Promise<void> {
+    const linearSessionId = event.agentSession.id;
+    const userResponse = extractPromptedUserResponse(event);
+    const selectedLabel =
+      matchOption(userResponse, pendingSelection.options, {
+        getLabel: (option) => option.repoLabel,
+        getAliases: (option) => [option.label, ...option.aliases],
+        exactOnly: true,
+      }) ??
+      (() => {
+        const normalized = normalizeRepoLabelInput(userResponse);
+        if (!normalized) {
+          return null;
+        }
+
+        const option = pendingSelection.options.find(
+          (item) =>
+            normalizeMatchInput(item.repoLabel) ===
+            normalizeMatchInput(normalized),
+        );
+        return option?.repoLabel ?? null;
+      })() ??
+      matchOption(userResponse, pendingSelection.options, {
+        getLabel: (option) => option.repoLabel,
+        getAliases: (option) => [option.label, ...option.aliases],
+      });
+
+    if (!selectedLabel) {
+      await this.promptForRepoSelection(
+        linearSessionId,
+        pendingSelection.issueId,
+        {
+          reason: "missing",
+          exampleLabel:
+            pendingSelection.options[0]?.repoLabel ??
+            "repo:opencode-linear-agent",
+          options: pendingSelection.options,
+        },
+        pendingSelection.promptContext,
+        userResponse,
+      );
+      return;
+    }
+
+    const selectedOption =
+      pendingSelection.options.find(
+        (option) => option.repoLabel === selectedLabel,
+      ) ?? null;
+    if (!selectedOption) {
+      await this.linear.postError(
+        linearSessionId,
+        new Error(`Invalid repo label selected: ${selectedLabel}`),
+      );
+      return;
+    }
+
+    const setLabelResult = await this.linear.setIssueRepoLabel(
+      pendingSelection.issueId,
+      selectedLabel,
+    );
+    if (Result.isError(setLabelResult)) {
+      const noteBody =
+        setLabelResult.error instanceof LinearForbiddenError
+          ? `Warning: couldn't sync issue repo label to Linear because this agent can't update labels, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed.`
+          : `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`;
+
+      log.error("Failed to set selected repo label", {
+        labelValue: selectedLabel,
+        error: setLabelResult.error.message,
+        errorType: setLabelResult.error._tag,
+      });
+
+      const note = await this.linear.postActivity(linearSessionId, {
+        type: "response",
+        body: noteBody,
+      });
+
+      if (Result.isError(note)) {
+        log.warn("Failed to post repo label sync warning", {
+          labelValue: selectedLabel,
+          error: note.error.message,
+          errorType: note.error._tag,
+        });
+      }
+    }
+
+    const startupOk = await this.processWithProject(
+      toStartupEvent(event, pendingSelection.promptContext),
+      {
+        id: selectedOption.projectId,
+        worktree: selectedOption.worktree,
+      },
+      log,
+    );
+
+    if (startupOk) {
+      await this.sessions.deletePendingRepoSelection(linearSessionId);
     }
   }
 
@@ -545,6 +943,11 @@ export class LinearEventProcessor {
       return;
     }
 
+    if (userResponse.length === 0) {
+      log.info("Empty prompted response, skipping prompt");
+      return;
+    }
+
     log.info("Sending follow-up prompt", {
       promptLength: userResponse.length,
       mode,
@@ -614,10 +1017,10 @@ export class LinearEventProcessor {
       return;
     }
 
-    const matchedLabel = matchQuestionOptionLabel(
-      userResponse,
-      currentQuestion.options,
-    );
+    const matchedLabel = matchOption(userResponse, currentQuestion.options, {
+      getLabel: (option) => option.label,
+      getAliases: (option) => [option.description],
+    });
 
     if (!matchedLabel) {
       // User response doesn't match any option - they're ignoring the question
@@ -718,10 +1121,9 @@ export class LinearEventProcessor {
 
     // Map user responses to permission reply types
     const permissionOptions = ["Approve", "Approve Always", "Reject"];
-    const matchedOption = this.matchPermissionOption(
-      userResponse,
-      permissionOptions,
-    );
+    const matchedOption = matchOption(userResponse, permissionOptions, {
+      getLabel: (option) => option,
+    });
 
     if (!matchedOption) {
       // User response doesn't match any option - they're ignoring the permission
@@ -786,50 +1188,6 @@ export class LinearEventProcessor {
   }
 
   /**
-   * Try to match user response to a permission option
-   *
-   * Returns the matched option if found, null otherwise.
-   */
-  private matchPermissionOption(
-    userResponse: string,
-    options: string[],
-  ): string | null {
-    const normalized = userResponse.trim().toLowerCase();
-
-    // First try exact match (case-insensitive)
-    for (const opt of options) {
-      if (opt.toLowerCase() === normalized) {
-        return opt;
-      }
-    }
-
-    // Then try if response starts with option
-    for (const opt of options) {
-      if (normalized.startsWith(opt.toLowerCase())) {
-        return opt;
-      }
-    }
-
-    // Finally try if response contains option as a whole word
-    for (const opt of options) {
-      const optLower = opt.toLowerCase();
-      const regex = new RegExp(`\\b${this.escapeRegex(optLower)}\\b`, "i");
-      if (regex.test(userResponse)) {
-        return opt;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Escape special regex characters in a string
-   */
-  private escapeRegex(str: string): string {
-    return escapeRegex(str);
-  }
-
-  /**
    * Send a follow-up prompt (used when user ignores pending question)
    */
   private async sendFollowUpPrompt(
@@ -840,6 +1198,11 @@ export class LinearEventProcessor {
     mode: AgentMode,
     log: Logger,
   ): Promise<void> {
+    if (userResponse.length === 0) {
+      log.info("Empty follow-up response, skipping prompt");
+      return;
+    }
+
     log.info("Sending follow-up prompt", {
       promptLength: userResponse.length,
       mode,
@@ -854,5 +1217,20 @@ export class LinearEventProcessor {
       mode,
       log,
     );
+  }
+
+  private buildWorktreeName(
+    issue: WorktreeIssue,
+    linearSessionId: string,
+  ): string {
+    const shortLinearSessionId = linearSessionId.slice(0, 8).toLowerCase();
+    if (issue.branchName) {
+      return `${shortLinearSessionId}-${issue.branchName}`;
+    }
+
+    const safeIssue = issue.identifier
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-");
+    return `${safeIssue}-${shortLinearSessionId}`;
   }
 }

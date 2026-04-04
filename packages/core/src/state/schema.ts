@@ -26,7 +26,7 @@ export const sessionStateSchema = z.object({
   linearSessionId: z.string(),
   organizationId: z.string(),
   issueId: z.string(),
-  repoDirectory: z.string().optional(),
+  projectId: z.string(),
   branchName: z.string(),
   workdir: z.string(),
   lastActivityTime: z.number(),
@@ -84,7 +84,9 @@ export type PendingPermission = z.infer<typeof pendingPermissionSchema>;
 
 const repoSelectionOptionSchema = z.object({
   label: z.string(),
-  labelValue: z.string(),
+  projectId: z.string(),
+  worktree: z.string(),
+  repoLabel: z.string(),
   aliases: z.array(z.string()),
 });
 export const pendingRepoSelectionSchema = z.object({

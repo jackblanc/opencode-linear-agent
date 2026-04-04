@@ -1,5 +1,3 @@
-import { isInstallCommand } from "../../utils/package-manager";
-
 /**
  * Tool name mapping for friendly action names
  */
@@ -213,9 +211,6 @@ export function getToolThought(
     }
     if (command.includes("git push")) {
       return "Pushing changes to remote...";
-    }
-    if (isInstallCommand(command)) {
-      return "Installing dependencies...";
     }
   }
 

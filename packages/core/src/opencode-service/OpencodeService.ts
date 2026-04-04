@@ -4,6 +4,7 @@ import type {
   Part,
   Session,
   Event as OpencodeEvent,
+  Project,
 } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import type { OpencodeServiceError } from "./errors";
@@ -34,6 +35,10 @@ interface OpencodeSessionResult {
 interface MessageWithParts {
   info: Message;
   parts: Part[];
+}
+
+interface ProjectListResult {
+  projects: Project[];
 }
 
 /**
@@ -75,6 +80,32 @@ export class OpencodeService {
       directory: result.data.directory,
       branch: result.data.branch,
     });
+  }
+
+  async removeWorktree(
+    directory: string,
+  ): Promise<Result<void, OpencodeServiceError>> {
+    const result = await this.client.worktree.remove({
+      worktreeRemoveInput: { directory },
+    });
+
+    if (result.error) {
+      return Result.err(mapOpencodeError(result.error));
+    }
+
+    return Result.ok(undefined);
+  }
+
+  async listProjects(): Promise<
+    Result<ProjectListResult, OpencodeServiceError>
+  > {
+    const result = await this.client.project.list();
+
+    if (!result.data) {
+      return Result.err(mapOpencodeError(result.error));
+    }
+
+    return Result.ok({ projects: result.data });
   }
 
   /**
