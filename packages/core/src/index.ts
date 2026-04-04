@@ -7,22 +7,13 @@ export { LinearEventProcessor } from "./linear-event-processor/LinearEventProces
 export { IssueEventHandler } from "./linear-event-processor/IssueEventHandler";
 
 // Linear Service Module
-export type { IssueRepositoryCandidate } from "./linear-service/types";
 export { LinearService } from "./linear-service/LinearService";
-export { findRepoLabel } from "./linear-service/label-parser";
-export { parseRepoLabel } from "./linear-service/label-parser";
-// Errors
-export { LinearForbiddenError } from "./linear-service/errors";
-export type { LinearServiceError } from "./linear-service/errors";
 
 // OpenCode Event Processor Module
 export { OpencodeEventProcessor } from "./opencode-event-processor/OpencodeEventProcessor";
 
 // OpenCode Service Module
 export { OpencodeService } from "./opencode-service/OpencodeService";
-
-// Session State Module
-export { WorktreeManager } from "./session/WorktreeManager";
 
 // Application State Module
 export { OAuthStateRepository } from "./state/OAuthStateRepository";

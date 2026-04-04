@@ -21,7 +21,7 @@ function createSessionState(
     opencodeSessionId: "opencode-1",
     organizationId: "org-1",
     issueId: "issue-1",
-    repoDirectory: "/tmp/repo",
+    projectId: "project-1",
     branchName: "feature/code-1",
     workdir: "/tmp/worktree",
     lastActivityTime: Date.now(),

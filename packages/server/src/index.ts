@@ -67,7 +67,6 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     port: config.webhookServerPort,
     publicHostname: config.webhookServerPublicHostname,
     opencodeUrl: config.opencodeServerUrl,
-    projectsPath: config.projectsPath,
   });
 
   const agentState = createFileAgentState();

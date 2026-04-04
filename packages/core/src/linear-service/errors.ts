@@ -22,32 +22,9 @@ interface LinearErrorContext {
 }
 
 /**
- * Resource not found in Linear
- */
-export class LinearNotFoundError extends TaggedError("LinearNotFoundError")<{
-  resourceType: string;
-  resourceId: string;
-  context?: LinearErrorContext;
-  message: string;
-}>() {
-  constructor(args: {
-    resourceType: string;
-    resourceId: string;
-    context?: LinearErrorContext;
-  }) {
-    super({
-      ...args,
-      message: `${args.resourceType} not found: ${args.resourceId}`,
-    });
-  }
-}
-
-/**
  * Invalid input provided to Linear API
  */
-export class LinearInvalidInputError extends TaggedError(
-  "LinearInvalidInputError",
-)<{
+class LinearInvalidInputError extends TaggedError("LinearInvalidInputError")<{
   field: string;
   reason: string;
   context?: LinearErrorContext;
@@ -68,7 +45,7 @@ export class LinearInvalidInputError extends TaggedError(
 /**
  * Rate limited by Linear API
  */
-export class LinearRateLimitError extends TaggedError("LinearRateLimitError")<{
+class LinearRateLimitError extends TaggedError("LinearRateLimitError")<{
   retryAfter?: number;
   context?: LinearErrorContext;
   message: string;
@@ -84,7 +61,7 @@ export class LinearRateLimitError extends TaggedError("LinearRateLimitError")<{
 /**
  * Authentication failed with Linear
  */
-export class LinearAuthError extends TaggedError("LinearAuthError")<{
+class LinearAuthError extends TaggedError("LinearAuthError")<{
   reason: string;
   context?: LinearErrorContext;
   message: string;
@@ -118,7 +95,7 @@ export class LinearForbiddenError extends TaggedError("LinearForbiddenError")<{
 /**
  * Network error communicating with Linear
  */
-export class LinearNetworkError extends TaggedError("LinearNetworkError")<{
+class LinearNetworkError extends TaggedError("LinearNetworkError")<{
   reason: string;
   context?: LinearErrorContext;
   message: string;
@@ -131,7 +108,7 @@ export class LinearNetworkError extends TaggedError("LinearNetworkError")<{
 /**
  * Feature not accessible (plan limitation)
  */
-export class LinearFeatureNotAccessibleError extends TaggedError(
+class LinearFeatureNotAccessibleError extends TaggedError(
   "LinearFeatureNotAccessibleError",
 )<{
   feature: string;
@@ -146,7 +123,7 @@ export class LinearFeatureNotAccessibleError extends TaggedError(
 /**
  * Unknown Linear error
  */
-export class LinearUnknownError extends TaggedError("LinearUnknownError")<{
+class LinearUnknownError extends TaggedError("LinearUnknownError")<{
   reason: string;
   context?: LinearErrorContext;
   message: string;
@@ -157,22 +134,9 @@ export class LinearUnknownError extends TaggedError("LinearUnknownError")<{
 }
 
 /**
- * Union of all Linear error types
- */
-export type LinearServiceError =
-  | LinearNotFoundError
-  | LinearInvalidInputError
-  | LinearRateLimitError
-  | LinearAuthError
-  | LinearForbiddenError
-  | LinearNetworkError
-  | LinearFeatureNotAccessibleError
-  | LinearUnknownError;
-
-/**
  * Map a Linear SDK error to a TaggedError
  */
-export function mapLinearError(error: unknown): LinearServiceError {
+export function mapLinearError(error: unknown) {
   const context: LinearErrorContext = {};
 
   if (error instanceof LinearError) {

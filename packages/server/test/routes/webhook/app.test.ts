@@ -22,7 +22,6 @@ const config: ApplicationConfig = {
   linearClientSecret: "client-secret",
   linearWebhookSecret: SECRET,
   linearOrganizationId: ORG_ID,
-  projectsPath: "/tmp/projects",
 };
 
 function createRepositories() {
@@ -77,6 +76,42 @@ function unsupportedPayload(organizationId: string = ORG_ID) {
     action: "update",
     organizationId,
     webhookTimestamp: Date.now(),
+  };
+}
+
+function agentSessionPayload(organizationId: string = ORG_ID) {
+  return {
+    type: "AgentSessionEvent",
+    action: "created",
+    organizationId,
+    appUserId: "app-user-1",
+    oauthClientId: "oauth-client-1",
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    webhookId: "webhook-1",
+    webhookTimestamp: Date.now(),
+    agentSession: {
+      id: "session-1",
+      type: "AgentSession",
+      appUserId: "app-user-1",
+      organizationId,
+      issueId: "issue-1",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      issue: {
+        id: "issue-1",
+        identifier: "CODE-1",
+        title: "Test issue",
+        url: "https://linear.app/example/CODE-1",
+        teamId: "team-1",
+        team: {
+          id: "team-1",
+          key: "CODE",
+          name: "OpenCode",
+        },
+      },
+    },
+    promptContext: "Please help.",
   };
 }
 
@@ -157,6 +192,31 @@ describe("webhook app", () => {
       createSignedRequest(unsupportedPayload()),
     );
     expect(response.status).toBe(200);
+  });
+
+  test("dispatches agent session webhooks to LinearEventProcessor", async () => {
+    const seen: string[] = [];
+
+    const app = createWebhookApp(
+      config,
+      repos.auth,
+      repos.session,
+      opencode,
+      allowedConnInfo,
+      {
+        createProcessor: () => ({
+          process: async () => {
+            seen.push("called");
+          },
+        }),
+      },
+    );
+    const response = await app.request(
+      createSignedRequest(agentSessionPayload()),
+    );
+
+    expect(response.status).toBe(200);
+    expect(seen).toEqual(["called"]);
   });
 
   test("rejects webhook from wrong organization", async () => {
