@@ -11,7 +11,10 @@ function isAccessTokenValid(
 }
 
 export class AuthRepository {
-  constructor(private readonly agentState: AgentStateNamespace) {}
+  constructor(
+    private readonly agentState: AgentStateNamespace,
+    private readonly writeTokenToFile?: (token: string) => Promise<void>,
+  ) {}
 
   async getAccessToken(organizationId: string): Promise<string | null> {
     const hasRecord = await this.agentState.auth.has(organizationId);
@@ -69,6 +72,9 @@ export class AuthRepository {
     );
     if (Result.isError(result)) {
       throw new Error(result.error.message);
+    }
+    if (this.writeTokenToFile) {
+      await this.writeTokenToFile(record.accessToken);
     }
   }
 }

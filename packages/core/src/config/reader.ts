@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { getConfigPath } from "../utils/paths";
+import { getConfigFilePath } from "../utils/paths";
 import { configFileSchema, type ApplicationConfig } from "./schema";
 
 export function loadApplicationConfig(
-  path: string = getConfigPath(),
+  path: string = getConfigFilePath(),
 ): ApplicationConfig {
   if (!existsSync(path)) {
     throw new Error(

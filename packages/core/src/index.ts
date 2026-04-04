@@ -30,4 +30,7 @@ export { createFileAgentState } from "./state/root";
 // Util Module
 export { Log, createFileLogSink } from "./utils/logger";
 export type { LogSink } from "./utils/logger";
-export { getStateRootPath } from "./utils/paths";
+export {
+  getStateRootDirectoryPath,
+  getOAuthAccessTokenFilePath,
+} from "./utils/paths";

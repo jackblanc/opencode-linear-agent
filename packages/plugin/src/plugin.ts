@@ -8,39 +8,13 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
 import {
-  AuthRepository,
   LinearService,
   OpencodeEventProcessor,
   createFileAgentState,
-  loadApplicationConfig,
 } from "@opencode-linear-agent/core";
-import { createLinearTools } from "./tools/index";
-import { Result } from "better-result";
-import { LinearClient } from "@linear/sdk";
 
 export async function LinearPlugin({ client }: PluginInput): Promise<Hooks> {
   const agentState = createFileAgentState();
-  const authRepository = new AuthRepository(agentState);
-
-  async function getLinearToolClient() {
-    const applicationConfig = loadApplicationConfig();
-    if (!applicationConfig.linearOrganizationId) {
-      return Result.err(
-        "applicationConfig is missing linearOrganizationId, please set linearOrganizationId to enable plugin's Linear tools",
-      );
-    }
-
-    const token = await authRepository.getAccessToken(
-      applicationConfig.linearOrganizationId,
-    );
-    if (!token) {
-      return Result.err(
-        `Failed to find accessToken for Linear organization ${applicationConfig.linearOrganizationId}, please re-authenticate OAuth application`,
-      );
-    }
-
-    return Result.ok(new LinearClient({ accessToken: token }));
-  }
 
   const opencodeEventProcessor = new OpencodeEventProcessor(
     agentState,
@@ -48,8 +22,6 @@ export async function LinearPlugin({ client }: PluginInput): Promise<Hooks> {
   );
 
   return {
-    tool: createLinearTools(getLinearToolClient),
-
     /**
      * Event handler for streaming OpenCode events to Linear.
      *

@@ -21,10 +21,18 @@ function requireDataHome(): string {
   );
 }
 
-export function getConfigPath(): string {
+export function getConfigFilePath(): string {
   return join(requireConfigHome(), APPLICATION_DIRECTORY, "config.json");
 }
 
-export function getStateRootPath(): string {
+export function getStateRootDirectoryPath(): string {
   return join(requireDataHome(), APPLICATION_DIRECTORY, "state");
+}
+
+export function getOAuthAccessTokenFilePath(): string {
+  return join(
+    requireDataHome(),
+    APPLICATION_DIRECTORY,
+    "oauth_access_token.txt",
+  );
 }

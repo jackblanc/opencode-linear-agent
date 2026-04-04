@@ -23,10 +23,8 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@linear/sdk": "catalog:",
     "@opencode-ai/plugin": "catalog:",
     "@opencode-ai/sdk": "catalog:",
-    "@opencode-linear-agent/core": "workspace:*",
-    "better-result": "catalog:"
+    "@opencode-linear-agent/core": "workspace:*"
   }
 }

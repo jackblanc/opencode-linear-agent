@@ -16,7 +16,7 @@ import {
   type PendingRepoSelection,
 } from "./schema";
 import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
-import { getStateRootPath } from "../utils/paths";
+import { getStateRootDirectoryPath } from "../utils/paths";
 
 export interface AgentStateNamespace {
   auth: KeyValueStore<AuthRecord>;
@@ -29,7 +29,7 @@ export interface AgentStateNamespace {
 }
 
 export function createFileAgentState(
-  path: string = getStateRootPath(),
+  path: string = getStateRootDirectoryPath(),
 ): AgentStateNamespace {
   return {
     auth: new FileKeyValueStore("auth", path, authRecordSchema),

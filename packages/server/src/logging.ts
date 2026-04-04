@@ -2,13 +2,13 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   createFileLogSink,
-  getStateRootPath,
+  getStateRootDirectoryPath,
   Log,
   type LogSink,
 } from "@opencode-linear-agent/core";
 
 function getDataDir(): string {
-  return dirname(getStateRootPath());
+  return dirname(getStateRootDirectoryPath());
 }
 
 function formatLogTimestamp(now: Date): string {

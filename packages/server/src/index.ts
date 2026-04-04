@@ -7,12 +7,15 @@ import {
   OpencodeService,
   type ApplicationConfig,
   OAuthStateRepository,
+  getOAuthAccessTokenFilePath,
 } from "@opencode-linear-agent/core";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { getConnInfo } from "hono/bun";
 import { refreshAccessToken } from "./token";
 import { initializeServerLogging, registerShutdownHandlers } from "./logging";
 import { createApp } from "./app";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 /**
  * Proactively refresh the access token on a timer so the plugin
@@ -71,8 +74,17 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 
   const agentState = createFileAgentState();
 
+  /**
+   * Helper to write the latest access token to a well-known file path for use by the Linear MCP
+   */
+  async function writeTokenToFile(token: string): Promise<void> {
+    const tokenFilePath = getOAuthAccessTokenFilePath();
+    await mkdir(dirname(tokenFilePath), { recursive: true });
+    await writeFile(tokenFilePath, token);
+  }
+
   const oauthStateRepository = new OAuthStateRepository(agentState);
-  const authRepository = new AuthRepository(agentState);
+  const authRepository = new AuthRepository(agentState, writeTokenToFile);
   const sessionRepository = new SessionRepository(agentState);
 
   // Start proactive token refresh so the plugin always has a valid token

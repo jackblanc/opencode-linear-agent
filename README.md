@@ -26,10 +26,23 @@ npm i -g @opencode-linear-agent/server
 
 Add plugin to OpenCode config (`$XDG_CONFIG_HOME/opencode/opencode.json`, default `~/.config/opencode/opencode.json`):
 
-```json
+```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@opencode-linear-agent/plugin@latest"]
+  "plugin": ["@opencode-linear-agent/plugin@latest"],
+  "mcp": {
+    "linear": {
+      "type": "remote",
+      "url": "https://mcp.linear.app/mcp",
+      "enabled": true,
+      "oauth": false,
+      "headers": {
+        // Default: ~/.local/share/opencode-linear-agent/oauth_access_token.txt
+        // If XDG_DATA_HOME is set: $XDG_DATA_HOME/opencode-linear-agent/oauth_access_token.txt
+        "Authorization": "Bearer {file:~/.local/share/opencode-linear-agent/oauth_access_token.txt}",
+      },
+    },
+  },
 }
 ```
 
