@@ -28,8 +28,5 @@
     "@opencode-ai/sdk": "catalog:",
     "@opencode-linear-agent/core": "workspace:*",
     "better-result": "catalog:"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   }
 }

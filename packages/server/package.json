@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
-    "hono": "^4.12.9"
+    "hono": "^4.12.10"
   },
   "devDependencies": {
     "@opencode-linear-agent/core": "workspace:*",
@@ -42,8 +42,5 @@
     "@opencode-ai/sdk": "catalog:",
     "better-result": "catalog:",
     "zod": "catalog:"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   }
 }
