@@ -22,7 +22,7 @@
     "noImplicitOverride": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": false, // TODO: Enable this and fix all the errors
+    "noPropertyAccessFromIndexSignature": true,
     "skipLibCheck": true
   },
   "include": ["packages/*/src/**/*", "packages/*/test/**/*"]

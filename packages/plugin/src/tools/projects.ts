@@ -74,7 +74,7 @@ export function createProjectTools(getLinearClient: GetLinearClient) {
             const filter: Record<string, unknown> = {};
 
             if (args.team) {
-              filter.accessibleTeams = {
+              filter["accessibleTeams"] = {
                 some: {
                   or: [
                     { key: { eq: args.team } },
@@ -84,17 +84,17 @@ export function createProjectTools(getLinearClient: GetLinearClient) {
               };
             }
             if (args.state) {
-              filter.state = { eq: args.state };
+              filter["state"] = { eq: args.state };
             }
             if (args.query) {
-              filter.name = { containsIgnoreCase: args.query };
+              filter["name"] = { containsIgnoreCase: args.query };
             }
             if (args.member) {
               if (args.member === "me") {
                 const me = await client.viewer;
-                filter.members = { id: { eq: me.id } };
+                filter["members"] = { id: { eq: me.id } };
               } else {
-                filter.members = {
+                filter["members"] = {
                   or: [
                     { name: { containsIgnoreCase: args.member } },
                     { email: { containsIgnoreCase: args.member } },
@@ -103,7 +103,7 @@ export function createProjectTools(getLinearClient: GetLinearClient) {
               }
             }
             if (args.initiative) {
-              filter.initiatives = {
+              filter["initiatives"] = {
                 or: [
                   { id: { eq: args.initiative } },
                   { name: { containsIgnoreCase: args.initiative } },
@@ -111,10 +111,10 @@ export function createProjectTools(getLinearClient: GetLinearClient) {
               };
             }
             if (args.createdAt) {
-              filter.createdAt = { gte: parseDateFilter(args.createdAt) };
+              filter["createdAt"] = { gte: parseDateFilter(args.createdAt) };
             }
             if (args.updatedAt) {
-              filter.updatedAt = { gte: parseDateFilter(args.updatedAt) };
+              filter["updatedAt"] = { gte: parseDateFilter(args.updatedAt) };
             }
 
             const projects = await client.projects({
@@ -138,7 +138,7 @@ export function createProjectTools(getLinearClient: GetLinearClient) {
 
             const response: Record<string, unknown> = { projects: results };
             if (projects.pageInfo.hasNextPage && projects.pageInfo.endCursor) {
-              response.nextCursor = projects.pageInfo.endCursor;
+              response["nextCursor"] = projects.pageInfo.endCursor;
             }
             return JSON.stringify(response);
           },
@@ -206,7 +206,7 @@ export function createProjectTools(getLinearClient: GetLinearClient) {
 
             if (args.includeMilestones) {
               const milestones = await project.projectMilestones();
-              data.milestones = milestones.nodes.map((m) => ({
+              data["milestones"] = milestones.nodes.map((m) => ({
                 id: m.id,
                 name: m.name,
                 description: m.description,

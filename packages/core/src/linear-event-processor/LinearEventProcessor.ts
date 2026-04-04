@@ -71,7 +71,7 @@ function readPromptContextText(promptContext: unknown): string | null {
   }
 
   if (isRecord(promptContext)) {
-    const contentBody = readStringField(promptContext.content, "body");
+    const contentBody = readStringField(promptContext["content"], "body");
     if (contentBody) {
       return contentBody;
     }
@@ -90,7 +90,7 @@ function extractPromptedUserResponse(event: {
   }
 
   if (isRecord(event.agentActivity)) {
-    const contentBody = readStringField(event.agentActivity.content, "body");
+    const contentBody = readStringField(event.agentActivity["content"], "body");
     if (contentBody) {
       return contentBody;
     }

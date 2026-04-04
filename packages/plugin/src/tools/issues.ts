@@ -171,7 +171,7 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
                 }
               }
 
-              data.relations = { blocks, blockedBy, related, duplicate };
+              data["relations"] = { blocks, blockedBy, related, duplicate };
             }
 
             return JSON.stringify(data);
@@ -604,16 +604,16 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
             const filter: Record<string, unknown> = {};
 
             if (args.state) {
-              filter.state = { name: { containsIgnoreCase: args.state } };
+              filter["state"] = { name: { containsIgnoreCase: args.state } };
             } else {
-              filter.state = { type: { nin: ["completed", "canceled"] } };
+              filter["state"] = { type: { nin: ["completed", "canceled"] } };
             }
             if (args.assignee) {
               if (args.assignee === "me") {
                 const me = await client.viewer;
-                filter.assignee = { id: { eq: me.id } };
+                filter["assignee"] = { id: { eq: me.id } };
               } else {
-                filter.assignee = {
+                filter["assignee"] = {
                   or: [
                     { name: { containsIgnoreCase: args.assignee } },
                     { email: { containsIgnoreCase: args.assignee } },
@@ -624,9 +624,9 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
             if (args.delegate) {
               if (args.delegate === "me") {
                 const me = await client.viewer;
-                filter.delegate = { id: { eq: me.id } };
+                filter["delegate"] = { id: { eq: me.id } };
               } else {
-                filter.delegate = {
+                filter["delegate"] = {
                   or: [
                     { name: { containsIgnoreCase: args.delegate } },
                     { email: { containsIgnoreCase: args.delegate } },
@@ -635,7 +635,7 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
               }
             }
             if (args.team) {
-              filter.team = {
+              filter["team"] = {
                 or: [
                   { key: { eq: args.team } },
                   { name: { containsIgnoreCase: args.team } },
@@ -643,13 +643,13 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
               };
             }
             if (args.label) {
-              filter.labels = { some: { name: { eq: args.label } } };
+              filter["labels"] = { some: { name: { eq: args.label } } };
             }
             if (args.query) {
-              filter.searchableContent = { contains: args.query };
+              filter["searchableContent"] = { contains: args.query };
             }
             if (args.project) {
-              filter.project = {
+              filter["project"] = {
                 or: [
                   { id: { eq: args.project } },
                   { name: { containsIgnoreCase: args.project } },
@@ -658,7 +658,7 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
             }
             if (args.cycle) {
               const num = parseInt(args.cycle, 10);
-              filter.cycle = {
+              filter["cycle"] = {
                 or: [
                   { id: { eq: args.cycle } },
                   { name: { containsIgnoreCase: args.cycle } },
@@ -667,13 +667,13 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
               };
             }
             if (args.parentId) {
-              filter.parent = { id: { eq: args.parentId } };
+              filter["parent"] = { id: { eq: args.parentId } };
             }
             if (args.createdAt) {
-              filter.createdAt = { gte: parseDateFilter(args.createdAt) };
+              filter["createdAt"] = { gte: parseDateFilter(args.createdAt) };
             }
             if (args.updatedAt) {
-              filter.updatedAt = { gte: parseDateFilter(args.updatedAt) };
+              filter["updatedAt"] = { gte: parseDateFilter(args.updatedAt) };
             }
 
             const issues = await client.issues({
@@ -717,7 +717,7 @@ export function createIssueTools(getLinearClient: GetLinearClient) {
 
             const response: Record<string, unknown> = { issues: results };
             if (issues.pageInfo.hasNextPage && issues.pageInfo.endCursor) {
-              response.nextCursor = issues.pageInfo.endCursor;
+              response["nextCursor"] = issues.pageInfo.endCursor;
             }
             return JSON.stringify(response);
           },
