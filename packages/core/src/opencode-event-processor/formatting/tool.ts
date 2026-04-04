@@ -194,7 +194,7 @@ export function truncateOutput(output: string): string {
 export function getToolThought(
   toolName: string,
   input: Record<string, unknown>,
-): string | undefined {
+): string {
   const toolLower = toolName.toLowerCase();
   const command = getString(input, "command");
 
@@ -227,4 +227,6 @@ export function getToolThought(
   if (toolLower === "task") {
     return "Delegating subtask...";
   }
+
+  return "Running tool...";
 }
