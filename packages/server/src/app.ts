@@ -1,5 +1,3 @@
-import { Hono } from "hono";
-import { logger } from "hono/logger";
 import type {
   ApplicationConfig,
   OAuthStateRepository,
@@ -7,9 +5,13 @@ import type {
   SessionRepository,
   OpencodeService,
 } from "@opencode-linear-agent/core";
+import type { GetConnInfo } from "hono/conninfo";
+
+import { Hono } from "hono";
+import { logger } from "hono/logger";
+
 import { createOAuthApp } from "./routes/oauth/app";
 import { createWebhookApp } from "./routes/webhook/app";
-import type { GetConnInfo } from "hono/conninfo";
 
 export function createApp(
   config: ApplicationConfig,

@@ -1,4 +1,16 @@
 import type { KeyValueStore } from "../kv/types";
+import type {
+  OAuthStateRecord,
+  AuthRecord,
+  SessionState,
+  SessionByOpencodeRecord,
+  PendingPermission,
+  PendingQuestion,
+  PendingRepoSelection,
+} from "./schema";
+
+import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
+import { getStateRootDirectoryPath } from "../utils/paths";
 import {
   authRecordSchema,
   oauthStateRecordSchema,
@@ -7,16 +19,7 @@ import {
   pendingRepoSelectionSchema,
   sessionByOpencodeRecordSchema,
   sessionStateSchema,
-  type OAuthStateRecord,
-  type AuthRecord,
-  type SessionState,
-  type SessionByOpencodeRecord,
-  type PendingPermission,
-  type PendingQuestion,
-  type PendingRepoSelection,
 } from "./schema";
-import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
-import { getStateRootDirectoryPath } from "../utils/paths";
 
 export interface AgentStateNamespace {
   auth: KeyValueStore<AuthRecord>;
@@ -33,11 +36,7 @@ export function createFileAgentState(
 ): AgentStateNamespace {
   return {
     auth: new FileKeyValueStore("auth", path, authRecordSchema),
-    oauthState: new FileKeyValueStore(
-      "oauth-state",
-      path,
-      oauthStateRecordSchema,
-    ),
+    oauthState: new FileKeyValueStore("oauth-state", path, oauthStateRecordSchema),
     session: new FileKeyValueStore("session", path, sessionStateSchema),
     sessionByOpencode: new FileKeyValueStore(
       "session-by-opencode",
@@ -45,15 +44,7 @@ export function createFileAgentState(
       sessionByOpencodeRecordSchema,
     ),
     question: new FileKeyValueStore("question", path, pendingQuestionSchema),
-    permission: new FileKeyValueStore(
-      "permission",
-      path,
-      pendingPermissionSchema,
-    ),
-    repoSelection: new FileKeyValueStore(
-      "repo-selection",
-      path,
-      pendingRepoSelectionSchema,
-    ),
+    permission: new FileKeyValueStore("permission", path, pendingPermissionSchema),
+    repoSelection: new FileKeyValueStore("repo-selection", path, pendingRepoSelectionSchema),
   };
 }

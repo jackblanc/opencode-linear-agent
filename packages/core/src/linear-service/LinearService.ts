@@ -1,5 +1,7 @@
 import { LinearClient, AgentActivitySignal } from "@linear/sdk";
 import { Result } from "better-result";
+
+import type { Logger } from "../utils/logger";
 import type {
   ActivityContent,
   IssueState,
@@ -10,9 +12,10 @@ import type {
   IssueRepositoryCandidate,
   IssueRepositorySuggestion,
 } from "./types";
-import { STAGE_MESSAGES } from "./types";
-import { Log, type Logger } from "../utils/logger";
+
+import { Log } from "../utils/logger";
 import { mapLinearError } from "./errors";
+import { STAGE_MESSAGES } from "./types";
 
 interface IssueCommentPage {
   nodes: Array<{ agentSessionId?: string | null }>;
@@ -111,9 +114,7 @@ function toIssueStateType(value: string): IssueState["type"] {
  *
  * Only auth and select are valid agent-to-human signals per Linear docs.
  */
-function mapElicitationSignal(
-  signal: ElicitationSignal,
-): AgentActivitySignal | undefined {
+function mapElicitationSignal(signal: ElicitationSignal): AgentActivitySignal | undefined {
   switch (signal) {
     case "auth":
       return AgentActivitySignal.Auth;
@@ -136,11 +137,7 @@ export class LinearService {
   // ─────────────────────────────────────────────────────────────
   // Agent Activity Methods
   // ─────────────────────────────────────────────────────────────
-  async postActivity(
-    sessionId: string,
-    content: ActivityContent,
-    ephemeral = false,
-  ) {
+  async postActivity(sessionId: string, content: ActivityContent, ephemeral = false) {
     return await Result.tryPromise({
       try: async () =>
         this.client.createAgentActivity({
@@ -161,11 +158,7 @@ export class LinearService {
     });
   }
 
-  async postStageActivity(
-    sessionId: string,
-    stage: ProcessingStage,
-    details?: string,
-  ) {
+  async postStageActivity(sessionId: string, stage: ProcessingStage, details?: string) {
     const baseMessage = STAGE_MESSAGES[stage];
     const body = details ? `${baseMessage}\n\n${details}` : baseMessage;
 
@@ -192,9 +185,7 @@ export class LinearService {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
 
-    const truncatedStack = errorStack
-      ? errorStack.split("\n").slice(0, 20).join("\n")
-      : undefined;
+    const truncatedStack = errorStack ? errorStack.split("\n").slice(0, 20).join("\n") : undefined;
 
     const errorBody = truncatedStack
       ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${truncatedStack}\n\`\`\``
@@ -538,9 +529,7 @@ export class LinearService {
           throw new Error("Team has no started workflow states");
         }
 
-        const sortedStates = states.nodes.toSorted(
-          (a, b) => a.position - b.position,
-        );
+        const sortedStates = states.nodes.toSorted((a, b) => a.position - b.position);
         const inProgressState = sortedStates[0];
 
         if (!inProgressState) {

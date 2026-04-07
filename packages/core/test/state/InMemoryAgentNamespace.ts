@@ -1,5 +1,5 @@
-import { MemoryKeyValueStore } from "./MemoryKeyValueStore";
 import type { AgentStateNamespace } from "../../src/state/root";
+
 import {
   authRecordSchema,
   oauthStateRecordSchema,
@@ -9,6 +9,7 @@ import {
   sessionByOpencodeRecordSchema,
   sessionStateSchema,
 } from "../../src/state/schema";
+import { MemoryKeyValueStore } from "./MemoryKeyValueStore";
 
 export function createInMemoryAgentState(): AgentStateNamespace {
   return {

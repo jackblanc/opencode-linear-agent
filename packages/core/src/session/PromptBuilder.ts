@@ -1,4 +1,5 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+
 import type { AgentMode } from "../utils/determineAgentMode";
 
 function getSystemDirective(mode: AgentMode): string {
@@ -17,10 +18,7 @@ You are permitted to make file changes, run shell commands, and utilize your ars
 }
 
 function readPromptContext(event: AgentSessionEventWebhookPayload): string {
-  if (
-    typeof event.promptContext === "string" &&
-    event.promptContext.trim().length > 0
-  ) {
+  if (typeof event.promptContext === "string" && event.promptContext.trim().length > 0) {
     return event.promptContext;
   }
 

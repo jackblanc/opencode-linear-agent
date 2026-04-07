@@ -1,26 +1,28 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 import type { Project } from "@opencode-ai/sdk/v2";
+
 import { Result } from "better-result";
 import { basename } from "node:path";
+
 import type { LinearService } from "../linear-service/LinearService";
-import type { SessionRepository } from "../state/SessionRepository";
+import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type {
   PendingPermission,
   PendingQuestion,
   PendingRepoSelection,
   RepoSelectionOption,
 } from "../state/schema";
-import { SessionManager } from "../session/SessionManager";
-import {
-  type AgentMode,
-  determineAgentMode,
-} from "../utils/determineAgentMode";
-import type { OpencodeService } from "../opencode-service/OpencodeService";
-import { base64Encode } from "../utils/encode";
-import { Log, type Logger } from "../utils/logger";
-import { buildCreatedPrompt } from "../session/PromptBuilder";
+import type { SessionRepository } from "../state/SessionRepository";
+import type { AgentMode } from "../utils/determineAgentMode";
+import type { Logger } from "../utils/logger";
+
 import { LinearForbiddenError } from "../linear-service/errors";
 import { findRepoLabel, parseRepoLabel } from "../linear-service/label-parser";
+import { buildCreatedPrompt } from "../session/PromptBuilder";
+import { SessionManager } from "../session/SessionManager";
+import { determineAgentMode } from "../utils/determineAgentMode";
+import { base64Encode } from "../utils/encode";
+import { Log } from "../utils/logger";
 
 /**
  * Configuration for the LinearEventProcessor
@@ -184,10 +186,7 @@ function matchOption<T>(
     const aliases = config.getAliases?.(opt) ?? [];
     for (const alias of aliases) {
       const normalizedAlias = normalizeMatchInput(alias);
-      if (
-        normalizedAlias.length > 0 &&
-        normalizedResponse.startsWith(normalizedAlias)
-      ) {
+      if (normalizedAlias.length > 0 && normalizedResponse.startsWith(normalizedAlias)) {
         return config.getLabel(opt);
       }
     }
@@ -204,10 +203,7 @@ function matchOption<T>(
     const aliases = config.getAliases?.(opt) ?? [];
     for (const alias of aliases) {
       const normalizedAlias = normalizeMatchInput(alias);
-      if (
-        normalizedAlias.length > 0 &&
-        hasWordBoundaryMatch(userResponse, normalizedAlias)
-      ) {
+      if (normalizedAlias.length > 0 && hasWordBoundaryMatch(userResponse, normalizedAlias)) {
         return config.getLabel(opt);
       }
     }
@@ -237,10 +233,7 @@ function toRepoSelectionOption(project: Project): RepoSelectionOption {
   };
 }
 
-function buildRepoSelectionBody(
-  resolution: ProjectResolution,
-  invalidResponse?: string,
-): string {
+function buildRepoSelectionBody(resolution: ProjectResolution, invalidResponse?: string): string {
   const lines = [
     resolution.reason === "invalid"
       ? `Replace invalid label \`${resolution.invalidLabel ?? "repo:"}\` by picking a repository or replying with a label like \`${resolution.exampleLabel}\`.`
@@ -274,10 +267,7 @@ function normalizeRepoLabelInput(userResponse: string): string | null {
   return `repo:${parsed.repositoryName}`;
 }
 
-function matchProjectByRepoName(
-  repositoryName: string,
-  projects: Project[],
-): Project | null {
+function matchProjectByRepoName(repositoryName: string, projects: Project[]): Project | null {
   const target = normalizeMatchInput(repositoryName);
   for (const project of projects) {
     if (normalizeMatchInput(getProjectLabel(project)) === target) {
@@ -353,8 +343,7 @@ export class LinearEventProcessor {
   async process(event: AgentSessionEventWebhookPayload): Promise<void> {
     const linearSessionId = event.agentSession.id;
     const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
-    const issueIdentifier =
-      event.agentSession.issue?.identifier ?? issueId ?? "unknown";
+    const issueIdentifier = event.agentSession.issue?.identifier ?? issueId ?? "unknown";
     const log = Log.create({ service: "processor" })
       .tag("issue", issueIdentifier)
       .tag("sessionId", linearSessionId);
@@ -369,8 +358,7 @@ export class LinearEventProcessor {
       return;
     }
 
-    const pendingSelection =
-      await this.sessions.getPendingRepoSelection(linearSessionId);
+    const pendingSelection = await this.sessions.getPendingRepoSelection(linearSessionId);
     if (pendingSelection) {
       await this.handleRepoSelectionPrompt(event, pendingSelection, log);
       return;
@@ -391,19 +379,13 @@ export class LinearEventProcessor {
         log,
       );
       if (!ok) {
-        await this.linear.postError(
-          linearSessionId,
-          new Error("Session startup failed"),
-        );
+        await this.linear.postError(linearSessionId, new Error("Session startup failed"));
       }
       return;
     }
 
     if (!issueId) {
-      await this.linear.postError(
-        linearSessionId,
-        new Error("Missing issue id"),
-      );
+      await this.linear.postError(linearSessionId, new Error("Missing issue id"));
       return;
     }
 
@@ -420,9 +402,7 @@ export class LinearEventProcessor {
     if (projects.length === 0) {
       await this.linear.postError(
         linearSessionId,
-        new Error(
-          "No OpenCode projects found. Open the repo in OpenCode first, then retry.",
-        ),
+        new Error("No OpenCode projects found. Open the repo in OpenCode first, then retry."),
       );
       return;
     }
@@ -450,10 +430,7 @@ export class LinearEventProcessor {
       return;
     }
 
-    const matchedProject = matchProjectByRepoName(
-      parsedRepoLabel.repositoryName,
-      projects,
-    );
+    const matchedProject = matchProjectByRepoName(parsedRepoLabel.repositoryName, projects);
 
     if (!matchedProject) {
       const unmatchedLabel =
@@ -480,10 +457,7 @@ export class LinearEventProcessor {
       log,
     );
     if (!ok) {
-      await this.linear.postError(
-        linearSessionId,
-        new Error("Session startup failed"),
-      );
+      await this.linear.postError(linearSessionId, new Error("Session startup failed"));
     }
   }
 
@@ -498,8 +472,7 @@ export class LinearEventProcessor {
     const sessionState = await this.sessions.get(linearSessionId);
     let issue: WorktreeIssue = {
       identifier: event.agentSession.issue?.identifier ?? issueId ?? "unknown",
-      branchName:
-        readStringField(event.agentSession.issue, "branchName") ?? undefined,
+      branchName: readStringField(event.agentSession.issue, "branchName") ?? undefined,
     };
 
     if (issueId && !issue.branchName) {
@@ -523,10 +496,7 @@ export class LinearEventProcessor {
     if (!workdir || !branchName || sessionState?.projectId !== project.id) {
       await this.linear.postStageActivity(linearSessionId, "git_setup");
       const worktreeName = this.buildWorktreeName(issue, linearSessionId);
-      const worktreeResult = await this.opencode.createWorktree(
-        project.worktree,
-        worktreeName,
-      );
+      const worktreeResult = await this.opencode.createWorktree(project.worktree, worktreeName);
 
       if (Result.isError(worktreeResult)) {
         await this.linear.postError(linearSessionId, worktreeResult.error);
@@ -681,9 +651,7 @@ export class LinearEventProcessor {
         }
 
         const option = pendingSelection.options.find(
-          (item) =>
-            normalizeMatchInput(item.repoLabel) ===
-            normalizeMatchInput(normalized),
+          (item) => normalizeMatchInput(item.repoLabel) === normalizeMatchInput(normalized),
         );
         return option?.repoLabel ?? null;
       })() ??
@@ -698,9 +666,7 @@ export class LinearEventProcessor {
         pendingSelection.issueId,
         {
           reason: "missing",
-          exampleLabel:
-            pendingSelection.options[0]?.repoLabel ??
-            "repo:opencode-linear-agent",
+          exampleLabel: pendingSelection.options[0]?.repoLabel ?? "repo:opencode-linear-agent",
           options: pendingSelection.options,
         },
         pendingSelection.promptContext,
@@ -710,9 +676,7 @@ export class LinearEventProcessor {
     }
 
     const selectedOption =
-      pendingSelection.options.find(
-        (option) => option.repoLabel === selectedLabel,
-      ) ?? null;
+      pendingSelection.options.find((option) => option.repoLabel === selectedLabel) ?? null;
     if (!selectedOption) {
       await this.linear.postError(
         linearSessionId,
@@ -829,10 +793,7 @@ export class LinearEventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session silently");
 
-      const abortResult = await this.opencode.abortSession(
-        opencodeSessionId,
-        workdir,
-      );
+      const abortResult = await this.opencode.abortSession(opencodeSessionId, workdir);
 
       if (Result.isError(abortResult)) {
         log.warn("Failed to abort session", {
@@ -859,14 +820,7 @@ export class LinearEventProcessor {
     });
 
     // Send prompt (fire-and-forget - plugin handles events)
-    await this.executePrompt(
-      opencodeSessionId,
-      linearSessionId,
-      workdir,
-      prompt,
-      mode,
-      log,
-    );
+    await this.executePrompt(opencodeSessionId, linearSessionId, workdir, prompt, mode, log);
   }
 
   /**
@@ -884,10 +838,7 @@ export class LinearEventProcessor {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session silently");
 
-      const abortResult = await this.opencode.abortSession(
-        opencodeSessionId,
-        workdir,
-      );
+      const abortResult = await this.opencode.abortSession(opencodeSessionId, workdir);
 
       if (Result.isError(abortResult)) {
         log.warn("Failed to abort session", {
@@ -908,8 +859,7 @@ export class LinearEventProcessor {
     const userResponse = extractPromptedUserResponse(event);
 
     // Check if there's a pending permission for this session
-    const pendingPermission =
-      await this.sessions.getPendingPermission(linearSessionId);
+    const pendingPermission = await this.sessions.getPendingPermission(linearSessionId);
 
     if (pendingPermission) {
       await this.handlePermissionResponse(
@@ -925,8 +875,7 @@ export class LinearEventProcessor {
     }
 
     // Check if there's a pending question for this session
-    const pendingQuestion =
-      await this.sessions.getPendingQuestion(linearSessionId);
+    const pendingQuestion = await this.sessions.getPendingQuestion(linearSessionId);
 
     log.info("Checking for pending question", {
       hasPendingQuestion: !!pendingQuestion,
@@ -957,14 +906,7 @@ export class LinearEventProcessor {
     });
 
     // Send prompt (fire-and-forget - plugin handles events)
-    await this.executePrompt(
-      opencodeSessionId,
-      linearSessionId,
-      workdir,
-      userResponse,
-      mode,
-      log,
-    );
+    await this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log);
   }
 
   /**
@@ -997,9 +939,7 @@ export class LinearEventProcessor {
 
     if (answerIndex === -1) {
       // All questions already answered - this shouldn't happen, but handle gracefully
-      log.warn(
-        "All questions already answered - clearing pending and treating as follow-up",
-      );
+      log.warn("All questions already answered - clearing pending and treating as follow-up");
       await this.sessions.deletePendingQuestion(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
@@ -1028,13 +968,10 @@ export class LinearEventProcessor {
     if (!matchedLabel) {
       // User response doesn't match any option - they're ignoring the question
       // Clear pending question and send as a regular follow-up prompt
-      log.info(
-        "User response doesn't match any option - treating as new prompt",
-        {
-          response: userResponse.slice(0, 100),
-          availableOptions: currentQuestion.options.map((o) => o.label),
-        },
-      );
+      log.info("User response doesn't match any option - treating as new prompt", {
+        response: userResponse.slice(0, 100),
+        availableOptions: currentQuestion.options.map((o) => o.label),
+      });
       await this.sessions.deletePendingQuestion(linearSessionId);
       await this.sendFollowUpPrompt(
         userResponse,
@@ -1076,11 +1013,7 @@ export class LinearEventProcessor {
     // Filter out nulls (we just verified all are non-null above)
     const answers = pending.answers.filter((a): a is string[] => a !== null);
 
-    const replyResult = await this.opencode.replyQuestion(
-      pending.requestId,
-      answers,
-      workdir,
-    );
+    const replyResult = await this.opencode.replyQuestion(pending.requestId, answers, workdir);
 
     // Clean up pending question regardless of result
     await this.sessions.deletePendingQuestion(linearSessionId);
@@ -1168,11 +1101,7 @@ export class LinearEventProcessor {
     });
 
     // Reply to the permission request
-    const replyResult = await this.opencode.replyPermission(
-      pending.requestId,
-      reply,
-      workdir,
-    );
+    const replyResult = await this.opencode.replyPermission(pending.requestId, reply, workdir);
 
     // Clean up pending permission regardless of result
     await this.sessions.deletePendingPermission(linearSessionId);
@@ -1212,28 +1141,16 @@ export class LinearEventProcessor {
     });
 
     // Send prompt (fire-and-forget - plugin handles events)
-    await this.executePrompt(
-      opencodeSessionId,
-      linearSessionId,
-      workdir,
-      userResponse,
-      mode,
-      log,
-    );
+    await this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log);
   }
 
-  private buildWorktreeName(
-    issue: WorktreeIssue,
-    linearSessionId: string,
-  ): string {
+  private buildWorktreeName(issue: WorktreeIssue, linearSessionId: string): string {
     const shortLinearSessionId = linearSessionId.slice(0, 8).toLowerCase();
     if (issue.branchName) {
       return `${shortLinearSessionId}-${issue.branchName}`;
     }
 
-    const safeIssue = issue.identifier
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-");
+    const safeIssue = issue.identifier.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     return `${safeIssue}-${shortLinearSessionId}`;
   }
 }

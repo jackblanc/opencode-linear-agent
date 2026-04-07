@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import type { AuthRecord } from "../../src/state/schema";
+
 import { AuthRepository } from "../../src/state/AuthRepository";
-import { type AuthRecord } from "../../src/state/schema";
 import { createInMemoryAgentState } from "./InMemoryAgentNamespace";
 
 function createAuthRecord(overrides: Partial<AuthRecord> = {}): AuthRecord {
@@ -39,9 +40,7 @@ describe("AuthRepository", () => {
   test("hides expired access tokens but keeps auth record", async () => {
     const state = createInMemoryAgentState();
     const store = new AuthRepository(state);
-    await store.putAuthRecord(
-      createAuthRecord({ accessTokenExpiresAt: Date.now() - 1 }),
-    );
+    await store.putAuthRecord(createAuthRecord({ accessTokenExpiresAt: Date.now() - 1 }));
 
     expect(await store.getAccessToken("org-1")).toBeNull();
     expect(await store.getAuthRecord("org-1")).not.toBeNull();

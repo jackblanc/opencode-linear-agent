@@ -1,4 +1,5 @@
 import { Result } from "better-result";
+
 import type { KvError } from "../../src/kv/errors";
 import type { KeyValueStore } from "../../src/kv/types";
 

@@ -157,12 +157,5 @@ export const STAGE_MESSAGES: Record<ProcessingStage, string> = {
 export interface IssueState {
   id: string;
   name: string;
-  type:
-    | "triage"
-    | "backlog"
-    | "unstarted"
-    | "started"
-    | "completed"
-    | "canceled"
-    | "unknown";
+  type: "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled" | "unknown";
 }

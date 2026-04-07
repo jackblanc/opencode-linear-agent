@@ -1,8 +1,10 @@
 import { Result } from "better-result";
-import { Log } from "../utils/logger";
+
 import type { LinearService } from "../linear-service/LinearService";
-import type { SessionRepository } from "../state/SessionRepository";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
+import type { SessionRepository } from "../state/SessionRepository";
+
+import { Log } from "../utils/logger";
 
 type CleanupIssueStateType = "completed" | "canceled";
 const ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS = 3;
@@ -26,10 +28,7 @@ interface IssueCleanupWebhookPayload {
 export class IssueEventHandler {
   constructor(
     private readonly linear: LinearService,
-    private readonly opencode: Pick<
-      OpencodeService,
-      "abortSession" | "removeWorktree"
-    >,
+    private readonly opencode: Pick<OpencodeService, "abortSession" | "removeWorktree">,
     private readonly repository: SessionRepository,
   ) {}
 
@@ -48,10 +47,7 @@ export class IssueEventHandler {
       .tag("issueId", event.data.id)
       .tag("stateType", issueStateType);
 
-    const sessionIdsResult = await this.getIssueSessionIdsWithRetry(
-      event.data.id,
-      log,
-    );
+    const sessionIdsResult = await this.getIssueSessionIdsWithRetry(event.data.id, log);
     if (Result.isError(sessionIdsResult)) {
       log.warn("Failed to load issue sessions from Linear", {
         error: sessionIdsResult.error.message,
@@ -79,10 +75,7 @@ export class IssueEventHandler {
         continue;
       }
 
-      const abortResult = await this.opencode.abortSession(
-        state.opencodeSessionId,
-        state.workdir,
-      );
+      const abortResult = await this.opencode.abortSession(state.opencodeSessionId, state.workdir);
       const abortSucceeded = Result.isOk(abortResult);
 
       if (!abortSucceeded) {
@@ -104,13 +97,10 @@ export class IssueEventHandler {
       }
 
       if (!abortSucceeded) {
-        sessionLog.warn(
-          "OpenCode abort failed; preserving session state for retry",
-          {
-            branchName: state.branchName,
-            workdir: state.workdir,
-          },
-        );
+        sessionLog.warn("OpenCode abort failed; preserving session state for retry", {
+          branchName: state.branchName,
+          workdir: state.workdir,
+        });
         continue;
       }
 

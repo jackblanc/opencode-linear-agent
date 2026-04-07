@@ -143,12 +143,7 @@ The `better-result` package provides:
 
 ```typescript
 import type { Result } from "better-result";
-import type {
-  ActivityContent,
-  PlanItem,
-  ProcessingStage,
-  SignalMetadata,
-} from "./types";
+import type { ActivityContent, PlanItem, ProcessingStage, SignalMetadata } from "./types";
 import type { ElicitationSignal } from "./LinearAdapter";
 
 /**
@@ -261,25 +256,13 @@ export interface LinearService {
 ```typescript
 import { LinearClient, AgentActivitySignal } from "@linear/sdk";
 import { Result } from "better-result";
-import type {
-  LinearService,
-  LinearIssue,
-  LinearLabel,
-  LinearAttachment,
-} from "./LinearService";
-import type {
-  ActivityContent,
-  PlanItem,
-  ProcessingStage,
-  SignalMetadata,
-} from "./types";
+import type { LinearService, LinearIssue, LinearLabel, LinearAttachment } from "./LinearService";
+import type { ActivityContent, PlanItem, ProcessingStage, SignalMetadata } from "./types";
 import { STAGE_MESSAGES } from "./types";
 import type { ElicitationSignal } from "./LinearAdapter";
 import { Log, type Logger } from "../logger";
 
-function mapElicitationSignal(
-  signal: ElicitationSignal,
-): AgentActivitySignal | undefined {
+function mapElicitationSignal(signal: ElicitationSignal): AgentActivitySignal | undefined {
   switch (signal) {
     case "auth":
       return AgentActivitySignal.Auth;
@@ -326,9 +309,7 @@ export class LinearServiceImpl implements LinearService {
         ephemeral,
         error: result.error.message,
       });
-      return result.mapError((e) =>
-        e instanceof Error ? e : new Error(String(e)),
-      );
+      return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
     }
 
     return Result.ok(undefined);
@@ -356,24 +337,17 @@ export class LinearServiceImpl implements LinearService {
         sessionId,
         error: result.error.message,
       });
-      return result.mapError((e) =>
-        e instanceof Error ? e : new Error(String(e)),
-      );
+      return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
     }
 
     return Result.ok(undefined);
   }
 
-  async postError(
-    sessionId: string,
-    error: unknown,
-  ): Promise<Result<void, Error>> {
+  async postError(sessionId: string, error: unknown): Promise<Result<void, Error>> {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
 
-    const truncatedStack = errorStack
-      ? errorStack.split("\n").slice(0, 20).join("\n")
-      : undefined;
+    const truncatedStack = errorStack ? errorStack.split("\n").slice(0, 20).join("\n") : undefined;
 
     const errorBody = truncatedStack
       ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${truncatedStack}\n\`\`\``
@@ -393,9 +367,7 @@ export class LinearServiceImpl implements LinearService {
         originalError: errorMessage,
         reportError: result.error.message,
       });
-      return result.mapError((e) =>
-        e instanceof Error ? e : new Error(String(e)),
-      );
+      return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
     }
 
     return Result.ok(undefined);
@@ -426,18 +398,13 @@ export class LinearServiceImpl implements LinearService {
         signal,
         error: result.error.message,
       });
-      return result.mapError((e) =>
-        e instanceof Error ? e : new Error(String(e)),
-      );
+      return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
     }
 
     return Result.ok(undefined);
   }
 
-  async setExternalLink(
-    sessionId: string,
-    url: string,
-  ): Promise<Result<void, Error>> {
+  async setExternalLink(sessionId: string, url: string): Promise<Result<void, Error>> {
     const result = await Result.tryPromise(async () => {
       const agentSession = await this.client.agentSession(sessionId);
       await agentSession.update({ externalLink: url });
@@ -449,18 +416,13 @@ export class LinearServiceImpl implements LinearService {
         url,
         error: result.error.message,
       });
-      return result.mapError((e) =>
-        e instanceof Error ? e : new Error(String(e)),
-      );
+      return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
     }
 
     return Result.ok(undefined);
   }
 
-  async updatePlan(
-    sessionId: string,
-    plan: PlanItem[],
-  ): Promise<Result<void, Error>> {
+  async updatePlan(sessionId: string, plan: PlanItem[]): Promise<Result<void, Error>> {
     const result = await Result.tryPromise(async () => {
       const agentSession = await this.client.agentSession(sessionId);
       await agentSession.update({ plan });
@@ -472,9 +434,7 @@ export class LinearServiceImpl implements LinearService {
         planItemCount: plan.length,
         error: result.error.message,
       });
-      return result.mapError((e) =>
-        e instanceof Error ? e : new Error(String(e)),
-      );
+      return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
     }
 
     return Result.ok(undefined);
@@ -503,9 +463,7 @@ export class LinearServiceImpl implements LinearService {
       });
     }
 
-    return result.mapError((e) =>
-      e instanceof Error ? e : new Error(String(e)),
-    );
+    return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
   }
 
   async getIssueLabels(issueId: string): Promise<Result<LinearLabel[], Error>> {
@@ -525,14 +483,10 @@ export class LinearServiceImpl implements LinearService {
       });
     }
 
-    return result.mapError((e) =>
-      e instanceof Error ? e : new Error(String(e)),
-    );
+    return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
   }
 
-  async getIssueAttachments(
-    issueId: string,
-  ): Promise<Result<LinearAttachment[], Error>> {
+  async getIssueAttachments(issueId: string): Promise<Result<LinearAttachment[], Error>> {
     const result = await Result.tryPromise(async () => {
       const issue = await this.client.issue(issueId);
       const attachments = await issue.attachments();
@@ -550,9 +504,7 @@ export class LinearServiceImpl implements LinearService {
       });
     }
 
-    return result.mapError((e) =>
-      e instanceof Error ? e : new Error(String(e)),
-    );
+    return result.mapError((e) => (e instanceof Error ? e : new Error(String(e))));
   }
 }
 ```
@@ -867,9 +819,7 @@ const doubled = result.map((x) => x * 2);
 const mapped = result.mapError((e) => new WrappedError(e));
 
 // Chain Result-returning functions
-const chained = result.andThen((x) =>
-  x > 0 ? Result.ok(x) : Result.err(new Error("negative")),
-);
+const chained = result.andThen((x) => (x > 0 ? Result.ok(x) : Result.err(new Error("negative"))));
 ```
 
 ### Key Differences from OpenCode SDK

@@ -132,10 +132,7 @@ Phases are ordered so each can be shipped independently. Phase 1 (Unify LinearSe
 Create `packages/plugin/src/linear.ts`:
 
 ```typescript
-import {
-  LinearServiceImpl,
-  type LinearService,
-} from "@opencode-linear-agent/core";
+import { LinearServiceImpl, type LinearService } from "@opencode-linear-agent/core";
 
 export function createLinearService(accessToken: string): LinearService {
   return new LinearServiceImpl(accessToken);
@@ -221,18 +218,9 @@ export async function executeLinearAction(
 ): Promise<Result<void, LinearServiceError>> {
   switch (action.type) {
     case "postActivity":
-      return linear.postActivity(
-        action.sessionId,
-        action.content,
-        action.ephemeral,
-      );
+      return linear.postActivity(action.sessionId, action.content, action.ephemeral);
     case "postElicitation":
-      return linear.postElicitation(
-        action.sessionId,
-        action.body,
-        action.signal,
-        action.metadata,
-      );
+      return linear.postElicitation(action.sessionId, action.body, action.signal, action.metadata);
     case "updatePlan":
       return linear.updatePlan(action.sessionId, action.plan);
     case "postError":
@@ -246,17 +234,9 @@ export async function executeOpencodeAction(
 ): Promise<Result<void, OpencodeServiceError>> {
   switch (action.type) {
     case "replyPermission":
-      return opencode.replyPermission(
-        action.requestId,
-        action.reply,
-        action.directory,
-      );
+      return opencode.replyPermission(action.requestId, action.reply, action.directory);
     case "replyQuestion":
-      return opencode.replyQuestion(
-        action.requestId,
-        action.answers,
-        action.directory,
-      );
+      return opencode.replyQuestion(action.requestId, action.answers, action.directory);
   }
 }
 
@@ -363,11 +343,7 @@ export async function handleEvent(
   }
 
   if (event.type === "message.updated") {
-    const result = processMessageCompleted(
-      event.properties.info.id,
-      state,
-      ctx,
-    );
+    const result = processMessageCompleted(event.properties.info.id, state, ctx);
     updateHandlerState(sessionId, result.state);
     await executeLinearActions(result.actions, linear);
   }

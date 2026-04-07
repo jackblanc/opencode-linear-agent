@@ -13,11 +13,7 @@ async function createDataHome(): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(
-    dirs
-      .splice(0)
-      .map(async (dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(dirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("server index", () => {

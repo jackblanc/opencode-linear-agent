@@ -1,8 +1,10 @@
-import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
+import { describe, test, expect } from "bun:test";
+
+import type { SessionState } from "../../src/state/schema";
+
 import { IssueEventHandler } from "../../src/linear-event-processor/IssueEventHandler";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
-import type { SessionState } from "../../src/state/schema";
 import { SessionRepository } from "../../src/state/SessionRepository";
 import { TestLinearService } from "../linear-service/TestLinearService";
 import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
@@ -20,9 +22,7 @@ function createSessionState(): SessionState {
   };
 }
 
-async function createRepository(
-  state?: SessionState,
-): Promise<SessionRepository> {
+async function createRepository(state?: SessionState): Promise<SessionRepository> {
   const repository = new SessionRepository(createInMemoryAgentState());
   if (state) {
     await repository.save(state);
@@ -67,9 +67,7 @@ describe("IssueEventHandler", () => {
 
     await handler.process(createEvent("completed"));
 
-    expect(aborts).toEqual([
-      { sessionID: "opencode-1", directory: "/tmp/worktree-1" },
-    ]);
+    expect(aborts).toEqual([{ sessionID: "opencode-1", directory: "/tmp/worktree-1" }]);
     expect(removes).toEqual(["/tmp/worktree-1"]);
     expect(await repository.get("session-1")).toBeNull();
   });
@@ -83,8 +81,7 @@ describe("IssueEventHandler", () => {
       }),
       {
         abortSession: async () => Result.ok(undefined),
-        removeWorktree: async () =>
-          Result.err(new OpencodeUnknownError({ reason: "busy" })),
+        removeWorktree: async () => Result.err(new OpencodeUnknownError({ reason: "busy" })),
       },
       repository,
     );

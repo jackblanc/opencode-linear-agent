@@ -1,4 +1,3 @@
-import { TaggedError } from "better-result";
 import type {
   ProviderAuthError,
   UnknownError,
@@ -7,12 +6,12 @@ import type {
   ApiError,
 } from "@opencode-ai/sdk/v2";
 
+import { TaggedError } from "better-result";
+
 /**
  * OpenCode provider authentication error
  */
-export class OpencodeProviderAuthError extends TaggedError(
-  "OpencodeProviderAuthError",
-)<{
+export class OpencodeProviderAuthError extends TaggedError("OpencodeProviderAuthError")<{
   providerID: string;
   reason: string;
   message: string;
@@ -34,11 +33,7 @@ export class OpencodeApiError extends TaggedError("OpencodeApiError")<{
   isRetryable: boolean;
   message: string;
 }>() {
-  constructor(args: {
-    statusCode: number | undefined;
-    reason: string;
-    isRetryable: boolean;
-  }) {
+  constructor(args: { statusCode: number | undefined; reason: string; isRetryable: boolean }) {
     super({
       ...args,
       message: `API error${args.statusCode ? ` (${args.statusCode})` : ""}: ${args.reason}`,
@@ -49,9 +44,7 @@ export class OpencodeApiError extends TaggedError("OpencodeApiError")<{
 /**
  * Message was aborted
  */
-export class OpencodeMessageAbortedError extends TaggedError(
-  "OpencodeMessageAbortedError",
-)<{
+export class OpencodeMessageAbortedError extends TaggedError("OpencodeMessageAbortedError")<{
   reason: string;
   message: string;
 }>() {
@@ -63,9 +56,7 @@ export class OpencodeMessageAbortedError extends TaggedError(
 /**
  * Message output exceeded length limit
  */
-export class OpencodeOutputLengthError extends TaggedError(
-  "OpencodeOutputLengthError",
-)<{
+export class OpencodeOutputLengthError extends TaggedError("OpencodeOutputLengthError")<{
   message: string;
 }>() {
   constructor() {

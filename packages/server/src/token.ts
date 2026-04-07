@@ -1,4 +1,5 @@
-import { type AuthRepository } from "@opencode-linear-agent/core";
+import type { AuthRepository } from "@opencode-linear-agent/core";
+
 import { z } from "zod";
 
 export const tokenExchangeResponseSchema = z.object({
@@ -39,13 +40,9 @@ export async function refreshAccessToken(
     throw new Error(`Token refresh failed: ${response.status}`);
   }
 
-  const tokenResult = tokenExchangeResponseSchema.safeParse(
-    await response.json(),
-  );
+  const tokenResult = tokenExchangeResponseSchema.safeParse(await response.json());
   if (!tokenResult.success) {
-    throw new Error(
-      `Invalid token response from Linear: ${tokenResult.error.message}`,
-    );
+    throw new Error(`Invalid token response from Linear: ${tokenResult.error.message}`);
   }
 
   const auth = await authRepository.getAuthRecord(organizationId);

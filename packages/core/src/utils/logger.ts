@@ -1,4 +1,6 @@
-import { createWriteStream, type WriteStream } from "node:fs";
+import type { WriteStream } from "node:fs";
+
+import { createWriteStream } from "node:fs";
 
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
@@ -109,10 +111,7 @@ function formatArray(value: unknown[], seen: WeakSet<object>): string {
   return `[${items.join(",")}]`;
 }
 
-function formatObject(
-  value: Record<string, unknown>,
-  seen: WeakSet<object>,
-): string {
+function formatObject(value: Record<string, unknown>, seen: WeakSet<object>): string {
   const items: string[] = [];
   for (const [key, item] of Object.entries(value)) {
     if (item === undefined) {
@@ -175,16 +174,11 @@ function buildPretty(
 ): string {
   const fields = { ...tags, ...extra };
   const prefix = Object.entries(fields)
-    .filter(
-      ([key, value]) =>
-        value !== undefined && value !== null && !UUID_KEYS.has(key),
-    )
+    .filter(([key, value]) => value !== undefined && value !== null && !UUID_KEYS.has(key))
     .map(([key, value]) => `${key}=${formatValue(value)}`)
     .join(" ");
 
-  return [level.padEnd(5), new Date().toISOString(), prefix, message]
-    .filter(Boolean)
-    .join(" ");
+  return [level.padEnd(5), new Date().toISOString(), prefix, message].filter(Boolean).join(" ");
 }
 
 function write(line: string): void {
@@ -194,11 +188,7 @@ function write(line: string): void {
 }
 
 function createLogger(tags: Record<string, unknown> = {}): Logger {
-  function log(
-    level: LogLevel,
-    message: string,
-    extra?: Record<string, unknown>,
-  ): void {
+  function log(level: LogLevel, message: string, extra?: Record<string, unknown>): void {
     if (!shouldLog(level)) {
       return;
     }

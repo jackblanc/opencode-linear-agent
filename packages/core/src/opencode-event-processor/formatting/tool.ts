@@ -52,10 +52,7 @@ function toGerund(verb: string): string {
 /**
  * Get friendly tool action name
  */
-export function getToolActionName(
-  toolName: string,
-  completed: boolean,
-): string {
+export function getToolActionName(toolName: string, completed: boolean): string {
   const mapping = TOOL_ACTION_MAP[toolName.toLowerCase()];
   if (!mapping) {
     const capitalized = toolName.charAt(0).toUpperCase() + toolName.slice(1);
@@ -99,10 +96,7 @@ function toRelativePath(absolutePath: string, workdir: string | null): string {
  * Replace all absolute paths in a string with relative paths
  * Handles tool output that may contain multiple file paths
  */
-export function replacePathsInOutput(
-  output: string,
-  workdir: string | null,
-): string {
+export function replacePathsInOutput(output: string, workdir: string | null): string {
   if (!workdir) {
     // Try worktree pattern replacement even without explicit workdir
     return output.replace(
@@ -133,8 +127,7 @@ export function extractToolParameter(
     case "read":
     case "edit":
     case "write": {
-      const filePath =
-        getString(input, "filePath") ?? getString(input, "path") ?? "file";
+      const filePath = getString(input, "filePath") ?? getString(input, "path") ?? "file";
       return toRelativePath(filePath, workdir);
     }
     case "bash":
@@ -165,10 +158,7 @@ export function extractToolParameter(
       if (firstKey) {
         const value = input[firstKey];
         // Handle arrays and objects gracefully - don't stringify them directly
-        if (
-          Array.isArray(value) ||
-          (typeof value === "object" && value !== null)
-        ) {
+        if (Array.isArray(value) || (typeof value === "object" && value !== null)) {
           return toolName;
         }
         return String(value).slice(0, 100);
@@ -191,10 +181,7 @@ export function truncateOutput(output: string): string {
 /**
  * Get contextual thought message for tool execution
  */
-export function getToolThought(
-  toolName: string,
-  input: Record<string, unknown>,
-): string {
+export function getToolThought(toolName: string, input: Record<string, unknown>): string {
   const toolLower = toolName.toLowerCase();
   const command = getString(input, "command");
 

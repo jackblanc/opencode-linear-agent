@@ -1,10 +1,11 @@
+import { Result } from "better-result";
 import { mkdir, open, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Result } from "better-result";
+import type { KvError } from "../errors";
 
+import { KvIoError, KvLockError } from "../errors";
 import { encodeKvKey } from "../key";
-import { KvIoError, KvLockError, type KvError } from "../errors";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_RETRY_MS = 25;
@@ -38,11 +39,7 @@ async function createLock(path: string): Promise<Result<HeldLock, KvError>> {
       };
     },
     catch: (error) => {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "EEXIST"
-      ) {
+      if (error instanceof Error && "code" in error && error.code === "EEXIST") {
         return new KvLockError({ path, reason: "already locked" });
       }
 
@@ -113,7 +110,5 @@ export async function withFileLock<T>(
     await sleep(retryMs);
   }
 
-  return Result.err(
-    new KvLockError({ path: lockPath, reason: `timeout after ${timeoutMs}ms` }),
-  );
+  return Result.err(new KvLockError({ path: lockPath, reason: `timeout after ${timeoutMs}ms` }));
 }

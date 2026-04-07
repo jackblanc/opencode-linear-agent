@@ -41,11 +41,7 @@ async function createDataHome(): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(
-    dirs
-      .splice(0)
-      .map(async (dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(dirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("server logging", () => {
@@ -78,13 +74,9 @@ describe("server logging", () => {
       text: string;
     } = JSON.parse(result.stdout);
 
-    expect(dirname(out.firstPath)).toBe(
-      join(dataHome, "opencode-linear-agent", "log"),
-    );
+    expect(dirname(out.firstPath)).toBe(join(dataHome, "opencode-linear-agent", "log"));
     expect(out.firstPath).toBe(out.secondPath);
-    expect(basename(out.firstPath)).toMatch(
-      /^server-\d{8}T\d{6}\.\d{3}Z-p\d+\.log$/,
-    );
+    expect(basename(out.firstPath)).toMatch(/^server-\d{8}T\d{6}\.\d{3}Z-p\d+\.log$/);
     expect(out.text).toContain("service=startup ok=true boot");
   });
 
@@ -131,9 +123,7 @@ describe("server logging", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain("service=startup ok=true before shutdown");
-    expect(result.stderr).toContain(
-      "service=startup signal=SIGTERM Shutting down",
-    );
+    expect(result.stderr).toContain("service=startup signal=SIGTERM Shutting down");
 
     const out: { text: string } = JSON.parse(result.stdout);
     expect(out.text).toContain("service=startup ok=true before shutdown");

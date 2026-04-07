@@ -1,5 +1,6 @@
-import { describe, test, expect } from "bun:test";
 import { Result } from "better-result";
+import { describe, test, expect } from "bun:test";
+
 import { LinearService } from "../../src/linear-service/LinearService";
 
 describe("LinearService.getIssueAgentSessionIds", () => {
@@ -80,13 +81,7 @@ describe("LinearService.getIssueAgentSessionIds", () => {
 });
 
 describe("LinearService.moveIssueToInProgress", () => {
-  const skippedTypes = [
-    "started",
-    "completed",
-    "canceled",
-    "triage",
-    "backlog",
-  ];
+  const skippedTypes = ["started", "completed", "canceled", "triage", "backlog"];
 
   test("moves unstarted issues to first started state", async () => {
     const updates: Array<{ stateId: string }> = [];

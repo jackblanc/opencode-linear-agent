@@ -1,16 +1,16 @@
-import { describe, test, expect } from "bun:test";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
+import { describe, test, expect } from "bun:test";
+
+import type { SessionState } from "../../src/state/schema";
+
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import { SessionManager } from "../../src/session/SessionManager";
 import { SessionRepository } from "../../src/state/SessionRepository";
-import type { SessionState } from "../../src/state/schema";
 import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
-function createSessionState(
-  overrides: Partial<SessionState> = {},
-): SessionState {
+function createSessionState(overrides: Partial<SessionState> = {}): SessionState {
   return {
     linearSessionId: "linear-1",
     opencodeSessionId: "opencode-old",
@@ -48,8 +48,7 @@ describe("SessionManager", () => {
     );
 
     Object.defineProperty(opencode, "getSession", {
-      value: async () =>
-        Result.err(new OpencodeUnknownError({ reason: "missing" })),
+      value: async () => Result.err(new OpencodeUnknownError({ reason: "missing" })),
     });
 
     const manager = new SessionManager(opencode, repository);

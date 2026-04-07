@@ -1,11 +1,11 @@
-import {
-  AgentActivityPayload,
-  AgentSessionPayload,
-  type LinearRequest,
-} from "@linear/sdk";
+import type { LinearRequest } from "@linear/sdk";
+
+import { AgentActivityPayload, AgentSessionPayload } from "@linear/sdk";
 import { Result } from "better-result";
-import { LinearService } from "../../src/linear-service/LinearService";
+
 import type { IssueState } from "../../src/linear-service/types";
+
+import { LinearService } from "../../src/linear-service/LinearService";
 
 const noopRequest: LinearRequest = async () => {
   throw new Error("unused in tests");
@@ -74,10 +74,7 @@ export class TestLinearService extends LinearService {
   }
 
   override async postError(sessionId: string, error: unknown) {
-    return (
-      this.overrides.postError?.(sessionId, error) ??
-      Result.ok(activityPayload(sessionId))
-    );
+    return this.overrides.postError?.(sessionId, error) ?? Result.ok(activityPayload(sessionId));
   }
 
   override async postElicitation(
@@ -93,20 +90,11 @@ export class TestLinearService extends LinearService {
   }
 
   override async setExternalLink(sessionId: string, url: string) {
-    return (
-      this.overrides.setExternalLink?.(sessionId, url) ??
-      Result.ok(sessionPayload(sessionId))
-    );
+    return this.overrides.setExternalLink?.(sessionId, url) ?? Result.ok(sessionPayload(sessionId));
   }
 
-  override async updatePlan(
-    sessionId: string,
-    plan: Parameters<LinearService["updatePlan"]>[1],
-  ) {
-    return (
-      this.overrides.updatePlan?.(sessionId, plan) ??
-      Result.ok(sessionPayload(sessionId))
-    );
+  override async updatePlan(sessionId: string, plan: Parameters<LinearService["updatePlan"]>[1]) {
+    return this.overrides.updatePlan?.(sessionId, plan) ?? Result.ok(sessionPayload(sessionId));
   }
 
   override async getIssue(issueId: string) {
@@ -137,19 +125,13 @@ export class TestLinearService extends LinearService {
     candidates: Parameters<LinearService["getIssueRepositorySuggestions"]>[2],
   ) {
     return (
-      this.overrides.getIssueRepositorySuggestions?.(
-        issueId,
-        agentSessionId,
-        candidates,
-      ) ?? Result.ok([])
+      this.overrides.getIssueRepositorySuggestions?.(issueId, agentSessionId, candidates) ??
+      Result.ok([])
     );
   }
 
   override async setIssueRepoLabel(issueId: string, labelName: string) {
-    return (
-      this.overrides.setIssueRepoLabel?.(issueId, labelName) ??
-      Result.ok(undefined)
-    );
+    return this.overrides.setIssueRepoLabel?.(issueId, labelName) ?? Result.ok(undefined);
   }
 
   override async getIssueAgentSessionIds(issueId: string) {
@@ -157,9 +139,7 @@ export class TestLinearService extends LinearService {
   }
 
   override async moveIssueToInProgress(issueId: string) {
-    return (
-      this.overrides.moveIssueToInProgress?.(issueId) ?? Result.ok(undefined)
-    );
+    return this.overrides.moveIssueToInProgress?.(issueId) ?? Result.ok(undefined);
   }
 
   override async getIssueState(issueId: string) {

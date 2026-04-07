@@ -6,13 +6,12 @@ import type {
   Event as OpencodeEvent,
   Project,
 } from "@opencode-ai/sdk/v2";
+
 import { Result } from "better-result";
+
 import type { OpencodeServiceError } from "./errors";
-import {
-  mapOpencodeError,
-  getOpencodeErrorMessage,
-  OpencodeUnknownError,
-} from "./errors";
+
+import { mapOpencodeError, getOpencodeErrorMessage, OpencodeUnknownError } from "./errors";
 
 /**
  * Worktree creation result
@@ -82,9 +81,7 @@ export class OpencodeService {
     });
   }
 
-  async removeWorktree(
-    directory: string,
-  ): Promise<Result<void, OpencodeServiceError>> {
+  async removeWorktree(directory: string): Promise<Result<void, OpencodeServiceError>> {
     const result = await this.client.worktree.remove({
       worktreeRemoveInput: { directory },
     });
@@ -96,9 +93,7 @@ export class OpencodeService {
     return Result.ok(undefined);
   }
 
-  async listProjects(): Promise<
-    Result<ProjectListResult, OpencodeServiceError>
-  > {
+  async listProjects(): Promise<Result<ProjectListResult, OpencodeServiceError>> {
     const result = await this.client.project.list();
 
     if (!result.data) {
@@ -239,9 +234,7 @@ export class OpencodeService {
    * This returns the raw SSE stream since Result wrapping doesn't make sense
    * for streaming operations. Errors are handled via the stream itself.
    */
-  async subscribe(
-    directory: string,
-  ): Promise<{ stream: AsyncIterable<OpencodeEvent> }> {
+  async subscribe(directory: string): Promise<{ stream: AsyncIterable<OpencodeEvent> }> {
     const result = await this.client.event.subscribe({ directory });
     return { stream: result.stream };
   }
@@ -278,11 +271,7 @@ export class OpencodeService {
     // Handle structured error responses from OpenCode SDK
     if (typeof error === "object" && error !== null) {
       // Check for errors array (common in SDK responses)
-      if (
-        "errors" in error &&
-        Array.isArray(error.errors) &&
-        error.errors.length > 0
-      ) {
+      if ("errors" in error && Array.isArray(error.errors) && error.errors.length > 0) {
         return error.errors
           .map((e) => (typeof e === "object" ? JSON.stringify(e) : String(e)))
           .join("; ");

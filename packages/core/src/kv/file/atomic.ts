@@ -1,10 +1,11 @@
+import { Result } from "better-result";
+import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
 
-import { Result } from "better-result";
+import type { KvError } from "../errors";
 
-import { KvIoError, type KvError } from "../errors";
+import { KvIoError } from "../errors";
 
 export async function writeFileAtomic(
   path: string,

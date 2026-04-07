@@ -1,21 +1,16 @@
+import { Result } from "better-result";
 import { describe, expect, test } from "bun:test";
 
-import { Result } from "better-result";
-import { SessionRepository } from "../../src/state/SessionRepository";
-import type {
-  PendingPermission,
-  PendingQuestion,
-  SessionState,
-} from "../../src/state/schema";
-import { createInMemoryAgentState } from "./InMemoryAgentNamespace";
+import type { PendingPermission, PendingQuestion, SessionState } from "../../src/state/schema";
+
 import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
-import { FailingKeyValueStore } from "./FailingKeyValueStore";
 import { sessionByOpencodeRecordSchema } from "../../src/state/schema";
+import { SessionRepository } from "../../src/state/SessionRepository";
+import { FailingKeyValueStore } from "./FailingKeyValueStore";
+import { createInMemoryAgentState } from "./InMemoryAgentNamespace";
 import { MemoryKeyValueStore } from "./MemoryKeyValueStore";
 
-function createSessionState(
-  overrides: Partial<SessionState> = {},
-): SessionState {
+function createSessionState(overrides: Partial<SessionState> = {}): SessionState {
   return {
     linearSessionId: "linear-1",
     opencodeSessionId: "opencode-1",

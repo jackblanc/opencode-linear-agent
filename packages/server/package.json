@@ -1,7 +1,10 @@
 {
   "name": "@opencode-linear-agent/server",
   "version": "0.1.3",
-  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jackblanc/opencode-linear-agent.git"
+  },
   "bin": {
     "opencode-linear-agent": "bin/opencode-linear-agent"
   },
@@ -9,12 +12,9 @@
     "bin",
     "postinstall.mjs"
   ],
+  "type": "module",
   "publishConfig": {
     "access": "public"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jackblanc/opencode-linear-agent.git"
   },
   "scripts": {
     "start": "bun run src/index.ts",
@@ -26,21 +26,21 @@
     "postinstall": "node ./postinstall.mjs || true",
     "prepublishOnly": "test -f bin/opencode-linear-agent && test -f postinstall.mjs"
   },
-  "optionalDependencies": {
-    "@opencode-linear-agent/server-darwin-arm64": "0.1.3",
-    "@opencode-linear-agent/server-darwin-x64": "0.1.3",
-    "@opencode-linear-agent/server-linux-arm64": "0.1.3",
-    "@opencode-linear-agent/server-linux-x64": "0.1.3"
-  },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",
     "hono": "4.12.11"
   },
   "devDependencies": {
-    "@opencode-linear-agent/core": "workspace:*",
     "@linear/sdk": "catalog:",
     "@opencode-ai/sdk": "catalog:",
+    "@opencode-linear-agent/core": "workspace:*",
     "better-result": "catalog:",
     "zod": "catalog:"
+  },
+  "optionalDependencies": {
+    "@opencode-linear-agent/server-darwin-arm64": "0.1.3",
+    "@opencode-linear-agent/server-darwin-x64": "0.1.3",
+    "@opencode-linear-agent/server-linux-arm64": "0.1.3",
+    "@opencode-linear-agent/server-linux-x64": "0.1.3"
   }
 }

@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { getConfigFilePath } from "../utils/paths";
-import { configFileSchema, type ApplicationConfig } from "./schema";
 
-export function loadApplicationConfig(
-  path: string = getConfigFilePath(),
-): ApplicationConfig {
+import type { ApplicationConfig } from "./schema";
+
+import { getConfigFilePath } from "../utils/paths";
+import { configFileSchema } from "./schema";
+
+export function loadApplicationConfig(path: string = getConfigFilePath()): ApplicationConfig {
   if (!existsSync(path)) {
     throw new Error(
       `Config file not found at ${path}. Please create a config file with the necessary configuration values.`,

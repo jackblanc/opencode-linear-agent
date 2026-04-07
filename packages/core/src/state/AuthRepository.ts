@@ -1,6 +1,6 @@
 import { Result } from "better-result";
 
-import { type AgentStateNamespace } from "./root";
+import type { AgentStateNamespace } from "./root";
 import type { AuthRecord } from "./schema";
 
 function isAccessTokenValid(
@@ -66,10 +66,7 @@ export class AuthRepository {
   }
 
   async putAuthRecord(record: AuthRecord) {
-    const result = await this.agentState.auth.put(
-      record.organizationId,
-      record,
-    );
+    const result = await this.agentState.auth.put(record.organizationId, record);
     if (Result.isError(result)) {
       throw new Error(result.error.message);
     }

@@ -2,8 +2,8 @@
 
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -49,11 +49,7 @@ function getRuntime() {
 }
 
 function getCache(runtime) {
-  return path.join(
-    root,
-    "bin",
-    `.opencode-linear-agent-${runtime.platform}-${runtime.arch}`,
-  );
+  return path.join(root, "bin", `.opencode-linear-agent-${runtime.platform}-${runtime.arch}`);
 }
 
 function ensureParent(filepath) {

@@ -1,12 +1,14 @@
-import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import type {
   ApplicationConfig,
   OAuthStateRepository,
   AuthRepository,
 } from "@opencode-linear-agent/core";
-import { z } from "zod";
+
+import { zValidator } from "@hono/zod-validator";
 import { LinearClient } from "@linear/sdk";
+import { Hono } from "hono";
+import { z } from "zod";
+
 import { tokenExchangeResponseSchema } from "../../token";
 
 export function createOAuthApp(
@@ -46,10 +48,7 @@ export function createOAuthApp(
     ),
     async (c) => {
       const query = c.req.valid("query");
-      const validState = await oauthStateRepository.consume(
-        query.state,
-        Date.now(),
-      );
+      const validState = await oauthStateRepository.consume(query.state, Date.now());
       if (!validState) {
         return c.json(
           {
@@ -75,9 +74,7 @@ export function createOAuthApp(
       if (!response.ok) {
         return c.json({ message: "Failed to exchange code for token" }, 502);
       }
-      const tokenResult = tokenExchangeResponseSchema.safeParse(
-        await response.json(),
-      );
+      const tokenResult = tokenExchangeResponseSchema.safeParse(await response.json());
       if (!tokenResult.success) {
         return c.json({ message: "Invalid token response from Linear" }, 502);
       }
@@ -98,9 +95,7 @@ export function createOAuthApp(
       });
 
       return c.json({
-        message:
-          "Successfully authorized OpenCode Agent for organization " +
-          organization.name,
+        message: "Successfully authorized OpenCode Agent for organization " + organization.name,
       });
     },
   );

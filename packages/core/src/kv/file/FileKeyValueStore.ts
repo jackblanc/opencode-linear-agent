@@ -1,13 +1,15 @@
+import type { z } from "zod";
+
+import { Result } from "better-result";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Result } from "better-result";
-import type { z } from "zod";
+import type { KvError } from "../errors";
+import type { KeyValueStore } from "../types";
 
-import { KvIoError, KvNotFoundError, type KvError } from "../errors";
+import { KvIoError, KvNotFoundError } from "../errors";
 import { parseJson, stringifyJson } from "../json";
 import { encodeKvKey } from "../key";
-import type { KeyValueStore } from "../types";
 import { writeFileAtomic } from "./atomic";
 import { withFileLock } from "./lock";
 
@@ -131,10 +133,6 @@ export class FileKeyValueStore<T> implements KeyValueStore<T> {
     operation: string,
     fn: () => Promise<Result<V, KvError>>,
   ): Promise<Result<V, KvError>> {
-    return withFileLock(
-      this.rootPath,
-      operationKey(this.namespace, operation),
-      fn,
-    );
+    return withFileLock(this.rootPath, operationKey(this.namespace, operation), fn);
   }
 }

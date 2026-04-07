@@ -1,8 +1,0 @@
-node_modules
-dist
-build
-.wrangler
-*.lock
-bun.lock
-worker-configuration.d.ts
-.opencode

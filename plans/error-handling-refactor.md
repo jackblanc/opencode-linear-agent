@@ -61,9 +61,7 @@ export class TokenRefreshError extends TaggedError("TokenRefreshError")<{
   }
 }
 
-export class MissingRefreshTokenError extends TaggedError(
-  "MissingRefreshTokenError",
-)<{
+export class MissingRefreshTokenError extends TaggedError("MissingRefreshTokenError")<{
   message: string;
 }>() {
   constructor() {
@@ -123,8 +121,7 @@ export class ConfigParseError extends TaggedError("ConfigParseError")<{
   message: string;
 }>() {
   constructor(args: { path: string; cause: unknown }) {
-    const msg =
-      args.cause instanceof Error ? args.cause.message : String(args.cause);
+    const msg = args.cause instanceof Error ? args.cause.message : String(args.cause);
     super({
       path: args.path,
       cause: args.cause,
@@ -133,10 +130,7 @@ export class ConfigParseError extends TaggedError("ConfigParseError")<{
   }
 }
 
-export type ConfigError =
-  | ConfigNotFoundError
-  | ConfigInvalidError
-  | ConfigParseError;
+export type ConfigError = ConfigNotFoundError | ConfigInvalidError | ConfigParseError;
 ```
 
 **Complexity**: Low
@@ -308,9 +302,7 @@ export async function loadConfig(configPath?: string): Promise<Config> {
 **Refactored**:
 
 ```typescript
-export async function loadConfig(
-  configPath?: string,
-): Promise<Result<Config, ConfigError>> {
+export async function loadConfig(configPath?: string): Promise<Result<Config, ConfigError>> {
   // ... find config file
   if (!configFile) {
     return Result.err(new ConfigNotFoundError({ searchedPaths }));

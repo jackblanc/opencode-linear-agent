@@ -1,4 +1,5 @@
 import type { QuestionInfo } from "@opencode-ai/sdk/v2";
+
 import { z } from "zod";
 
 export const authRecordSchema = z.object({
@@ -38,9 +39,7 @@ export const sessionByOpencodeRecordSchema = z.object({
   linearSessionId: z.string(),
 });
 
-export type SessionByOpencodeRecord = z.infer<
-  typeof sessionByOpencodeRecordSchema
->;
+export type SessionByOpencodeRecord = z.infer<typeof sessionByOpencodeRecordSchema>;
 
 // Annotation is necessary to align with OpenCode's SDK type
 const questionInfoSchema: z.ZodType<QuestionInfo> = z.object({

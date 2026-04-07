@@ -11,10 +11,13 @@ import type {
   TextPart,
   ToolPart,
 } from "@opencode-ai/sdk/v2";
+
+import { Result } from "better-result";
+
 import type { LinearService } from "../linear-service/LinearService";
 import type { AgentStateNamespace } from "../state/root";
-import { Result } from "better-result";
 import type { SessionState } from "../state/schema";
+
 import { mapTodoStatus } from "./formatting/todo";
 import {
   extractToolParameter,
@@ -37,8 +40,7 @@ export class OpencodeEventProcessor {
   async processEvent(event: Event) {
     return Result.gen(
       async function* (this: OpencodeEventProcessor) {
-        const opencodeSessionId =
-          yield* this.resolveOpencodeSessionIdFromEvent(event);
+        const opencodeSessionId = yield* this.resolveOpencodeSessionIdFromEvent(event);
         const linearSessionIdRecord = yield* Result.await(
           this.agentState.sessionByOpencode.get(opencodeSessionId),
         );
@@ -48,49 +50,23 @@ export class OpencodeEventProcessor {
         const linearAuthRecord = yield* Result.await(
           this.agentState.auth.get(linearSessionState.organizationId),
         );
-        const linearClient = this.getLinearService(
-          linearAuthRecord.accessToken,
-        );
+        const linearClient = this.getLinearService(linearAuthRecord.accessToken);
 
         switch (event.type) {
           case "message.updated":
             return this.processEventMessageUpdated(event);
           case "message.part.updated":
-            return this.processEventMessagePartUpdated(
-              event,
-              linearSessionState,
-              linearClient,
-            );
+            return this.processEventMessagePartUpdated(event, linearSessionState, linearClient);
           case "session.error":
-            return this.processEventSessionError(
-              event,
-              linearSessionState,
-              linearClient,
-            );
+            return this.processEventSessionError(event, linearSessionState, linearClient);
           case "question.asked":
-            return this.processEventQuestionAsked(
-              event,
-              linearSessionState,
-              linearClient,
-            );
+            return this.processEventQuestionAsked(event, linearSessionState, linearClient);
           case "permission.asked":
-            return this.processEventPermissionAsked(
-              event,
-              linearSessionState,
-              linearClient,
-            );
+            return this.processEventPermissionAsked(event, linearSessionState, linearClient);
           case "todo.updated":
-            return this.processEventTodoUpdated(
-              event,
-              linearSessionState,
-              linearClient,
-            );
+            return this.processEventTodoUpdated(event, linearSessionState, linearClient);
           case "session.idle":
-            return this.processEventSessionIdle(
-              event,
-              linearSessionState,
-              linearClient,
-            );
+            return this.processEventSessionIdle(event, linearSessionState, linearClient);
           default:
             return Result.ok();
         }
@@ -100,10 +76,7 @@ export class OpencodeEventProcessor {
 
   private async processEventMessageUpdated(event: EventMessageUpdated) {
     // Store the role for the message ID, used to conditionally skip sending TextPart of user messages to Linear
-    this.messageRoleMap.set(
-      event.properties.info.id,
-      event.properties.info.role,
-    );
+    this.messageRoleMap.set(event.properties.info.id, event.properties.info.role);
     return Result.ok();
   }
 
@@ -114,23 +87,11 @@ export class OpencodeEventProcessor {
   ) {
     switch (event.properties.part.type) {
       case "tool":
-        return this.processToolPart(
-          event.properties.part,
-          sessionState,
-          linearClient,
-        );
+        return this.processToolPart(event.properties.part, sessionState, linearClient);
       case "reasoning":
-        return this.processReasoningPart(
-          event.properties.part,
-          sessionState,
-          linearClient,
-        );
+        return this.processReasoningPart(event.properties.part, sessionState, linearClient);
       case "text":
-        return this.processTextPart(
-          event.properties.part,
-          sessionState,
-          linearClient,
-        );
+        return this.processTextPart(event.properties.part, sessionState, linearClient);
       default:
         return Result.ok();
     }
@@ -148,11 +109,7 @@ export class OpencodeEventProcessor {
           type: "action",
           action: getToolActionName(part.tool, false),
           body: getToolThought(part.tool, part.state.input),
-          parameter: extractToolParameter(
-            part.tool,
-            part.state.input,
-            sessionState.workdir,
-          ),
+          parameter: extractToolParameter(part.tool, part.state.input, sessionState.workdir),
         },
         true,
       );
@@ -163,14 +120,8 @@ export class OpencodeEventProcessor {
         {
           type: "action",
           action: getToolActionName(part.tool, true),
-          parameter: extractToolParameter(
-            part.tool,
-            part.state.input,
-            sessionState.workdir,
-          ),
-          result: truncateOutput(
-            replacePathsInOutput(part.state.output, sessionState.workdir),
-          ),
+          parameter: extractToolParameter(part.tool, part.state.input, sessionState.workdir),
+          result: truncateOutput(replacePathsInOutput(part.state.output, sessionState.workdir)),
         },
         false,
       );
@@ -179,11 +130,7 @@ export class OpencodeEventProcessor {
       return linearClient.postActivity(sessionState.linearSessionId, {
         type: "action",
         action: getToolActionName(part.tool, true),
-        parameter: extractToolParameter(
-          part.tool,
-          part.state.input,
-          sessionState.workdir,
-        ),
+        parameter: extractToolParameter(part.tool, part.state.input, sessionState.workdir),
         result: `Error: ${truncateOutput(replacePathsInOutput(part.state.error, sessionState.workdir))}`,
       });
     }
@@ -242,19 +189,16 @@ export class OpencodeEventProcessor {
     sessionState: SessionState,
     linearClient: LinearService,
   ) {
-    const saved = await this.agentState.question.put(
-      sessionState.linearSessionId,
-      {
-        requestId: event.properties.id,
-        opencodeSessionId: sessionState.opencodeSessionId,
-        linearSessionId: sessionState.linearSessionId,
-        workdir: sessionState.workdir ?? "",
-        issueId: sessionState.issueId,
-        questions: event.properties.questions,
-        answers: event.properties.questions.map(() => null),
-        createdAt: Date.now(),
-      },
-    );
+    const saved = await this.agentState.question.put(sessionState.linearSessionId, {
+      requestId: event.properties.id,
+      opencodeSessionId: sessionState.opencodeSessionId,
+      linearSessionId: sessionState.linearSessionId,
+      workdir: sessionState.workdir ?? "",
+      issueId: sessionState.issueId,
+      questions: event.properties.questions,
+      answers: event.properties.questions.map(() => null),
+      createdAt: Date.now(),
+    });
     if (Result.isError(saved)) {
       return Result.err(new Error(saved.error.message));
     }
@@ -304,18 +248,9 @@ export class OpencodeEventProcessor {
       createdAt: Date.now(),
     });
 
-    return linearClient.postElicitation(
-      sessionState.linearSessionId,
-      body,
-      "select",
-      {
-        options: [
-          { value: "Approve" },
-          { value: "Approve Always" },
-          { value: "Reject" },
-        ],
-      },
-    );
+    return linearClient.postElicitation(sessionState.linearSessionId, body, "select", {
+      options: [{ value: "Approve" }, { value: "Approve Always" }, { value: "Reject" }],
+    });
   }
 
   private async processEventTodoUpdated(
@@ -341,9 +276,7 @@ export class OpencodeEventProcessor {
     return Result.ok();
   }
 
-  private resolveOpencodeSessionIdFromEvent(
-    event: Event,
-  ): Result<string, Error> {
+  private resolveOpencodeSessionIdFromEvent(event: Event): Result<string, Error> {
     if (event.type === "message.part.updated") {
       return Result.ok(event.properties.part.sessionID);
     } else if (event.type === "message.updated") {
@@ -359,9 +292,7 @@ export class OpencodeEventProcessor {
       if (event.properties.sessionID) {
         return Result.ok(event.properties.sessionID);
       } else {
-        return Result.err(
-          new Error("Opencode session.error event is missing sessionID"),
-        );
+        return Result.err(new Error("Opencode session.error event is missing sessionID"));
       }
     }
 

@@ -1,8 +1,8 @@
+import { Result } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import { OAuthStateRepository } from "../../src/state/OAuthStateRepository";
 import { createInMemoryAgentState } from "./InMemoryAgentNamespace";
-import { Result } from "better-result";
 
 describe("OAuthStateRepository", () => {
   test("issues and consumes valid oauth state", async () => {

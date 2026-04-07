@@ -1,3 +1,6 @@
+import type { ApplicationConfig } from "@opencode-linear-agent/core";
+
+import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import {
   loadApplicationConfig,
   createFileAgentState,
@@ -5,33 +8,27 @@ import {
   AuthRepository,
   SessionRepository,
   OpencodeService,
-  type ApplicationConfig,
   OAuthStateRepository,
   getOAuthAccessTokenFilePath,
 } from "@opencode-linear-agent/core";
-import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { getConnInfo } from "hono/bun";
-import { refreshAccessToken } from "./token";
-import { initializeServerLogging, registerShutdownHandlers } from "./logging";
-import { createApp } from "./app";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+
+import { createApp } from "./app";
+import { initializeServerLogging, registerShutdownHandlers } from "./logging";
+import { refreshAccessToken } from "./token";
 
 /**
  * Proactively refresh the access token on a timer so the plugin
  * always has a valid token in the shared store.
  * Token TTL is 23 hours; we refresh every 20 hours for a 3-hour buffer.
  */
-function startTokenRefreshTimer(
-  config: ApplicationConfig,
-  authRepository: AuthRepository,
-): void {
+function startTokenRefreshTimer(config: ApplicationConfig, authRepository: AuthRepository): void {
   const log = Log.create({ service: "token-refresh" });
   const organizationId = config.linearOrganizationId;
   if (!organizationId) {
-    log.info(
-      "Skipping proactive token refresh (LINEAR_ORGANIZATION_ID not set)",
-    );
+    log.info("Skipping proactive token refresh (LINEAR_ORGANIZATION_ID not set)");
     return;
   }
   const oauthConfig = {

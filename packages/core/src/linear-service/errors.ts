@@ -1,4 +1,5 @@
-import { TaggedError } from "better-result";
+import type { LinearGraphQLError } from "@linear/sdk";
+
 import {
   LinearError,
   InvalidInputLinearError,
@@ -8,7 +9,7 @@ import {
   NetworkLinearError,
   FeatureNotAccessibleLinearError,
 } from "@linear/sdk";
-import type { LinearGraphQLError } from "@linear/sdk";
+import { TaggedError } from "better-result";
 
 /**
  * Base context for all Linear errors
@@ -30,11 +31,7 @@ class LinearInvalidInputError extends TaggedError("LinearInvalidInputError")<{
   context?: LinearErrorContext;
   message: string;
 }>() {
-  constructor(args: {
-    field: string;
-    reason: string;
-    context?: LinearErrorContext;
-  }) {
+  constructor(args: { field: string; reason: string; context?: LinearErrorContext }) {
     super({
       ...args,
       message: `Invalid input for ${args.field}: ${args.reason}`,
@@ -80,11 +77,7 @@ export class LinearForbiddenError extends TaggedError("LinearForbiddenError")<{
   context?: LinearErrorContext;
   message: string;
 }>() {
-  constructor(args: {
-    resource: string;
-    action: string;
-    context?: LinearErrorContext;
-  }) {
+  constructor(args: { resource: string; action: string; context?: LinearErrorContext }) {
     super({
       ...args,
       message: `Forbidden: cannot ${args.action} ${args.resource}`,
@@ -108,9 +101,7 @@ class LinearNetworkError extends TaggedError("LinearNetworkError")<{
 /**
  * Feature not accessible (plan limitation)
  */
-class LinearFeatureNotAccessibleError extends TaggedError(
-  "LinearFeatureNotAccessibleError",
-)<{
+class LinearFeatureNotAccessibleError extends TaggedError("LinearFeatureNotAccessibleError")<{
   feature: string;
   context?: LinearErrorContext;
   message: string;

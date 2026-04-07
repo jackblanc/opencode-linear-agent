@@ -393,17 +393,10 @@ export function mapOpencodeError(error: unknown): OpencodeServiceError {
 
     switch (err.name) {
       case "ProviderAuthError":
-        return new OpencodeProviderAuthError(
-          err.data.providerID,
-          err.data.message,
-        );
+        return new OpencodeProviderAuthError(err.data.providerID, err.data.message);
 
       case "APIError":
-        return new OpencodeApiError(
-          err.data.statusCode,
-          err.data.message,
-          err.data.isRetryable,
-        );
+        return new OpencodeApiError(err.data.statusCode, err.data.message, err.data.isRetryable);
 
       case "MessageAbortedError":
         return new OpencodeMessageAbortedError(err.data.message);
@@ -462,9 +455,7 @@ export class OpencodeService {
     directory: string,
     name: string,
     startCommand?: string,
-  ): Promise<
-    Result<{ directory: string; branch: string }, OpencodeServiceError>
-  > {
+  ): Promise<Result<{ directory: string; branch: string }, OpencodeServiceError>> {
     const result = await this.client.worktree.create({
       directory,
       worktreeCreateInput: { name, startCommand },
@@ -534,9 +525,7 @@ export class OpencodeService {
   async getMessages(
     sessionID: string,
     directory: string,
-  ): Promise<
-    Result<Array<{ info: unknown; parts: unknown[] }>, OpencodeServiceError>
-  > {
+  ): Promise<Result<Array<{ info: unknown; parts: unknown[] }>, OpencodeServiceError>> {
     const result = await this.client.session.messages({ sessionID, directory });
 
     if (!result.data) {
@@ -601,12 +590,7 @@ export class OpencodeService {
 ```typescript
 import type { Result } from "better-result";
 import type { LinearServiceError } from "../errors";
-import type {
-  ActivityContent,
-  PlanItem,
-  ProcessingStage,
-  SignalMetadata,
-} from "./types";
+import type { ActivityContent, PlanItem, ProcessingStage, SignalMetadata } from "./types";
 
 // ... existing type definitions ...
 
@@ -624,10 +608,7 @@ export interface LinearService {
     details?: string,
   ): Promise<Result<void, LinearServiceError>>;
 
-  postError(
-    sessionId: string,
-    error: unknown,
-  ): Promise<Result<void, LinearServiceError>>;
+  postError(sessionId: string, error: unknown): Promise<Result<void, LinearServiceError>>;
 
   // ... etc, all using LinearServiceError ...
 }
@@ -714,8 +695,7 @@ if (Result.isError(result)) {
     LinearForbiddenError: (e) => `No permission to ${e.action} ${e.resource}`,
     LinearNetworkError: () => `Network error, please try again`,
     LinearInvalidInputError: (e) => `Invalid ${e.field}: ${e.reason}`,
-    LinearFeatureNotAccessibleError: (e) =>
-      `Feature ${e.feature} not available on your plan`,
+    LinearFeatureNotAccessibleError: (e) => `Feature ${e.feature} not available on your plan`,
     LinearUnknownError: (e) => `Unknown error: ${e.reason}`,
   });
 

@@ -114,10 +114,7 @@ export class EventProcessor {
     private git: GitOperations,
   ) {}
 
-  async process(
-    event: AgentSessionEventWebhookPayload,
-    workerUrl: string,
-  ): Promise<void> {
+  async process(event: AgentSessionEventWebhookPayload, workerUrl: string): Promise<void> {
     try {
       // ... process event using injected dependencies
     } catch (error) {
@@ -138,20 +135,13 @@ The `infrastructure` package is the **only** place that imports Cloudflare-speci
 interface SandboxProvider {
   // Get the sandbox for an organization (creates if needed)
   // Returns an OpencodeClient ready to use
-  getOpencodeClient(
-    organizationId: string,
-    workdir: string,
-  ): Promise<OpencodeClient>;
+  getOpencodeClient(organizationId: string, workdir: string): Promise<OpencodeClient>;
 
   // Proxy HTTP request to the sandbox's OpenCode UI
   proxyToOpencode(organizationId: string, request: Request): Promise<Response>;
 
   // Execute a command in the sandbox
-  exec(
-    organizationId: string,
-    command: string,
-    options?: ExecOptions,
-  ): Promise<ExecResult>;
+  exec(organizationId: string, command: string, options?: ExecOptions): Promise<ExecResult>;
 }
 
 interface Queue<T> {
@@ -183,11 +173,7 @@ import {
 } from "@opencode-linear-agent/infrastructure/cloudflare";
 
 // Local development / testing
-import {
-  LocalSandbox,
-  InMemoryKV,
-  LocalQueue,
-} from "@opencode-linear-agent/infrastructure/local";
+import { LocalSandbox, InMemoryKV, LocalQueue } from "@opencode-linear-agent/infrastructure/local";
 ```
 
 ## Package Responsibilities
@@ -379,11 +365,7 @@ interface ActivityContent {
 }
 
 interface LinearAdapter {
-  postActivity(
-    sessionId: string,
-    content: ActivityContent,
-    ephemeral?: boolean,
-  ): Promise<void>;
+  postActivity(sessionId: string, content: ActivityContent, ephemeral?: boolean): Promise<void>;
   postError(sessionId: string, error: unknown): Promise<void>;
   setExternalLink(sessionId: string, url: string): Promise<void>;
 }
@@ -394,16 +376,9 @@ interface LinearAdapter {
 ```typescript
 // SandboxProvider - abstracts Cloudflare Sandbox completely
 interface SandboxProvider {
-  getOpencodeClient(
-    organizationId: string,
-    workdir: string,
-  ): Promise<OpencodeClient>;
+  getOpencodeClient(organizationId: string, workdir: string): Promise<OpencodeClient>;
   proxyToOpencode(organizationId: string, request: Request): Promise<Response>;
-  exec(
-    organizationId: string,
-    command: string,
-    options?: ExecOptions,
-  ): Promise<ExecResult>;
+  exec(organizationId: string, command: string, options?: ExecOptions): Promise<ExecResult>;
 }
 
 interface ExecOptions {
@@ -425,11 +400,7 @@ interface Queue<T> {
 // KeyValueStore - abstracts Cloudflare KV
 interface KeyValueStore {
   get<T>(key: string): Promise<T | null>;
-  put(
-    key: string,
-    value: unknown,
-    options?: { expirationTtl?: number },
-  ): Promise<void>;
+  put(key: string, value: unknown, options?: { expirationTtl?: number }): Promise<void>;
   delete(key: string): Promise<void>;
 }
 
@@ -507,10 +478,7 @@ interface LinearEventMessage {
 ### Agent Worker Error Handling
 
 ```typescript
-async function handleQueueMessage(
-  message: LinearEventMessage,
-  env: Env,
-): Promise<void> {
+async function handleQueueMessage(message: LinearEventMessage, env: Env): Promise<void> {
   const { payload, workerUrl } = message;
   const linearSessionId = payload.agentSession.id;
 
@@ -519,10 +487,7 @@ async function handleQueueMessage(
 
   try {
     const sandboxProvider = new CloudflareSandbox(env);
-    const opencodeClient = await sandboxProvider.getOpencodeClient(
-      payload.organizationId,
-      workdir,
-    );
+    const opencodeClient = await sandboxProvider.getOpencodeClient(payload.organizationId, workdir);
     // ... create other dependencies, process event
   } catch (error) {
     // ALWAYS report to Linear

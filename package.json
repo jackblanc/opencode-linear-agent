@@ -1,9 +1,10 @@
 {
   "name": "opencode-linear-agent",
   "version": "0.1.3",
-  "type": "module",
   "private": true,
   "description": "Self-hosted Linear agent powered by OpenCode",
+  "license": "MIT",
+  "author": "",
   "workspaces": {
     "packages": [
       "packages/*"
@@ -17,15 +18,18 @@
       "zod": "4.3.6"
     }
   },
+  "type": "module",
   "scripts": {
     "prepare": "lefthook install || true",
     "start": "bun run --filter @opencode-linear-agent/server start",
     "dev": "bun run --filter @opencode-linear-agent/server dev",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
     "lint:check": "oxlint",
     "lint:fix": "oxlint --fix",
-    "format:check": "prettier --check .",
-    "format:fix": "prettier --write .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "format:fix": "oxfmt .",
     "knip": "knip",
     "check": "bun run typecheck && bun run lint:check && bun run format:check && bun run knip && bun test",
     "fix": "bun run lint:fix && bun run format:fix"
@@ -35,11 +39,9 @@
     "bun-types": "1.3.11",
     "knip": "6.3.0",
     "lefthook": "2.1.5",
+    "oxfmt": "^0.44.0",
     "oxlint": "1.59.0",
     "oxlint-tsgolint": "0.20.0",
-    "prettier": "3.8.1",
     "typescript": "6.0.2"
-  },
-  "author": "",
-  "license": "MIT"
+  }
 }

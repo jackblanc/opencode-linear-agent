@@ -1,11 +1,8 @@
+import type { LogSink } from "@opencode-linear-agent/core";
+
+import { createFileLogSink, getStateRootDirectoryPath, Log } from "@opencode-linear-agent/core";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import {
-  createFileLogSink,
-  getStateRootDirectoryPath,
-  Log,
-  type LogSink,
-} from "@opencode-linear-agent/core";
 
 function getDataDir(): string {
   return dirname(getStateRootDirectoryPath());
@@ -61,20 +58,15 @@ export async function initializeServerLogging(): Promise<ServerLoggingRuntime> {
     return serverLoggingRuntime;
   }
 
-  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch(
-    async (error: unknown) => {
-      serverLoggingRuntimePromise = null;
-      throw error;
-    },
-  );
+  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch(async (error: unknown) => {
+    serverLoggingRuntimePromise = null;
+    throw error;
+  });
 
   return serverLoggingRuntimePromise;
 }
 
-async function shutdownServerLogging(
-  logging: ServerLoggingRuntime,
-  signal: string,
-): Promise<void> {
+async function shutdownServerLogging(logging: ServerLoggingRuntime, signal: string): Promise<void> {
   logging.log.info("Shutting down", { signal });
   await Log.shutdown();
 }

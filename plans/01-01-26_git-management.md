@@ -197,9 +197,7 @@ interface GitCheckResult {
   branchName: string;
 }
 
-async function checkGitStatusForCompletion(
-  workdir: string,
-): Promise<GitCheckResult>;
+async function checkGitStatusForCompletion(workdir: string): Promise<GitCheckResult>;
 ```
 
 #### b) Modify `session.idle` handler

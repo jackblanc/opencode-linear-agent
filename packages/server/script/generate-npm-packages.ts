@@ -1,14 +1,10 @@
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RUNTIMES, getCacheName, type Runtime } from "../src/runtime";
+
+import type { Runtime } from "../src/runtime";
+
+import { RUNTIMES, getCacheName } from "../src/runtime";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const dist = join(root, "dist", "npm");
@@ -97,9 +93,7 @@ function makeLauncherPackage(pkgVersion: string): void {
       RUNTIMES.map((runtime) => [runtime.packageName, pkgVersion]),
     ),
     opencodeLinearAgent: {
-      cacheFiles: RUNTIMES.map((runtime) =>
-        getCacheName(runtime.platform, runtime.arch),
-      ),
+      cacheFiles: RUNTIMES.map((runtime) => getCacheName(runtime.platform, runtime.arch)),
     },
     license: "MIT",
   });

@@ -1,11 +1,14 @@
-import { describe, test, expect } from "bun:test";
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
+import { describe, test, expect } from "bun:test";
+
+import type { PendingQuestion } from "../../src/state/schema";
+
 import { LinearEventProcessor } from "../../src/linear-event-processor/LinearEventProcessor";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import { SessionRepository } from "../../src/state/SessionRepository";
-import type { PendingQuestion } from "../../src/state/schema";
 import { TestLinearService } from "../linear-service/TestLinearService";
 import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
@@ -127,16 +130,12 @@ function createProcessorHarness(options?: {
   const originalPostError = linear.postError.bind(linear);
   Object.defineProperty(linear, "postError", {
     value: async (sessionId: string, error: unknown) => {
-      linearCalls.errors.push(
-        error instanceof Error ? error.message : String(error),
-      );
+      linearCalls.errors.push(error instanceof Error ? error.message : String(error));
       return originalPostError(sessionId, error);
     },
   });
 
-  const opencode = new OpencodeService(
-    createOpencodeClient({ baseUrl: "http://localhost:4096" }),
-  );
+  const opencode = new OpencodeService(createOpencodeClient({ baseUrl: "http://localhost:4096" }));
   const opencodeCalls = {
     listProjects: 0,
     createWorktree: [] as Array<{ directory: string; name: string }>,
@@ -212,14 +211,10 @@ describe("LinearEventProcessor.process", () => {
     });
     await harness.repository.savePendingQuestion(createPendingQuestion());
 
-    await harness.processor.process(
-      createEvent("prompted", "Merge immediately"),
-    );
+    await harness.processor.process(createEvent("prompted", "Merge immediately"));
 
     expect(harness.opencodeCalls.replyQuestion).toEqual([[["Ship now"]]]);
-    expect(
-      await harness.repository.getPendingQuestion("linear-session-1"),
-    ).toBeNull();
+    expect(await harness.repository.getPendingQuestion("linear-session-1")).toBeNull();
   });
 
   test("prompts for project selection when repo label is missing", async () => {
@@ -227,8 +222,7 @@ describe("LinearEventProcessor.process", () => {
 
     await harness.processor.process(createEvent("created"));
 
-    const pending =
-      await harness.repository.getPendingRepoSelection("linear-session-1");
+    const pending = await harness.repository.getPendingRepoSelection("linear-session-1");
     expect(pending?.options).toEqual([
       {
         label: "linear-agent",
@@ -259,9 +253,7 @@ describe("LinearEventProcessor.process", () => {
       createdAt: Date.now(),
     });
 
-    await harness.processor.process(
-      createEvent("prompted", "repo:opencode-linear-agent"),
-    );
+    await harness.processor.process(createEvent("prompted", "repo:opencode-linear-agent"));
 
     expect(harness.linearCalls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
@@ -273,9 +265,7 @@ describe("LinearEventProcessor.process", () => {
       },
     ]);
     expect(harness.opencodeCalls.listProjects).toBe(0);
-    expect(
-      await harness.repository.getPendingRepoSelection("linear-session-1"),
-    ).toBeNull();
+    expect(await harness.repository.getPendingRepoSelection("linear-session-1")).toBeNull();
     expect(await harness.repository.get("linear-session-1")).toEqual({
       linearSessionId: "linear-session-1",
       opencodeSessionId: "opencode-1",
@@ -331,9 +321,7 @@ describe("LinearEventProcessor.process", () => {
       createdAt: Date.now(),
     });
 
-    await harness.processor.process(
-      createEvent("prompted", "repo:opencode-linear-agent"),
-    );
+    await harness.processor.process(createEvent("prompted", "repo:opencode-linear-agent"));
 
     expect(harness.linearCalls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
@@ -385,9 +373,7 @@ describe("LinearEventProcessor.process", () => {
       createdAt: Date.now(),
     });
 
-    await harness.processor.process(
-      createEvent("prompted", "opencode-linear-agent"),
-    );
+    await harness.processor.process(createEvent("prompted", "opencode-linear-agent"));
 
     expect(harness.linearCalls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
@@ -415,9 +401,7 @@ describe("LinearEventProcessor.process", () => {
     await harness.processor.process(createEvent("prompted", "wrong repo"));
 
     expect(harness.linearCalls.elicitations).toHaveLength(1);
-    expect(harness.linearCalls.elicitations[0]?.body).toContain(
-      "I couldn't use `wrong repo`",
-    );
+    expect(harness.linearCalls.elicitations[0]?.body).toContain("I couldn't use `wrong repo`");
     expect(harness.linearCalls.repoLabels).toEqual([]);
   });
 

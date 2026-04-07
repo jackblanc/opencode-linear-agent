@@ -1,13 +1,13 @@
+import { Result } from "better-result";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Result } from "better-result";
 import { z } from "zod";
 
-import { withFileLock } from "../../../src/kv/file/lock";
-import { encodeKvKey } from "../../../src/kv/key";
 import { writeFileAtomic } from "../../../src/kv/file/atomic";
 import { FileKeyValueStore } from "../../../src/kv/file/FileKeyValueStore";
+import { withFileLock } from "../../../src/kv/file/lock";
+import { encodeKvKey } from "../../../src/kv/key";
 import { createFileAgentState } from "../../../src/state/root";
 
 const TEST_DIR = join(import.meta.dir, ".test-kv");
@@ -159,12 +159,7 @@ describe("FileKeyValueStore", () => {
 
     expect(gotA.isOk()).toBe(true);
     expect(gotB.isOk()).toBe(true);
-    if (
-      !gotA.isOk() ||
-      !gotB.isOk() ||
-      gotA.value === null ||
-      gotB.value === null
-    ) {
+    if (!gotA.isOk() || !gotB.isOk() || gotA.value === null || gotB.value === null) {
       return;
     }
 

@@ -60,6 +60,8 @@
         "fixStyle": "separate-type-imports"
       }
     ],
+    "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
+    "import/no-duplicates": "error",
 
     // Code Quality & Safety
     "eslint/no-console": "error",
@@ -73,7 +75,6 @@
     "eslint/no-self-compare": "error",
     "eslint/curly": "off",
     "eslint/default-case-last": "error",
-    "import/no-duplicates": "error",
     "typescript/no-namespace": "error",
 
     // Bun/Node Best Practices

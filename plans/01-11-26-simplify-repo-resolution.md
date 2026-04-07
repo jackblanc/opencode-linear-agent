@@ -30,11 +30,7 @@ The webhook server previously ran in Docker with a volume mount to `~/projects`,
 ```typescript
 import { join } from "node:path";
 import { Result } from "better-result";
-import {
-  parseRepoLabel,
-  Log,
-  type LinearService,
-} from "@opencode-linear-agent/core";
+import { parseRepoLabel, Log, type LinearService } from "@opencode-linear-agent/core";
 
 export interface ResolvedRepo {
   path: string;
@@ -137,11 +133,7 @@ export interface Config {
 **Simplified `createDirectDispatcher`:**
 
 ```typescript
-const resolveResult = await resolveRepoPath(
-  linear,
-  issueId,
-  config.projectsPath,
-);
+const resolveResult = await resolveRepoPath(linear, issueId, config.projectsPath);
 
 if (Result.isError(resolveResult)) {
   log.error("Failed to resolve repository", {
@@ -154,13 +146,9 @@ if (Result.isError(resolveResult)) {
 const { path: repoPath, repoName } = resolveResult.value;
 log.info("Using repository path", { repoPath, repoName });
 
-const processor = new EventProcessor(
-  opencode,
-  linear,
-  sessionRepository,
-  repoPath,
-  { opencodeUrl: config.opencode.url },
-);
+const processor = new EventProcessor(opencode, linear, sessionRepository, repoPath, {
+  opencodeUrl: config.opencode.url,
+});
 ```
 
 **Simplified startup logging:**

@@ -7,6 +7,7 @@
 
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Event } from "@opencode-ai/sdk/v2";
+
 import {
   LinearService,
   OpencodeEventProcessor,

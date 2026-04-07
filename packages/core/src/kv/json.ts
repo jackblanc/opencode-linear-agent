@@ -1,13 +1,12 @@
-import { Result } from "better-result";
 import type { z } from "zod";
 
-import { KvJsonParseError, KvSchemaError, type KvError } from "./errors";
+import { Result } from "better-result";
 
-export function parseJson<T>(
-  text: string,
-  path: string,
-  schema: z.ZodType<T>,
-): Result<T, KvError> {
+import type { KvError } from "./errors";
+
+import { KvJsonParseError, KvSchemaError } from "./errors";
+
+export function parseJson<T>(text: string, path: string, schema: z.ZodType<T>): Result<T, KvError> {
   let json: unknown;
 
   try {
@@ -34,10 +33,7 @@ export function parseJson<T>(
   return Result.ok(parsed.data);
 }
 
-export function stringifyJson<T>(
-  value: T,
-  path: string,
-): Result<string, KvError> {
+export function stringifyJson<T>(value: T, path: string): Result<string, KvError> {
   try {
     return Result.ok(`${JSON.stringify(value, null, 2)}\n`);
   } catch (error) {

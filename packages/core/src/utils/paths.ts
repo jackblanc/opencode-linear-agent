@@ -7,18 +7,14 @@ function requireConfigHome(): string {
   if (xdgConfig) {
     return xdgConfig;
   }
-  throw new Error(
-    "Failed to resolve XDG config path. Set HOME or XDG_CONFIG_HOME.",
-  );
+  throw new Error("Failed to resolve XDG config path. Set HOME or XDG_CONFIG_HOME.");
 }
 
 function requireDataHome(): string {
   if (xdgData) {
     return xdgData;
   }
-  throw new Error(
-    "Failed to resolve XDG data path. Set HOME or XDG_DATA_HOME.",
-  );
+  throw new Error("Failed to resolve XDG data path. Set HOME or XDG_DATA_HOME.");
 }
 
 export function getConfigFilePath(): string {
@@ -30,9 +26,5 @@ export function getStateRootDirectoryPath(): string {
 }
 
 export function getOAuthAccessTokenFilePath(): string {
-  return join(
-    requireDataHome(),
-    APPLICATION_DIRECTORY,
-    "oauth_access_token.txt",
-  );
+  return join(requireDataHome(), APPLICATION_DIRECTORY, "oauth_access_token.txt");
 }

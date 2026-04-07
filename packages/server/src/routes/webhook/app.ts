@@ -1,25 +1,29 @@
-import { Hono } from "hono";
-import { ipRestriction } from "hono/ip-restriction";
+import type {
+  AgentSessionEventWebhookPayload,
+  EntityWebhookPayloadWithIssueData,
+  LinearWebhookPayload,
+} from "@linear/sdk/webhooks";
+import type {
+  ApplicationConfig,
+  AuthRepository,
+  SessionRepository,
+  OpencodeService,
+} from "@opencode-linear-agent/core";
+import type { GetConnInfo } from "hono/conninfo";
+
+import { LinearWebhookClient } from "@linear/sdk/webhooks";
 import {
-  type ApplicationConfig,
-  type AuthRepository,
-  type SessionRepository,
-  type OpencodeService,
   LinearEventProcessor,
   LinearService,
   IssueEventHandler,
   Log,
 } from "@opencode-linear-agent/core";
-import {
-  LinearWebhookClient,
-  type AgentSessionEventWebhookPayload,
-  type EntityWebhookPayloadWithIssueData,
-  type LinearWebhookPayload,
-} from "@linear/sdk/webhooks";
 import { Result } from "better-result";
+import { Hono } from "hono";
+import { ipRestriction } from "hono/ip-restriction";
 import { z } from "zod";
+
 import { refreshAccessToken } from "../../token";
-import type { GetConnInfo } from "hono/conninfo";
 
 interface WebhookHandlerFactories {
   createProcessor?: (
@@ -37,11 +41,7 @@ const webhookTimestampSchema = z.object({
 function isIssueWebhook(
   payload: LinearWebhookPayload,
 ): payload is EntityWebhookPayloadWithIssueData {
-  return (
-    payload.type === "Issue" &&
-    "issue" in payload &&
-    payload.issue !== undefined
-  );
+  return payload.type === "Issue" && "issue" in payload && payload.issue !== undefined;
 }
 
 function isAgentSessionEventWebhook(
@@ -52,9 +52,7 @@ function isAgentSessionEventWebhook(
 
 function isSupportedWebhook(
   payload: LinearWebhookPayload,
-): payload is
-  | AgentSessionEventWebhookPayload
-  | EntityWebhookPayloadWithIssueData {
+): payload is AgentSessionEventWebhookPayload | EntityWebhookPayloadWithIssueData {
   return isAgentSessionEventWebhook(payload) || isIssueWebhook(payload);
 }
 
@@ -67,9 +65,7 @@ export function createWebhookApp(
   factories?: WebhookHandlerFactories,
 ) {
   const app = new Hono();
-  const linearWebhookClient = new LinearWebhookClient(
-    config.linearWebhookSecret,
-  );
+  const linearWebhookClient = new LinearWebhookClient(config.linearWebhookSecret);
 
   app.use(
     "/api/webhook/linear",
@@ -105,11 +101,7 @@ export function createWebhookApp(
     }
 
     const webhookPayloadResult = Result.try(() =>
-      linearWebhookClient.parseData(
-        requestBuffer,
-        signature,
-        parsed.value.webhookTimestamp,
-      ),
+      linearWebhookClient.parseData(requestBuffer, signature, parsed.value.webhookTimestamp),
     );
     if (Result.isError(webhookPayloadResult)) {
       return c.json(
@@ -127,8 +119,7 @@ export function createWebhookApp(
     ) {
       return c.json(
         {
-          error:
-            "Webhook organization ID does not match configured organization ID",
+          error: "Webhook organization ID does not match configured organization ID",
         },
         400,
       );
@@ -138,9 +129,7 @@ export function createWebhookApp(
       return c.text("", 200);
     }
 
-    let accessToken = await authRepository.getAccessToken(
-      webhookPayload.organizationId,
-    );
+    let accessToken = await authRepository.getAccessToken(webhookPayload.organizationId);
     if (!accessToken) {
       const oauthConfig = {
         clientId: config.linearClientId,
@@ -160,18 +149,8 @@ export function createWebhookApp(
         opencodeUrl: config.opencodeServerUrl,
       };
       const handler =
-        factories?.createProcessor?.(
-          opencode,
-          linearService,
-          sessionRepository,
-          processorConfig,
-        ) ??
-        new LinearEventProcessor(
-          opencode,
-          linearService,
-          sessionRepository,
-          processorConfig,
-        );
+        factories?.createProcessor?.(opencode, linearService, sessionRepository, processorConfig) ??
+        new LinearEventProcessor(opencode, linearService, sessionRepository, processorConfig);
       handler.process(webhookPayload).catch((error: unknown) => {
         log.error("Agent session dispatch failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -180,11 +159,7 @@ export function createWebhookApp(
     }
 
     if (isIssueWebhook(webhookPayload)) {
-      const issueHandler = new IssueEventHandler(
-        linearService,
-        opencode,
-        sessionRepository,
-      );
+      const issueHandler = new IssueEventHandler(linearService, opencode, sessionRepository);
       issueHandler.process(webhookPayload).catch((error: unknown) => {
         log.error("Issue event processing failed", {
           error: error instanceof Error ? error.message : String(error),

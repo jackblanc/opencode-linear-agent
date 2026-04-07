@@ -67,9 +67,7 @@ export function findRepoLabel(labels: LinearLabelLike[]): RepoLabelMatch {
   };
 }
 
-export function parseRepoLabel(
-  labels: LinearLabelLike[],
-): ParsedRepoLabel | null {
+export function parseRepoLabel(labels: LinearLabelLike[]): ParsedRepoLabel | null {
   const result = findRepoLabel(labels);
 
   if (result.status !== "valid") {
