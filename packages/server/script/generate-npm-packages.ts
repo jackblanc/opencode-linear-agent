@@ -12,12 +12,11 @@ import { RUNTIMES, getCacheName, type Runtime } from "../src/runtime";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const dist = join(root, "dist", "npm");
-const version =
-  process.env.SERVER_NPM_VERSION ?? process.env.npm_package_version;
+const version = process.env["SERVER_NPM_VERSION"];
 
 function assertVersion(): string {
   if (!version) {
-    throw new Error("SERVER_NPM_VERSION or npm_package_version is required");
+    throw new Error("SERVER_NPM_VERSION is required");
   }
 
   return version;

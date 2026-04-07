@@ -25,6 +25,5 @@
     "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "skipLibCheck": true
-  },
-  "include": ["packages/*/src/**/*", "packages/*/test/**/*"]
+  }
 }

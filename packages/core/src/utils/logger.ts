@@ -162,6 +162,8 @@ function formatValue(value: unknown, seen = new WeakSet<object>()): string {
 
       return formatObject(isRecord(value) ? value : {}, seen);
     }
+    default:
+      return String(value);
   }
 }
 

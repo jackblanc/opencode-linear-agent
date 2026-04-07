@@ -43,7 +43,7 @@ export async function LinearPlugin({ client }: PluginInput): Promise<Hooks> {
         await client.app.log({
           body: {
             service: "linear-plugin",
-            message: `Failed to process event [${event.type}]: ${result.error}`,
+            message: `Failed to process event [${event.type}]: ${JSON.stringify(result.error)}`,
             level: "error",
           },
         });

@@ -1,14 +1,16 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import"],
-  "ignorePatterns": [],
+  "plugins": ["typescript", "import", "eslint", "unicorn", "oxc"],
+  "options": {
+    "reportUnusedDisableDirectives": "error",
+    "denyWarnings": true,
+    "typeAware": true,
+    "typeCheck": true
+  },
   "categories": {
     "correctness": "deny",
     "suspicious": "deny",
-    "pedantic": "off",
-    "perf": "deny",
-    "style": "off",
-    "nursery": "deny"
+    "perf": "deny"
   },
   "rules": {
     // Disable no-await-in-loop - we have legitimate sequential retry loops
@@ -83,11 +85,6 @@
     "unicorn/throw-new-error": "error",
     "unicorn/prefer-string-slice": "error",
     "unicorn/no-console-spaces": "error",
-    "unicorn/number-literal-case": "error",
-
-    // Disable conflicting rules
-    "eslint-plugin-import/no-named-export": "off",
-    "eslint-plugin-import/prefer-default-export": "off",
-    "eslint/no-undef": "off"
+    "unicorn/number-literal-case": "error"
   }
 }

@@ -487,6 +487,7 @@ export class LinearEventProcessor {
     }
   }
 
+  // TODO: This should not return a boolean, it should return a Result type
   private async processWithProject(
     event: AgentSessionEventWebhookPayload,
     project: ProjectRef,
@@ -626,6 +627,8 @@ export class LinearEventProcessor {
           sessionLog,
         );
         return true;
+      default:
+        return false;
     }
   }
 
