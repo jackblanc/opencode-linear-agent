@@ -9,7 +9,6 @@ import type {
   SessionRepository,
   OpencodeService,
 } from "@opencode-linear-agent/core";
-import type { GetConnInfo } from "hono/conninfo";
 
 import { LinearWebhookClient } from "@linear/sdk/webhooks";
 import {
@@ -20,7 +19,6 @@ import {
 } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { Hono } from "hono";
-import { ipRestriction } from "hono/ip-restriction";
 import { z } from "zod";
 
 import { refreshAccessToken } from "../../token";
@@ -61,27 +59,10 @@ export function createWebhookApp(
   authRepository: AuthRepository,
   sessionRepository: SessionRepository,
   opencode: OpencodeService,
-  getConnInfo: GetConnInfo,
   factories?: WebhookHandlerFactories,
 ) {
   const app = new Hono();
   const linearWebhookClient = new LinearWebhookClient(config.linearWebhookSecret);
-
-  app.use(
-    "/api/webhook/linear",
-    ipRestriction(getConnInfo, {
-      denyList: [],
-      // Source: https://linear.app/developers/webhooks#securing-webhooks
-      allowList: [
-        "35.231.147.226",
-        "35.243.134.228",
-        "34.140.253.14",
-        "34.38.87.206",
-        "34.134.222.122",
-        "35.222.25.142",
-      ],
-    }),
-  );
 
   app.post("/api/webhook/linear", async (c) => {
     const log = Log.create({ service: "webhook" });

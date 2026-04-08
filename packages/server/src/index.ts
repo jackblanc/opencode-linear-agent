@@ -11,7 +11,6 @@ import {
   OAuthStateRepository,
   getOAuthAccessTokenFilePath,
 } from "@opencode-linear-agent/core";
-import { getConnInfo } from "hono/bun";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -92,14 +91,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     baseUrl: config.opencodeServerUrl,
   });
   const opencode = new OpencodeService(opencodeClient);
-  const app = createApp(
-    config,
-    oauthStateRepository,
-    authRepository,
-    sessionRepository,
-    opencode,
-    getConnInfo,
-  );
+  const app = createApp(config, oauthStateRepository, authRepository, sessionRepository, opencode);
   const server = Bun.serve({
     port: config.webhookServerPort,
     fetch: app.fetch,

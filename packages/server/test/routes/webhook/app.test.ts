@@ -1,5 +1,4 @@
 import type { ApplicationConfig } from "@opencode-linear-agent/core";
-import type { GetConnInfo } from "hono/conninfo";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { AuthRepository, SessionRepository, OpencodeService } from "@opencode-linear-agent/core";
@@ -29,16 +28,6 @@ function createRepositories() {
     session: new SessionRepository(agentState),
   };
 }
-
-/** GetConnInfo that returns a whitelisted Linear IP */
-const allowedConnInfo: GetConnInfo = () => ({
-  remote: { address: "35.231.147.226", addressType: "IPv4", port: 443 },
-});
-
-/** GetConnInfo that returns a non-whitelisted IP */
-const blockedConnInfo: GetConnInfo = () => ({
-  remote: { address: "1.2.3.4", addressType: "IPv4", port: 443 },
-});
 
 function createSignedRequest(payload: unknown): Request {
   const body = JSON.stringify(payload);
@@ -134,20 +123,8 @@ describe("webhook app", () => {
     await seedAuth(repos.auth);
   });
 
-  test("accepts signed issue webhook from allowed IP", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
-    const response = await app.request(createSignedRequest(issuePayload()));
-    expect(response.status).toBe(200);
-  });
-
-  test("rejects request from non-whitelisted IP", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, blockedConnInfo);
-    const response = await app.request(createSignedRequest(issuePayload()));
-    expect(response.status).toBe(403);
-  });
-
   test("rejects request missing linear-signature header", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode);
     const body = JSON.stringify(issuePayload());
     const request = new Request("https://example.com/api/webhook/linear", {
       method: "POST",
@@ -159,7 +136,7 @@ describe("webhook app", () => {
   });
 
   test("returns 200 for unsupported webhook type", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode);
     const response = await app.request(createSignedRequest(unsupportedPayload()));
     expect(response.status).toBe(200);
   });
@@ -167,7 +144,7 @@ describe("webhook app", () => {
   test("dispatches agent session webhooks to LinearEventProcessor", async () => {
     const seen: string[] = [];
 
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo, {
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode, {
       createProcessor: () => ({
         process: async () => {
           seen.push("called");
@@ -182,13 +159,13 @@ describe("webhook app", () => {
   });
 
   test("rejects webhook from wrong organization", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode);
     const response = await app.request(createSignedRequest(issuePayload("wrong-org")));
     expect(response.status).toBe(400);
   });
 
   test("rejects request with invalid signature", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode);
     const body = JSON.stringify(issuePayload());
     const wrongSignature = createHmac("sha256", "wrong-secret").update(body).digest("hex");
     const request = new Request("https://example.com/api/webhook/linear", {
@@ -204,7 +181,7 @@ describe("webhook app", () => {
   });
 
   test("rejects payload with invalid JSON body", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode);
     const body = "not json";
     const signature = createHmac("sha256", SECRET).update(body).digest("hex");
     const request = new Request("https://example.com/api/webhook/linear", {
@@ -220,7 +197,7 @@ describe("webhook app", () => {
   });
 
   test("rejects payload missing webhookTimestamp", async () => {
-    const app = createWebhookApp(config, repos.auth, repos.session, opencode, allowedConnInfo);
+    const app = createWebhookApp(config, repos.auth, repos.session, opencode);
     const payload = { type: "Issue", action: "update", organizationId: ORG_ID };
     const body = JSON.stringify(payload);
     const signature = createHmac("sha256", SECRET).update(body).digest("hex");

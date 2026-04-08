@@ -5,7 +5,6 @@ import type {
   SessionRepository,
   OpencodeService,
 } from "@opencode-linear-agent/core";
-import type { GetConnInfo } from "hono/conninfo";
 
 import { Hono } from "hono";
 import { logger } from "hono/logger";
@@ -19,18 +18,11 @@ export function createApp(
   authRepository: AuthRepository,
   sessionRepository: SessionRepository,
   opencode: OpencodeService,
-  getConnInfo: GetConnInfo,
 ) {
   const app = new Hono();
 
   const oauth = createOAuthApp(config, oauthStateRepository, authRepository);
-  const webhook = createWebhookApp(
-    config,
-    authRepository,
-    sessionRepository,
-    opencode,
-    getConnInfo,
-  );
+  const webhook = createWebhookApp(config, authRepository, sessionRepository, opencode);
 
   app.use(logger());
 
