@@ -41,25 +41,26 @@ describe("LinearService.getIssueAgentSessionIds", () => {
           first?: number;
           includeArchived?: boolean;
         }) => Promise<Page>;
-      }> => ({
-        comments: async (vars?: {
-          after?: string;
-          first?: number;
-          includeArchived?: boolean;
-        }): Promise<Page> => {
-          calls.push(vars?.after);
-          switch (vars?.after) {
-            case undefined:
-              return first;
-            case "cursor-1":
-              return second;
-            case "cursor-2":
-              return third;
-            default:
-              return first;
-          }
-        },
-      }),
+      }> =>
+        Promise.resolve({
+          comments: async (vars?: {
+            after?: string;
+            first?: number;
+            includeArchived?: boolean;
+          }): Promise<Page> => {
+            calls.push(vars?.after);
+            switch (vars?.after) {
+              case undefined:
+                return Promise.resolve(first);
+              case "cursor-1":
+                return Promise.resolve(second);
+              case "cursor-2":
+                return Promise.resolve(third);
+              default:
+                return Promise.resolve(first);
+            }
+          },
+        }),
     };
 
     Object.defineProperty(svc, "client", { value: fakeClient });
@@ -96,22 +97,25 @@ describe("LinearService.moveIssueToInProgress", () => {
           }>;
         }>;
         update: (input: { stateId: string }) => Promise<void>;
-      }> => ({
-        state: Promise.resolve({ id: "s1", name: "Todo", type: "unstarted" }),
-        team: Promise.resolve({
-          states: async (): Promise<{
-            nodes: Array<{ id: string; name: string; position: number }>;
-          }> => ({
-            nodes: [
-              { id: "s3", name: "Review", position: 2 },
-              { id: "s2", name: "In Progress", position: 1 },
-            ],
+      }> =>
+        Promise.resolve({
+          state: Promise.resolve({ id: "s1", name: "Todo", type: "unstarted" }),
+          team: Promise.resolve({
+            states: async (): Promise<{
+              nodes: Array<{ id: string; name: string; position: number }>;
+            }> =>
+              Promise.resolve({
+                nodes: [
+                  { id: "s3", name: "Review", position: 2 },
+                  { id: "s2", name: "In Progress", position: 1 },
+                ],
+              }),
           }),
+          update: async (input: { stateId: string }): Promise<void> => {
+            updates.push(input);
+            return Promise.resolve();
+          },
         }),
-        update: async (input: { stateId: string }): Promise<void> => {
-          updates.push(input);
-        },
-      }),
     };
 
     Object.defineProperty(svc, "client", { value: fakeClient });
@@ -137,26 +141,28 @@ describe("LinearService.moveIssueToInProgress", () => {
             }>;
           }>;
           update: (input: { stateId: string }) => Promise<void>;
-        }> => ({
-          state: Promise.resolve({
-            id: "s4",
-            name: "Ready to merge",
-            type,
-          }),
-          team: Promise.resolve({
-            states: async (vars: {
-              filter: { type: { eq: string } };
-            }): Promise<{
-              nodes: Array<{ id: string; name: string; position: number }>;
-            }> => {
-              stateCalls.push(vars.filter.type.eq);
-              return { nodes: [] };
+        }> =>
+          Promise.resolve({
+            state: Promise.resolve({
+              id: "s4",
+              name: "Ready to merge",
+              type,
+            }),
+            team: Promise.resolve({
+              states: async (vars: {
+                filter: { type: { eq: string } };
+              }): Promise<{
+                nodes: Array<{ id: string; name: string; position: number }>;
+              }> => {
+                stateCalls.push(vars.filter.type.eq);
+                return Promise.resolve({ nodes: [] });
+              },
+            }),
+            update: async (input: { stateId: string }): Promise<void> => {
+              updates.push(input);
+              return Promise.resolve();
             },
           }),
-          update: async (input: { stateId: string }): Promise<void> => {
-            updates.push(input);
-          },
-        }),
       };
 
       Object.defineProperty(svc, "client", { value: fakeClient });
@@ -183,26 +189,28 @@ describe("LinearService.moveIssueToInProgress", () => {
           }>;
         }>;
         update: (input: { stateId: string }) => Promise<void>;
-      }> => ({
-        state: Promise.resolve({
-          id: "s5",
-          name: "Future State",
-          type: "future",
-        }),
-        team: Promise.resolve({
-          states: async (vars: {
-            filter: { type: { eq: string } };
-          }): Promise<{
-            nodes: Array<{ id: string; name: string; position: number }>;
-          }> => {
-            stateCalls.push(vars.filter.type.eq);
-            return { nodes: [] };
+      }> =>
+        Promise.resolve({
+          state: Promise.resolve({
+            id: "s5",
+            name: "Future State",
+            type: "future",
+          }),
+          team: Promise.resolve({
+            states: async (vars: {
+              filter: { type: { eq: string } };
+            }): Promise<{
+              nodes: Array<{ id: string; name: string; position: number }>;
+            }> => {
+              stateCalls.push(vars.filter.type.eq);
+              return Promise.resolve({ nodes: [] });
+            },
+          }),
+          update: async (input: { stateId: string }): Promise<void> => {
+            updates.push(input);
+            return Promise.resolve();
           },
         }),
-        update: async (input: { stateId: string }): Promise<void> => {
-          updates.push(input);
-        },
-      }),
     };
 
     Object.defineProperty(svc, "client", { value: fakeClient });
@@ -220,13 +228,14 @@ describe("LinearService.moveIssueToInProgress", () => {
     const fakeClient = {
       issue: async (): Promise<{
         state: Promise<{ id: string; name: string; type: string }>;
-      }> => ({
-        state: Promise.resolve({
-          id: "s6",
-          name: "Future State",
-          type: "future",
+      }> =>
+        Promise.resolve({
+          state: Promise.resolve({
+            id: "s6",
+            name: "Future State",
+            type: "future",
+          }),
         }),
-      }),
     };
 
     Object.defineProperty(svc, "client", { value: fakeClient });

@@ -140,7 +140,7 @@ describe("FileKeyValueStore", () => {
 
     const got = await store.get("linear-1");
     expect(got.isOk()).toBe(true);
-    if (!got.isOk() || got.value === null) {
+    if (!got.isOk()) {
       return;
     }
 
@@ -159,7 +159,7 @@ describe("FileKeyValueStore", () => {
 
     expect(gotA.isOk()).toBe(true);
     expect(gotB.isOk()).toBe(true);
-    if (!gotA.isOk() || !gotB.isOk() || gotA.value === null || gotB.value === null) {
+    if (!gotA.isOk() || !gotB.isOk()) {
       return;
     }
 
@@ -226,9 +226,9 @@ describe("FileKeyValueStore", () => {
 
 describe("withFileLock", () => {
   test("releases lock when callback throws", async () => {
-    const first = await withFileLock(TEST_DIR, "lock-a", async () => {
-      throw new Error("boom");
-    });
+    const first = await withFileLock(TEST_DIR, "lock-a", async () =>
+      Promise.reject(new Error("boom")),
+    );
     expect(first.isOk()).toBe(false);
 
     const second = await withFileLock(TEST_DIR, "lock-a", async () =>
@@ -247,8 +247,10 @@ describe("withFileLock", () => {
       TEST_DIR,
       "lock-b",
       async () =>
-        await new Promise<ReturnType<typeof Result.ok<string>>>((resolve) => {
-          setTimeout(() => resolve(Result.ok("held")), 100);
+        new Promise<ReturnType<typeof Result.ok<string>>>((resolve) => {
+          setTimeout(() => {
+            resolve(Result.ok("held"));
+          }, 100);
         }),
     );
 

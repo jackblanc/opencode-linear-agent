@@ -171,6 +171,7 @@ describe("webhook app", () => {
       createProcessor: () => ({
         process: async () => {
           seen.push("called");
+          return Promise.resolve();
         },
       }),
     });

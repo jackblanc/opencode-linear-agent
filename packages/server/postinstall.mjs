@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const root = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * @returns {{ arch: string; packageName: string; platform: string } | null}
+ */
 function getRuntime() {
   const platform = os.platform();
   const arch = os.arch();
@@ -48,29 +51,42 @@ function getRuntime() {
   return null;
 }
 
+/**
+ * @param {{ arch: string; packageName: string; platform: string }} runtime
+ * @returns {string}
+ */
 function getCache(runtime) {
   return path.join(root, "bin", `.opencode-linear-agent-${runtime.platform}-${runtime.arch}`);
 }
 
+/**
+ * @param {string} filepath
+ */
 function ensureParent(filepath) {
   fs.mkdirSync(path.dirname(filepath), { recursive: true });
 }
 
+/**
+ * @param {string} source
+ * @param {string} cache
+ */
 function installCache(source, cache) {
   ensureParent(cache);
   if (fs.existsSync(cache)) {
     fs.unlinkSync(cache);
   }
-
   if (fs.existsSync(source)) {
     fs.copyFileSync(source, cache);
   }
-
   if (fs.existsSync(cache)) {
     fs.chmodSync(cache, 0o755);
   }
 }
 
+/**
+ * @param {string} packageName
+ * @returns {string}
+ */
 function findBinary(packageName) {
   const pkg = require.resolve(`${packageName}/package.json`);
   return path.join(path.dirname(pkg), "bin", "opencode-linear-agent");

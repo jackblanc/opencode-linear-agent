@@ -14,6 +14,8 @@ import {
   createFileAgentState,
 } from "@opencode-linear-agent/core";
 
+// INTENTIONAL: OpenCode requires plugin functions to be async
+// oxlint-disable-next-line typescript/require-await
 export async function LinearPlugin({ client }: PluginInput): Promise<Hooks> {
   const agentState = createFileAgentState();
 
@@ -31,7 +33,9 @@ export async function LinearPlugin({ client }: PluginInput): Promise<Hooks> {
      */
     event: async ({ event: _event }) => {
       // THIS IS INTENTIONAL, DO NOT REMOVE IT!!!!!
-      // eslint-disable-next-line no-unsafe-type-assertion
+      // OpenCode's plugin types the Event as the V1 SDK Event type, but the actual event is the V2 shape
+      // https://github.com/anomalyco/opencode/issues/7641
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion typescript/consistent-type-assertions
       const event = _event as unknown as Event; // Cast to V2 Event type
 
       const result = await opencodeEventProcessor.processEvent(event);

@@ -58,7 +58,7 @@ export async function initializeServerLogging(): Promise<ServerLoggingRuntime> {
     return serverLoggingRuntime;
   }
 
-  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch(async (error: unknown) => {
+  serverLoggingRuntimePromise ??= createServerLoggingRuntime().catch((error: unknown) => {
     serverLoggingRuntimePromise = null;
     throw error;
   });
@@ -93,6 +93,10 @@ export function registerShutdownHandlers(
     );
   };
 
-  process.once("SIGINT", () => run("SIGINT"));
-  process.once("SIGTERM", () => run("SIGTERM"));
+  process.once("SIGINT", () => {
+    run("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    run("SIGTERM");
+  });
 }

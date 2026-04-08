@@ -14,7 +14,7 @@ export function loadApplicationConfig(path: string = getConfigFilePath()): Appli
 
   const stringFileContents = readFileSync(path, "utf-8");
 
-  let jsonFileContents: object | undefined;
+  let jsonFileContents: unknown;
   try {
     jsonFileContents = JSON.parse(stringFileContents);
   } catch (err) {

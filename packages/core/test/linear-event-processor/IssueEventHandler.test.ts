@@ -50,16 +50,16 @@ describe("IssueEventHandler", () => {
     const removes: string[] = [];
     const handler = new IssueEventHandler(
       new TestLinearService({
-        getIssueAgentSessionIds: async () => Result.ok(["session-1"]),
+        getIssueAgentSessionIds: async () => Promise.resolve(Result.ok(["session-1"])),
       }),
       {
         abortSession: async (sessionID: string, directory: string) => {
           aborts.push({ sessionID, directory });
-          return Result.ok(undefined);
+          return Promise.resolve(Result.ok(undefined));
         },
         removeWorktree: async (directory: string) => {
           removes.push(directory);
-          return Result.ok(undefined);
+          return Promise.resolve(Result.ok(undefined));
         },
       },
       repository,
@@ -77,11 +77,12 @@ describe("IssueEventHandler", () => {
     const repository = await createRepository(state);
     const handler = new IssueEventHandler(
       new TestLinearService({
-        getIssueAgentSessionIds: async () => Result.ok(["session-1"]),
+        getIssueAgentSessionIds: async () => Promise.resolve(Result.ok(["session-1"])),
       }),
       {
-        abortSession: async () => Result.ok(undefined),
-        removeWorktree: async () => Result.err(new OpencodeUnknownError({ reason: "busy" })),
+        abortSession: async () => Promise.resolve(Result.ok(undefined)),
+        removeWorktree: async () =>
+          Promise.resolve(Result.err(new OpencodeUnknownError({ reason: "busy" }))),
       },
       repository,
     );
@@ -96,16 +97,16 @@ describe("IssueEventHandler", () => {
     const calls: string[] = [];
     const handler = new IssueEventHandler(
       new TestLinearService({
-        getIssueAgentSessionIds: async () => Result.ok(["session-1"]),
+        getIssueAgentSessionIds: async () => Promise.resolve(Result.ok(["session-1"])),
       }),
       {
         abortSession: async () => {
           calls.push("abort");
-          return Result.ok(undefined);
+          return Promise.resolve(Result.ok(undefined));
         },
         removeWorktree: async () => {
           calls.push("remove");
-          return Result.ok(undefined);
+          return Promise.resolve(Result.ok(undefined));
         },
       },
       repository,

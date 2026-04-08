@@ -53,7 +53,7 @@ export class FileKeyValueStore<T> implements KeyValueStore<T> {
     }
 
     const text = await Result.tryPromise({
-      try: async () => await readFile(path.value, "utf8"),
+      try: async () => readFile(path.value, "utf8"),
       catch: (error) =>
         new KvIoError({
           path: path.value,

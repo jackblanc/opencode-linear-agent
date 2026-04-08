@@ -138,7 +138,7 @@ export class LinearService {
   // Agent Activity Methods
   // ─────────────────────────────────────────────────────────────
   async postActivity(sessionId: string, content: ActivityContent, ephemeral = false) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () =>
         this.client.createAgentActivity({
           agentSessionId: sessionId,
@@ -162,7 +162,7 @@ export class LinearService {
     const baseMessage = STAGE_MESSAGES[stage];
     const body = details ? `${baseMessage}\n\n${details}` : baseMessage;
 
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () =>
         this.client.createAgentActivity({
           agentSessionId: sessionId,
@@ -191,7 +191,7 @@ export class LinearService {
       ? `**Error:** ${errorMessage}\n\n**Stack trace:**\n\`\`\`\n${truncatedStack}\n\`\`\``
       : `**Error:** ${errorMessage}`;
 
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () =>
         this.client.createAgentActivity({
           agentSessionId: sessionId,
@@ -216,7 +216,7 @@ export class LinearService {
     signal: ElicitationSignal,
     metadata?: SignalMetadata,
   ) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () =>
         this.client.createAgentActivity({
           agentSessionId: sessionId,
@@ -241,10 +241,10 @@ export class LinearService {
   }
 
   async setExternalLink(sessionId: string, url: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const agentSession = await this.client.agentSession(sessionId);
-        return await agentSession.update({ externalLink: url });
+        return agentSession.update({ externalLink: url });
       },
       catch: (cause: unknown) => {
         const error = mapLinearError(cause);
@@ -259,10 +259,10 @@ export class LinearService {
   }
 
   async updatePlan(sessionId: string, plan: PlanItem[]) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const agentSession = await this.client.agentSession(sessionId);
-        return await agentSession.update({ plan });
+        return agentSession.update({ plan });
       },
       catch: (cause: unknown) => {
         const error = mapLinearError(cause);
@@ -281,13 +281,13 @@ export class LinearService {
   // ─────────────────────────────────────────────────────────────
 
   async getIssue(issueId: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         return {
           id: issue.id,
           identifier: issue.identifier,
-          branchName: issue.branchName ?? undefined,
+          branchName: issue.branchName,
           title: issue.title,
           description: issue.description ?? undefined,
           url: issue.url,
@@ -305,7 +305,7 @@ export class LinearService {
   }
 
   async getIssueLabels(issueId: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         const labels = await issue.labels();
@@ -326,13 +326,13 @@ export class LinearService {
   }
 
   async getIssueAttachments(issueId: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         const attachments = await issue.attachments();
         return attachments.nodes.map((attachment) => ({
           id: attachment.id,
-          url: attachment.url ?? undefined,
+          url: attachment.url,
           title: attachment.title,
         }));
       },
@@ -352,7 +352,7 @@ export class LinearService {
     agentSessionId: string,
     candidates: IssueRepositoryCandidate[],
   ) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const response = await this.client.client.rawRequest<
           IssueRepositorySuggestionsQuery,
@@ -403,7 +403,7 @@ export class LinearService {
   }
 
   async setIssueRepoLabel(issueId: string, labelName: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         const team = await issue.team;
@@ -468,7 +468,7 @@ export class LinearService {
   }
 
   async getIssueAgentSessionIds(issueId: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         return collectIssueAgentSessionIds(async (after) =>
@@ -495,7 +495,7 @@ export class LinearService {
   // ─────────────────────────────────────────────────────────────
 
   async moveIssueToInProgress(issueId: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         const state = await issue.state;
@@ -559,7 +559,7 @@ export class LinearService {
   }
 
   async getIssueState(issueId: string) {
-    return await Result.tryPromise({
+    return Result.tryPromise({
       try: async () => {
         const issue = await this.client.issue(issueId);
         const state = await issue.state;

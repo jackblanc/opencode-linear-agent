@@ -105,8 +105,8 @@ function isOpencodeErrorObject(error: unknown): error is OpencodeErrorObject {
     error !== null &&
     "name" in error &&
     "data" in error &&
-    typeof (error as { name: unknown }).name === "string" &&
-    typeof (error as { data: unknown }).data === "object"
+    typeof error.name === "string" &&
+    typeof error.data === "object"
   );
 }
 
@@ -160,7 +160,7 @@ export function mapOpencodeError(error: unknown): OpencodeServiceError {
  */
 export function getOpencodeErrorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "message" in error) {
-    return String((error as { message: unknown }).message);
+    return String(error.message);
   }
   if (error instanceof Error) {
     return error.message;

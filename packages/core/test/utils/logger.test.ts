@@ -10,7 +10,7 @@ let lines: string[] = [];
 let stderrWrite: typeof process.stderr.write;
 let sink: Awaited<ReturnType<typeof createFileLogSink>> | null = null;
 
-beforeEach(async () => {
+beforeEach(() => {
   lines = [];
   stderrWrite = process.stderr.write.bind(process.stderr);
   Object.defineProperty(process.stderr, "write", {
@@ -121,11 +121,11 @@ describe("Log", () => {
         return;
       },
       async flush(): Promise<void> {
-        return;
+        return Promise.resolve();
       },
       async close(): Promise<void> {
         closes += 1;
-        return;
+        return Promise.resolve();
       },
     };
     const b = {
@@ -133,16 +133,16 @@ describe("Log", () => {
         return;
       },
       async flush(): Promise<void> {
-        return;
+        return Promise.resolve();
       },
       async close(): Promise<void> {
-        return;
+        return Promise.resolve();
       },
     };
 
     Log.init({ sink: a });
     Log.init({ sink: b });
-    await Promise.resolve();
+    await Bun.sleep(0);
 
     expect(closes).toBe(1);
   });

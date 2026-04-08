@@ -139,17 +139,9 @@ export function extractToolParameter(
       return getString(input, "description") ?? "task";
     case "question": {
       // Extract question text from the questions array
-      const questions = input["questions"];
-      if (Array.isArray(questions) && questions.length > 0) {
-        const first = questions[0];
-        if (
-          typeof first === "object" &&
-          first !== null &&
-          "question" in first &&
-          typeof first.question === "string"
-        ) {
-          return first.question.slice(0, 100);
-        }
+      const first = getFirstQuestionInput(input["questions"]);
+      if (first) {
+        return first.question.slice(0, 100);
       }
       return "user input";
     }
@@ -166,6 +158,28 @@ export function extractToolParameter(
       return toolName;
     }
   }
+}
+
+function isQuestionInput(value: unknown): value is { question: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "question" in value &&
+    typeof value.question === "string"
+  );
+}
+
+function getFirstQuestionInput(value: unknown): { question: string } | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+
+  const first: unknown = value[0];
+  if (isQuestionInput(first)) {
+    return first;
+  }
+
+  return null;
 }
 
 /**

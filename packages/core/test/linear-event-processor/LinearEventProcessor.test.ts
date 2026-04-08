@@ -90,23 +90,29 @@ function createProcessorHarness(options?: {
   labels?: IssueLabel[];
 }) {
   const repository = new SessionRepository(createInMemoryAgentState());
-  const linearCalls = {
-    elicitations: [] as Array<{ body: string; metadata: unknown }>,
-    repoLabels: [] as Array<{ issueId: string; labelName: string }>,
-    errors: [] as string[],
+  const linearCalls: {
+    elicitations: Array<{ body: string; metadata: unknown }>;
+    repoLabels: Array<{ issueId: string; labelName: string }>;
+    errors: string[];
+  } = {
+    elicitations: [] satisfies Array<{ body: string; metadata: unknown }>,
+    repoLabels: [] satisfies Array<{ issueId: string; labelName: string }>,
+    errors: [] satisfies string[],
   };
   const projects = options?.projects ?? defaultProjects;
   const linear = new TestLinearService({
-    getIssueLabels: async () => Result.ok(options?.labels ?? []),
+    getIssueLabels: async () => Promise.resolve(Result.ok(options?.labels ?? [])),
     getIssue: async () =>
-      Result.ok({
-        id: "issue-1",
-        identifier: "CODE-1",
-        branchName: "jack/code-1-linear-branch",
-        title: "x",
-        description: undefined,
-        url: "https://linear.app",
-      }),
+      Promise.resolve(
+        Result.ok({
+          id: "issue-1",
+          identifier: "CODE-1",
+          branchName: "jack/code-1-linear-branch",
+          title: "x",
+          description: undefined,
+          url: "https://linear.app",
+        }),
+      ),
   });
   const originalPostElicitation = linear.postElicitation.bind(linear);
   Object.defineProperty(linear, "postElicitation", {
@@ -117,36 +123,43 @@ function createProcessorHarness(options?: {
       metadata?: Parameters<TestLinearService["postElicitation"]>[3],
     ) => {
       linearCalls.elicitations.push({ body, metadata });
-      return originalPostElicitation(sessionId, body, signal, metadata);
+      return Promise.resolve(originalPostElicitation(sessionId, body, signal, metadata));
     },
   });
   const originalSetIssueRepoLabel = linear.setIssueRepoLabel.bind(linear);
   Object.defineProperty(linear, "setIssueRepoLabel", {
     value: async (issueId: string, labelName: string) => {
       linearCalls.repoLabels.push({ issueId, labelName });
-      return originalSetIssueRepoLabel(issueId, labelName);
+      return Promise.resolve(originalSetIssueRepoLabel(issueId, labelName));
     },
   });
   const originalPostError = linear.postError.bind(linear);
   Object.defineProperty(linear, "postError", {
     value: async (sessionId: string, error: unknown) => {
       linearCalls.errors.push(error instanceof Error ? error.message : String(error));
-      return originalPostError(sessionId, error);
+      return Promise.resolve(originalPostError(sessionId, error));
     },
   });
 
   const opencode = new OpencodeService(createOpencodeClient({ baseUrl: "http://localhost:4096" }));
-  const opencodeCalls = {
+  const opencodeCalls: {
+    listProjects: number;
+    createWorktree: Array<{ directory: string; name: string }>;
+    createSession: string[];
+    getSession: Array<{ sessionID: string; directory: string }>;
+    replyQuestion: Array<Array<Array<string>>>;
+    prompt: Array<{ workdir: string; text: string }>;
+  } = {
     listProjects: 0,
-    createWorktree: [] as Array<{ directory: string; name: string }>,
-    createSession: [] as string[],
-    getSession: [] as Array<{ sessionID: string; directory: string }>,
-    replyQuestion: [] as Array<Array<Array<string>>>,
-    prompt: [] as Array<{ workdir: string; text: string }>,
+    createWorktree: [],
+    createSession: [],
+    getSession: [],
+    replyQuestion: [],
+    prompt: [],
   };
 
   Object.defineProperty(opencode, "listProjects", {
-    value: async () => {
+    value: () => {
       opencodeCalls.listProjects += 1;
       return Result.ok({ projects });
     },
@@ -154,28 +167,30 @@ function createProcessorHarness(options?: {
   Object.defineProperty(opencode, "createWorktree", {
     value: async (directory: string, name: string) => {
       opencodeCalls.createWorktree.push({ directory, name });
-      return Result.ok({
-        directory: "/repos/opencode-linear-agent/.worktrees/code-1",
-        branch: "feature/code-1",
-      });
+      return Promise.resolve(
+        Result.ok({
+          directory: "/repos/opencode-linear-agent/.worktrees/code-1",
+          branch: "feature/code-1",
+        }),
+      );
     },
   });
   Object.defineProperty(opencode, "createSession", {
     value: async (directory: string) => {
       opencodeCalls.createSession.push(directory);
-      return Result.ok({ id: "opencode-1" });
+      return Promise.resolve(Result.ok({ id: "opencode-1" }));
     },
   });
   Object.defineProperty(opencode, "getSession", {
     value: async (sessionID: string, directory: string) => {
       opencodeCalls.getSession.push({ sessionID, directory });
-      return Result.ok({ id: sessionID });
+      return Promise.resolve(Result.ok({ id: sessionID }));
     },
   });
   Object.defineProperty(opencode, "replyQuestion", {
     value: async (_requestId: string, answers: Array<Array<string>>) => {
       opencodeCalls.replyQuestion.push(answers);
-      return Result.ok(undefined);
+      return Promise.resolve(Result.ok(undefined));
     },
   });
   Object.defineProperty(opencode, "prompt", {
@@ -185,7 +200,7 @@ function createProcessorHarness(options?: {
       parts: Array<{ type: "text"; text: string }>,
     ) => {
       opencodeCalls.prompt.push({ workdir, text: parts[0]?.text ?? "" });
-      return Result.ok(undefined);
+      return Promise.resolve(Result.ok(undefined));
     },
   });
 
@@ -266,16 +281,20 @@ describe("LinearEventProcessor.process", () => {
     ]);
     expect(harness.opencodeCalls.listProjects).toBe(0);
     expect(await harness.repository.getPendingRepoSelection("linear-session-1")).toBeNull();
-    expect(await harness.repository.get("linear-session-1")).toEqual({
-      linearSessionId: "linear-session-1",
-      opencodeSessionId: "opencode-1",
-      organizationId: "org-1",
-      issueId: "issue-1",
-      projectId: "project-1",
-      branchName: "feature/code-1",
-      workdir: "/repos/opencode-linear-agent/.worktrees/code-1",
-      lastActivityTime: expect.any(Number),
-    });
+    const saved = await harness.repository.get("linear-session-1");
+    expect(saved).not.toBeNull();
+    if (saved === null) {
+      return;
+    }
+
+    expect(saved.linearSessionId).toBe("linear-session-1");
+    expect(saved.opencodeSessionId).toBe("opencode-1");
+    expect(saved.organizationId).toBe("org-1");
+    expect(saved.issueId).toBe("issue-1");
+    expect(saved.projectId).toBe("project-1");
+    expect(saved.branchName).toBe("feature/code-1");
+    expect(saved.workdir).toBe("/repos/opencode-linear-agent/.worktrees/code-1");
+    expect(typeof saved.lastActivityTime).toBe("number");
   });
 
   test("reuses stored project session for prompted follow-ups", async () => {

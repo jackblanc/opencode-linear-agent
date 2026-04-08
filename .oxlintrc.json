@@ -12,10 +12,13 @@
     "suspicious": "deny",
     "perf": "deny"
   },
+  // References:
+  // - @typescript-eslint's strict-type-checked.ts: https://github.com/typescript-eslint/typescript-eslint/blob/main/packages/eslint-plugin/src/configs/eslintrc/strict-type-checked.ts
+  // - Oxlint's "projects using oxlint" examples: https://oxc.rs/docs/guide/usage/linter.html#projects-using-oxlint
+  // - Effect's rules: https://github.com/Effect-TS/effect-smol/blob/main/packages/tools/oxc/oxlintrc.json and https://github.com/Effect-TS/effect-smol/blob/main/.oxlintrc.json
   "rules": {
-    // Disable no-await-in-loop - we have legitimate sequential retry loops
+    // Custom Rules
     "eslint/no-await-in-loop": "off",
-
     "no-restricted-imports": [
       "error",
       {
@@ -32,27 +35,45 @@
       }
     ],
 
-    // Export/Import Control - CRITICAL for project requirements
-    "eslint-plugin-import/no-commonjs": "error",
-    "eslint-plugin-import/no-cycle": "error",
+    // TypeScript Rules
+    "typescript/consistent-type-assertions": [
+      "error",
+      {
+        "assertionStyle": "never"
+      }
+    ],
+    "typescript/no-namespace": "error",
+    "typescript/no-unused-vars": "error",
+    "typescript/no-unused-expressions": "error",
+    "typescript/no-unsafe-type-assertion": "error",
     "typescript/no-require-imports": "error",
     "typescript/no-var-requires": "error",
-
-    // Type Safety - Aggressive typing for data integrity
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/promise-function-async": "error",
     "typescript/await-thenable": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-nullish-coalescing": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/no-confusing-void-expression": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/require-await": "error",
+    "typescript/return-await": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
     "typescript/switch-exhaustiveness-check": [
       "error",
       {
         "considerDefaultExhaustiveForUnions": true
       }
     ],
-    "typescript/no-misused-promises": "error",
-    "typescript/only-throw-error": "error",
-    "typescript/prefer-nullish-coalescing": "error",
-    "typescript/no-deprecated": "error",
     "typescript/consistent-type-imports": [
       "error",
       {
@@ -60,12 +81,15 @@
         "fixStyle": "separate-type-imports"
       }
     ],
+
+    // Import Rules
     "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
     "import/no-duplicates": "error",
+    "import/no-cycle": "error",
+    "import/no-commonjs": "error",
 
-    // Code Quality & Safety
+    // Eslint Rules
     "eslint/no-console": "error",
-    "eslint/no-duplicate-imports": "off",
     "eslint/no-var": "error",
     "eslint/no-param-reassign": "error",
     "eslint/no-regex-spaces": "error",
@@ -75,9 +99,8 @@
     "eslint/no-self-compare": "error",
     "eslint/curly": "off",
     "eslint/default-case-last": "error",
-    "typescript/no-namespace": "error",
 
-    // Bun/Node Best Practices
+    // Unicorn Rules
     "unicorn/prefer-node-protocol": "error",
     "unicorn/prefer-modern-math-apis": "error",
     "unicorn/new-for-builtins": "error",

@@ -48,7 +48,8 @@ describe("SessionManager", () => {
     );
 
     Object.defineProperty(opencode, "getSession", {
-      value: async () => Result.err(new OpencodeUnknownError({ reason: "missing" })),
+      value: async () =>
+        Promise.resolve(Result.err(new OpencodeUnknownError({ reason: "missing" }))),
     });
 
     const manager = new SessionManager(opencode, repository);
@@ -73,7 +74,7 @@ describe("SessionManager", () => {
     );
 
     Object.defineProperty(opencode, "createSession", {
-      value: async () => Result.ok({ id: "opencode-new" }),
+      value: async () => Promise.resolve(Result.ok({ id: "opencode-new" })),
     });
 
     const manager = new SessionManager(opencode, repository);
@@ -92,15 +93,19 @@ describe("SessionManager", () => {
       expect(result.value.existingState).toBeNull();
     }
 
-    expect(await repository.get("linear-1")).toEqual({
-      linearSessionId: "linear-1",
-      opencodeSessionId: "opencode-new",
-      organizationId: "org-1",
-      issueId: "issue-1",
-      projectId: "project-1",
-      branchName: "feature/code-1",
-      workdir: "/tmp/worktree-1",
-      lastActivityTime: expect.any(Number),
-    });
+    const saved = await repository.get("linear-1");
+    expect(saved).not.toBeNull();
+    if (saved === null) {
+      return;
+    }
+
+    expect(saved.linearSessionId).toBe("linear-1");
+    expect(saved.opencodeSessionId).toBe("opencode-new");
+    expect(saved.organizationId).toBe("org-1");
+    expect(saved.issueId).toBe("issue-1");
+    expect(saved.projectId).toBe("project-1");
+    expect(saved.branchName).toBe("feature/code-1");
+    expect(saved.workdir).toBe("/tmp/worktree-1");
+    expect(typeof saved.lastActivityTime).toBe("number");
   });
 });

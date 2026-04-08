@@ -7,9 +7,7 @@ import type { IssueState } from "../../src/linear-service/types";
 
 import { LinearService } from "../../src/linear-service/LinearService";
 
-const noopRequest: LinearRequest = async () => {
-  throw new Error("unused in tests");
-};
+const noopRequest: LinearRequest = async () => Promise.reject(new Error("unused in tests"));
 
 function activityPayload(id = "activity-1") {
   return new AgentActivityPayload(noopRequest, {

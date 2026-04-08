@@ -300,7 +300,9 @@ export async function createFileLogSink(path: string): Promise<LogSink> {
       }
 
       return new Promise<void>((resolve) => {
-        stream.write("", () => resolve());
+        stream.write("", () => {
+          resolve();
+        });
       });
     },
     async close(): Promise<void> {
@@ -309,7 +311,9 @@ export async function createFileLogSink(path: string): Promise<LogSink> {
       }
 
       return new Promise<void>((resolve) => {
-        stream.end(() => resolve());
+        stream.end(() => {
+          resolve();
+        });
       });
     },
   };

@@ -2,9 +2,27 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { z } from "zod";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
 const dirs: string[] = [];
+
+function parseJson<T extends z.ZodType>(text: string, schema: T): z.infer<T> {
+  return schema.parse(JSON.parse(text));
+}
+
+const startupOutputSchema = z.object({
+  firstPath: z.string(),
+  secondPath: z.string(),
+  text: z.string(),
+});
+
+const concurrentOutputSchema = z.object({
+  sameObject: z.boolean(),
+  samePath: z.boolean(),
+});
+
+const shutdownOutputSchema = z.object({ text: z.string() });
 
 async function run(
   code: string,
@@ -68,11 +86,7 @@ describe("server logging", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain("service=startup ok=true boot");
 
-    const out: {
-      firstPath: string;
-      secondPath: string;
-      text: string;
-    } = JSON.parse(result.stdout);
+    const out = parseJson(result.stdout, startupOutputSchema);
 
     expect(dirname(out.firstPath)).toBe(join(dataHome, "opencode-linear-agent", "log"));
     expect(out.firstPath).toBe(out.secondPath);
@@ -97,10 +111,9 @@ describe("server logging", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
 
-    expect(JSON.parse(result.stdout)).toEqual({
-      sameObject: true,
-      samePath: true,
-    });
+    const out = parseJson(result.stdout, concurrentOutputSchema);
+    expect(out.sameObject).toBe(true);
+    expect(out.samePath).toBe(true);
   });
 
   test("shutdown flushes and closes the log sink", async () => {
@@ -125,7 +138,7 @@ describe("server logging", () => {
     expect(result.stderr).toContain("service=startup ok=true before shutdown");
     expect(result.stderr).toContain("service=startup signal=SIGTERM Shutting down");
 
-    const out: { text: string } = JSON.parse(result.stdout);
+    const out = parseJson(result.stdout, shutdownOutputSchema);
     expect(out.text).toContain("service=startup ok=true before shutdown");
     expect(out.text).toContain("service=startup signal=SIGTERM Shutting down");
     expect(out.text).not.toContain("after shutdown");

@@ -74,7 +74,7 @@ export class OpencodeEventProcessor {
     );
   }
 
-  private async processEventMessageUpdated(event: EventMessageUpdated) {
+  private processEventMessageUpdated(event: EventMessageUpdated) {
     // Store the role for the message ID, used to conditionally skip sending TextPart of user messages to Linear
     this.messageRoleMap.set(event.properties.info.id, event.properties.info.role);
     return Result.ok();
@@ -193,7 +193,7 @@ export class OpencodeEventProcessor {
       requestId: event.properties.id,
       opencodeSessionId: sessionState.opencodeSessionId,
       linearSessionId: sessionState.linearSessionId,
-      workdir: sessionState.workdir ?? "",
+      workdir: sessionState.workdir,
       issueId: sessionState.issueId,
       questions: event.properties.questions,
       answers: event.properties.questions.map(() => null),
@@ -240,7 +240,7 @@ export class OpencodeEventProcessor {
       requestId: id,
       opencodeSessionId: sessionID,
       linearSessionId: sessionState.linearSessionId,
-      workdir: sessionState.workdir ?? "",
+      workdir: sessionState.workdir,
       issueId: sessionState.issueId,
       permission,
       patterns,
