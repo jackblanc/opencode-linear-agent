@@ -16,6 +16,7 @@ import type { SessionRepository } from "../state/SessionRepository";
 import type { AgentMode } from "../utils/determineAgentMode";
 import type { Logger } from "../utils/logger";
 
+import { KvNotFoundError } from "../kv/errors";
 import { LinearForbiddenError } from "../linear-service/errors";
 import { findRepoLabel, parseRepoLabel } from "../linear-service/label-parser";
 import { buildCreatedPrompt } from "../session/PromptBuilder";
@@ -359,18 +360,48 @@ export class LinearEventProcessor {
     }
 
     const pendingSelection = await this.sessions.getPendingRepoSelection(linearSessionId);
-    if (pendingSelection) {
-      await this.handleRepoSelectionPrompt(event, pendingSelection, log);
+    const handledPendingSelection = await pendingSelection.match({
+      ok: async (value) => {
+        await this.handleRepoSelectionPrompt(event, value, log);
+        return true;
+      },
+      err: async (error) => {
+        if (KvNotFoundError.is(error)) {
+          return false;
+        }
+
+        log.error("Failed to load pending repo selection", {
+          error: error.message,
+          errorType: error._tag,
+        });
+        await this.linear.postError(linearSessionId, error);
+        return true;
+      },
+    });
+    if (handledPendingSelection) {
       return;
     }
 
-    const sessionState = await this.sessions.get(linearSessionId);
+    const sessionStateResult = await this.sessions.get(linearSessionId);
+    if (sessionStateResult.isErr()) {
+      if (!KvNotFoundError.is(sessionStateResult.error)) {
+        log.error("Failed to load session state", {
+          error: sessionStateResult.error.message,
+          errorType: sessionStateResult.error._tag,
+        });
+        await this.linear.postError(linearSessionId, sessionStateResult.error);
+        return;
+      }
+    }
+
+    const sessionState = sessionStateResult.isErr() ? null : sessionStateResult.value;
+
     if (action === "prompted" && sessionState) {
       log.info("Using existing session project", {
         projectId: sessionState.projectId,
         workdir: sessionState.workdir,
       });
-      const ok = await this.processWithProject(
+      await this.processWithProject(
         event,
         {
           id: sessionState.projectId,
@@ -378,9 +409,6 @@ export class LinearEventProcessor {
         },
         log,
       );
-      if (!ok) {
-        await this.linear.postError(linearSessionId, new Error("Session startup failed"));
-      }
       return;
     }
 
@@ -451,14 +479,11 @@ export class LinearEventProcessor {
       worktree: matchedProject.worktree,
     });
 
-    const ok = await this.processWithProject(
+    await this.processWithProject(
       sessionState ? event : toStartupEvent(event),
       { id: matchedProject.id, worktree: matchedProject.worktree },
       log,
     );
-    if (!ok) {
-      await this.linear.postError(linearSessionId, new Error("Session startup failed"));
-    }
   }
 
   // TODO: This should not return a boolean, it should return a Result type
@@ -469,7 +494,14 @@ export class LinearEventProcessor {
   ): Promise<boolean> {
     const linearSessionId = event.agentSession.id;
     const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
-    const sessionState = await this.sessions.get(linearSessionId);
+    const sessionStateResult = await this.sessions.get(linearSessionId);
+    if (sessionStateResult.isErr()) {
+      if (!KvNotFoundError.is(sessionStateResult.error)) {
+        await this.linear.postError(linearSessionId, sessionStateResult.error);
+        return false;
+      }
+    }
+    const sessionState = sessionStateResult.isErr() ? null : sessionStateResult.value;
     let issue: WorktreeIssue = {
       identifier: event.agentSession.issue?.identifier ?? issueId ?? "unknown",
       branchName: readStringField(event.agentSession.issue, "branchName") ?? undefined,
@@ -617,7 +649,15 @@ export class LinearEventProcessor {
       createdAt: Date.now(),
     };
 
-    await this.sessions.savePendingRepoSelection(pendingSelection);
+    const saved = await this.sessions.savePendingRepoSelection(pendingSelection);
+    const saveFailed = saved.isErr();
+    if (saveFailed) {
+      await this.linear.postError(linearSessionId, saved.error);
+    }
+    if (saveFailed) {
+      return;
+    }
+
     await this.linear.postElicitation(
       linearSessionId,
       buildRepoSelectionBody(resolution, invalidResponse),
@@ -725,7 +765,13 @@ export class LinearEventProcessor {
     );
 
     if (startupOk) {
-      await this.sessions.deletePendingRepoSelection(linearSessionId);
+      const removed = await this.sessions.deletePendingRepoSelection(linearSessionId);
+      if (Result.isError(removed)) {
+        log.warn("Failed to clear pending repo selection", {
+          error: removed.error.message,
+          errorType: removed.error._tag,
+        });
+      }
     }
   }
 
@@ -794,13 +840,15 @@ export class LinearEventProcessor {
       log.info("Stop signal received, aborting session silently");
 
       const abortResult = await this.opencode.abortSession(opencodeSessionId, workdir);
-
-      if (Result.isError(abortResult)) {
-        log.warn("Failed to abort session", {
-          error: abortResult.error.message,
-          errorType: abortResult.error._tag,
-        });
-      }
+      abortResult.match({
+        ok: () => undefined,
+        err: (error) => {
+          log.warn("Failed to abort session", {
+            error: error.message,
+            errorType: error._tag,
+          });
+        },
+      });
 
       // Post response to confirm stop - required by Linear agent protocol
       await this.linear.postActivity(
@@ -860,31 +908,51 @@ export class LinearEventProcessor {
 
     // Check if there's a pending permission for this session
     const pendingPermission = await this.sessions.getPendingPermission(linearSessionId);
+    const handledPermission = await pendingPermission.match({
+      ok: async (value) => {
+        await this.handlePermissionResponse(
+          value,
+          userResponse,
+          opencodeSessionId,
+          linearSessionId,
+          workdir,
+          mode,
+          log,
+        );
+        return true;
+      },
+      err: async (error) => {
+        if (KvNotFoundError.is(error)) {
+          return false;
+        }
 
-    if (pendingPermission) {
-      await this.handlePermissionResponse(
-        pendingPermission,
-        userResponse,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        log,
-      );
+        await this.linear.postError(linearSessionId, error);
+        return true;
+      },
+    });
+    if (handledPermission) {
       return;
     }
 
     // Check if there's a pending question for this session
     const pendingQuestion = await this.sessions.getPendingQuestion(linearSessionId);
+    if (pendingQuestion.isErr() && !KvNotFoundError.is(pendingQuestion.error)) {
+      await this.linear.postError(linearSessionId, pendingQuestion.error);
+      return;
+    }
+
+    const pendingQuestionState = pendingQuestion.isErr()
+      ? { hasPendingQuestion: false, pendingQuestion: null }
+      : { hasPendingQuestion: true, pendingQuestion: pendingQuestion.value };
 
     log.info("Checking for pending question", {
-      hasPendingQuestion: !!pendingQuestion,
-      pendingRequestId: pendingQuestion?.requestId,
+      hasPendingQuestion: pendingQuestionState.hasPendingQuestion,
+      pendingRequestId: pendingQuestionState.pendingQuestion?.requestId,
     });
 
-    if (pendingQuestion) {
+    if (pendingQuestionState.pendingQuestion) {
       await this.handleQuestionResponse(
-        pendingQuestion,
+        pendingQuestionState.pendingQuestion,
         userResponse,
         opencodeSessionId,
         linearSessionId,
@@ -940,7 +1008,14 @@ export class LinearEventProcessor {
     if (answerIndex === -1) {
       // All questions already answered - this shouldn't happen, but handle gracefully
       log.warn("All questions already answered - clearing pending and treating as follow-up");
-      await this.sessions.deletePendingQuestion(linearSessionId);
+      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      const deleteFailed = removed.isErr();
+      if (deleteFailed) {
+        await this.linear.postError(linearSessionId, removed.error);
+      }
+      if (deleteFailed) {
+        return;
+      }
       await this.sendFollowUpPrompt(
         userResponse,
         opencodeSessionId,
@@ -956,7 +1031,10 @@ export class LinearEventProcessor {
     const currentQuestion = pending.questions[answerIndex];
     if (!currentQuestion) {
       log.warn("No current question found at index", { answerIndex });
-      await this.sessions.deletePendingQuestion(linearSessionId);
+      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      if (removed.isErr()) {
+        await this.linear.postError(linearSessionId, removed.error);
+      }
       return;
     }
 
@@ -972,7 +1050,14 @@ export class LinearEventProcessor {
         response: userResponse.slice(0, 100),
         availableOptions: currentQuestion.options.map((o) => o.label),
       });
-      await this.sessions.deletePendingQuestion(linearSessionId);
+      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      const deleteFailed = removed.isErr();
+      if (deleteFailed) {
+        await this.linear.postError(linearSessionId, removed.error);
+      }
+      if (deleteFailed) {
+        return;
+      }
       await this.sendFollowUpPrompt(
         userResponse,
         opencodeSessionId,
@@ -997,7 +1082,14 @@ export class LinearEventProcessor {
 
     if (!allAnswered) {
       // More questions to answer - save updated pending question and wait
-      await this.sessions.savePendingQuestion(pending);
+      const saved = await this.sessions.savePendingQuestion(pending);
+      const saveFailed = saved.isErr();
+      if (saveFailed) {
+        await this.linear.postError(linearSessionId, saved.error);
+      }
+      if (saveFailed) {
+        return;
+      }
       log.info("Waiting for more question responses", {
         answered: pending.answers.filter((a) => a !== null).length,
         total: pending.questions.length,
@@ -1016,14 +1108,24 @@ export class LinearEventProcessor {
     const replyResult = await this.opencode.replyQuestion(pending.requestId, answers, workdir);
 
     // Clean up pending question regardless of result
-    await this.sessions.deletePendingQuestion(linearSessionId);
+    const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+    const deleteFailed = removed.isErr();
+    if (deleteFailed) {
+      await this.linear.postError(linearSessionId, removed.error);
+    }
+    if (deleteFailed) {
+      return;
+    }
 
-    if (Result.isError(replyResult)) {
+    const replyFailed = replyResult.isErr();
+    if (replyFailed) {
       log.error("Failed to reply to question", {
         error: replyResult.error.message,
         errorType: replyResult.error._tag,
       });
       await this.linear.postError(linearSessionId, replyResult.error);
+    }
+    if (replyFailed) {
       return;
     }
 
@@ -1072,7 +1174,14 @@ export class LinearEventProcessor {
       );
 
       await this.opencode.replyPermission(pending.requestId, "reject", workdir);
-      await this.sessions.deletePendingPermission(linearSessionId);
+      const removed = await this.sessions.deletePendingPermission(linearSessionId);
+      const deleteFailed = removed.isErr();
+      if (deleteFailed) {
+        await this.linear.postError(linearSessionId, removed.error);
+      }
+      if (deleteFailed) {
+        return;
+      }
       await this.sendFollowUpPrompt(
         userResponse,
         opencodeSessionId,
@@ -1104,14 +1213,24 @@ export class LinearEventProcessor {
     const replyResult = await this.opencode.replyPermission(pending.requestId, reply, workdir);
 
     // Clean up pending permission regardless of result
-    await this.sessions.deletePendingPermission(linearSessionId);
+    const removed = await this.sessions.deletePendingPermission(linearSessionId);
+    const deleteFailed = removed.isErr();
+    if (deleteFailed) {
+      await this.linear.postError(linearSessionId, removed.error);
+    }
+    if (deleteFailed) {
+      return;
+    }
 
-    if (Result.isError(replyResult)) {
+    const replyFailed = replyResult.isErr();
+    if (replyFailed) {
       log.error("Failed to reply to permission", {
         error: replyResult.error.message,
         errorType: replyResult.error._tag,
       });
       await this.linear.postError(linearSessionId, replyResult.error);
+    }
+    if (replyFailed) {
       return;
     }
 

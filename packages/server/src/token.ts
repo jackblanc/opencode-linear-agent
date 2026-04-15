@@ -1,6 +1,57 @@
-import type { AuthRepository } from "@opencode-linear-agent/core";
+import type { AuthRepository, AuthRepositoryError } from "@opencode-linear-agent/core";
+import type { Result as ResultType } from "better-result";
 
+import { KvNotFoundError } from "@opencode-linear-agent/core";
+import { Result, TaggedError } from "better-result";
 import { z } from "zod";
+
+class TokenRefreshNotFoundError extends TaggedError("TokenRefreshNotFoundError")<{
+  message: string;
+  organizationId: string;
+}>() {
+  constructor(args: { organizationId: string }) {
+    super({
+      organizationId: args.organizationId,
+      message: `No refresh token found for organization ${args.organizationId}. Please re-authorize.`,
+    });
+  }
+}
+
+class TokenRefreshExchangeError extends TaggedError("TokenRefreshExchangeError")<{
+  message: string;
+  status: number;
+}>() {
+  constructor(args: { status: number }) {
+    super({
+      status: args.status,
+      message: `Token refresh failed: ${args.status}`,
+    });
+  }
+}
+
+class TokenRefreshResponseError extends TaggedError("TokenRefreshResponseError")<{
+  message: string;
+  reason: string;
+}>() {
+  constructor(args: { reason: string }) {
+    super({
+      reason: args.reason,
+      message: `Invalid token response from Linear: ${args.reason}`,
+    });
+  }
+}
+
+class TokenRefreshIoError extends TaggedError("TokenRefreshIoError")<{
+  message: string;
+  reason: string;
+}>() {
+  constructor(args: { reason: string }) {
+    super({
+      reason: args.reason,
+      message: `Token refresh request failed: ${args.reason}`,
+    });
+  }
+}
 
 export const tokenExchangeResponseSchema = z.object({
   access_token: z.string(),
@@ -15,48 +66,81 @@ export async function refreshAccessToken(
   authRepository: AuthRepository,
   oauthConfig: { clientId: string; clientSecret: string },
   organizationId: string,
-): Promise<string> {
+): Promise<
+  ResultType<
+    string,
+    | AuthRepositoryError
+    | TokenRefreshNotFoundError
+    | TokenRefreshExchangeError
+    | TokenRefreshResponseError
+    | TokenRefreshIoError
+  >
+> {
   const refreshData = await authRepository.getRefreshTokenData(organizationId);
-  if (!refreshData) {
-    throw new Error(
-      `No refresh token found for organization ${organizationId}. Please re-authorize.`,
-    );
+  if (refreshData.isErr()) {
+    return KvNotFoundError.is(refreshData.error)
+      ? Result.err(new TokenRefreshNotFoundError({ organizationId }))
+      : Result.err(refreshData.error);
   }
 
-  const response = await fetch("https://api.linear.app/oauth/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: oauthConfig.clientId,
-      client_secret: oauthConfig.clientSecret,
-      refresh_token: refreshData.refreshToken,
-    }),
+  const response = await Result.tryPromise({
+    try: async () =>
+      fetch("https://api.linear.app/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: oauthConfig.clientId,
+          client_secret: oauthConfig.clientSecret,
+          refresh_token: refreshData.value.refreshToken,
+        }),
+      }),
+    catch: (cause: unknown) =>
+      new TokenRefreshIoError({
+        reason: cause instanceof Error ? cause.message : String(cause),
+      }),
   });
-
-  if (!response.ok) {
-    throw new Error(`Token refresh failed: ${response.status}`);
+  if (response.isErr()) {
+    return Result.err(response.error);
+  }
+  if (!response.value.ok) {
+    return Result.err(new TokenRefreshExchangeError({ status: response.value.status }));
   }
 
-  const tokenResult = tokenExchangeResponseSchema.safeParse(await response.json());
+  const json = await Result.tryPromise({
+    try: async () => response.value.json(),
+    catch: (cause: unknown) =>
+      new TokenRefreshIoError({
+        reason: cause instanceof Error ? cause.message : String(cause),
+      }),
+  });
+  if (json.isErr()) {
+    return Result.err(json.error);
+  }
+
+  const tokenResult = tokenExchangeResponseSchema.safeParse(json.value);
   if (!tokenResult.success) {
-    throw new Error(`Invalid token response from Linear: ${tokenResult.error.message}`);
+    return Result.err(new TokenRefreshResponseError({ reason: tokenResult.error.message }));
   }
 
   const auth = await authRepository.getAuthRecord(organizationId);
-  if (!auth) {
-    throw new Error(
-      `No auth record found for organization ${organizationId}. Please re-authorize.`,
-    );
+  if (auth.isErr()) {
+    return KvNotFoundError.is(auth.error)
+      ? Result.err(new TokenRefreshNotFoundError({ organizationId }))
+      : Result.err(auth.error);
   }
 
-  await authRepository.putAuthRecord({
-    ...auth,
+  const saved = await authRepository.putAuthRecord({
+    ...auth.value,
     accessToken: tokenResult.data.access_token,
     accessTokenExpiresAt: tokenResult.data.expires_in * 1000 + Date.now(),
     refreshToken: tokenResult.data.refresh_token,
   });
-  return tokenResult.data.access_token;
+  if (saved.isErr()) {
+    return Result.err(saved.error);
+  }
+
+  return Result.ok(tokenResult.data.access_token);
 }

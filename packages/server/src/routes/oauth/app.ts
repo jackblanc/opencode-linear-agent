@@ -6,6 +6,7 @@ import type {
 
 import { zValidator } from "@hono/zod-validator";
 import { LinearClient } from "@linear/sdk";
+import { KvNotFoundError } from "@opencode-linear-agent/core";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -22,7 +23,14 @@ export function createOAuthApp(
   app.get("/api/oauth/authorize", async (c) => {
     const state = crypto.randomUUID();
     const now = Date.now();
-    await oauthStateRepository.issue(state, now, now + 5 * 60 * 1000);
+    const issued = await oauthStateRepository.issue(state, now, now + 5 * 60 * 1000);
+    const issuedResponse = issued.match({
+      ok: () => null,
+      err: (error) => c.json({ message: error.message }, 500),
+    });
+    if (issuedResponse) {
+      return issuedResponse;
+    }
 
     const params = new URLSearchParams({
       client_id: config.linearClientId,
@@ -49,13 +57,20 @@ export function createOAuthApp(
     async (c) => {
       const query = c.req.valid("query");
       const validState = await oauthStateRepository.consume(query.state, Date.now());
-      if (!validState) {
-        return c.json(
-          {
-            message: "Invalid or expired state parameter",
-          },
-          400,
-        );
+      const stateErrorResponse = validState.match({
+        ok: () => null,
+        err: (error) =>
+          KvNotFoundError.is(error)
+            ? c.json(
+                {
+                  message: "Invalid or expired state parameter",
+                },
+                400,
+              )
+            : c.json({ message: error.message }, 500),
+      });
+      if (stateErrorResponse) {
+        return stateErrorResponse;
       }
 
       const response = await fetch("https://api.linear.app/oauth/token", {
@@ -84,7 +99,7 @@ export function createOAuthApp(
       const viewer = await client.viewer;
       const organization = await viewer.organization;
 
-      await authRepository.putAuthRecord({
+      const saved = await authRepository.putAuthRecord({
         organizationId: organization.id,
         accessToken: tokenResult.data.access_token,
         accessTokenExpiresAt: tokenResult.data.expires_in * 1000 + Date.now(),
@@ -93,6 +108,13 @@ export function createOAuthApp(
         installedAt: new Date().toISOString(),
         workspaceName: organization.name,
       });
+      const savedResponse = saved.match({
+        ok: () => null,
+        err: (error) => c.json({ message: error.message }, 500),
+      });
+      if (savedResponse) {
+        return savedResponse;
+      }
 
       return c.json({
         message: "Successfully authorized OpenCode Agent for organization " + organization.name,

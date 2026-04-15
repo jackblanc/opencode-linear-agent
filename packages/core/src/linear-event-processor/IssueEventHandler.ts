@@ -1,9 +1,8 @@
-import { Result } from "better-result";
-
 import type { LinearService } from "../linear-service/LinearService";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { SessionRepository } from "../state/SessionRepository";
 
+import { KvNotFoundError } from "../kv/errors";
 import { Log } from "../utils/logger";
 
 type CleanupIssueStateType = "completed" | "canceled";
@@ -48,15 +47,20 @@ export class IssueEventHandler {
       .tag("stateType", issueStateType);
 
     const sessionIdsResult = await this.getIssueSessionIdsWithRetry(event.data.id, log);
-    if (Result.isError(sessionIdsResult)) {
-      log.warn("Failed to load issue sessions from Linear", {
-        error: sessionIdsResult.error.message,
-        errorType: sessionIdsResult.error._tag,
-      });
+    const sessionIds = sessionIdsResult.match({
+      ok: (value) => value,
+      err: (error) => {
+        log.warn("Failed to load issue sessions from Linear", {
+          error: error.message,
+          errorType: error._tag,
+        });
+        return null;
+      },
+    });
+    if (!sessionIds) {
       return;
     }
 
-    const sessionIds = sessionIdsResult.value;
     if (sessionIds.length === 0) {
       log.info("No sessions found for issue cleanup");
       return;
@@ -69,46 +73,83 @@ export class IssueEventHandler {
     for (const linearSessionId of sessionIds) {
       const sessionLog = log.tag("sessionId", linearSessionId);
       const state = await this.repository.get(linearSessionId);
+      const session = state.match({
+        ok: (value) => value,
+        err: (error) => {
+          if (!KvNotFoundError.is(error)) {
+            sessionLog.warn("Failed to load session state for cleanup", {
+              error: error.message,
+              errorType: error._tag,
+            });
+            return null;
+          }
 
-      if (!state) {
-        sessionLog.info("Session state already removed");
+          sessionLog.info("Session state already removed");
+          return null;
+        },
+      });
+      if (!session) {
         continue;
       }
 
-      const abortResult = await this.opencode.abortSession(state.opencodeSessionId, state.workdir);
-      const abortSucceeded = Result.isOk(abortResult);
+      const abortResult = await this.opencode.abortSession(
+        session.opencodeSessionId,
+        session.workdir,
+      );
+      const abortSucceeded = abortResult.match({
+        ok: () => true,
+        err: (error) => {
+          sessionLog.warn("Failed to abort OpenCode session", {
+            error: error.message,
+            errorType: error._tag,
+          });
+          return false;
+        },
+      });
 
-      if (!abortSucceeded) {
-        sessionLog.warn("Failed to abort OpenCode session", {
-          error: abortResult.error.message,
-          errorType: abortResult.error._tag,
-        });
-      }
-
-      const removeResult = await this.opencode.removeWorktree(state.workdir);
-      if (Result.isError(removeResult)) {
-        sessionLog.warn("Failed to remove OpenCode worktree", {
-          branchName: state.branchName,
-          workdir: state.workdir,
-          error: removeResult.error.message,
-          errorType: removeResult.error._tag,
-        });
+      const removeResult = await this.opencode.removeWorktree(session.workdir);
+      const worktreeRemoved = removeResult.match({
+        ok: () => true,
+        err: (error) => {
+          sessionLog.warn("Failed to remove OpenCode worktree", {
+            branchName: session.branchName,
+            workdir: session.workdir,
+            error: error.message,
+            errorType: error._tag,
+          });
+          return false;
+        },
+      });
+      if (!worktreeRemoved) {
         continue;
       }
 
       if (!abortSucceeded) {
         sessionLog.warn("OpenCode abort failed; preserving session state for retry", {
-          branchName: state.branchName,
-          workdir: state.workdir,
+          branchName: session.branchName,
+          workdir: session.workdir,
         });
         continue;
       }
 
-      await this.repository.delete(linearSessionId);
+      const removed = await this.repository.delete(linearSessionId);
+      const stateDeleted = removed.match({
+        ok: () => true,
+        err: (error) => {
+          sessionLog.warn("Failed to delete session state after cleanup", {
+            error: error.message,
+            errorType: error._tag,
+          });
+          return false;
+        },
+      });
+      if (!stateDeleted) {
+        continue;
+      }
 
       sessionLog.info("Session cleanup complete", {
-        branchName: state.branchName,
-        workdir: state.workdir,
+        branchName: session.branchName,
+        workdir: session.workdir,
       });
     }
 
@@ -133,23 +174,30 @@ export class IssueEventHandler {
 
     for (;;) {
       const result = await this.linear.getIssueAgentSessionIds(issueId);
-      if (Result.isOk(result)) {
-        if (attempt > 1) {
-          log.info("Issue session lookup recovered after retry", { attempt });
-        }
-        return result;
-      }
+      const retry = result.match({
+        ok: () => {
+          if (attempt > 1) {
+            log.info("Issue session lookup recovered after retry", { attempt });
+          }
+          return false;
+        },
+        err: (error) => {
+          if (attempt >= ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS) {
+            return false;
+          }
 
-      if (attempt >= ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS) {
-        return result;
-      }
-
-      log.warn("Issue session lookup failed, retrying", {
-        attempt,
-        maxAttempts: ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS,
-        error: result.error.message,
-        errorType: result.error._tag,
+          log.warn("Issue session lookup failed, retrying", {
+            attempt,
+            maxAttempts: ISSUE_SESSION_LOOKUP_MAX_ATTEMPTS,
+            error: error.message,
+            errorType: error._tag,
+          });
+          return true;
+        },
       });
+      if (!retry) {
+        return result;
+      }
 
       attempt += 1;
       await this.wait(ISSUE_SESSION_LOOKUP_DELAY_MS);

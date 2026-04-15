@@ -15,6 +15,7 @@ import {
   LinearEventProcessor,
   LinearService,
   IssueEventHandler,
+  KvNotFoundError,
   Log,
 } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
@@ -110,18 +111,31 @@ export function createWebhookApp(
       return c.text("", 200);
     }
 
-    let accessToken = await authRepository.getAccessToken(webhookPayload.organizationId);
-    if (!accessToken) {
+    const accessTokenResult = await authRepository.getAccessToken(webhookPayload.organizationId);
+    let accessToken: string;
+    if (accessTokenResult.isErr()) {
+      if (!KvNotFoundError.is(accessTokenResult.error)) {
+        return c.json({ error: accessTokenResult.error.message }, 500);
+      }
+
       const oauthConfig = {
         clientId: config.linearClientId,
         clientSecret: config.linearClientSecret,
       };
-      accessToken = await refreshAccessToken(
+      const refreshed = await refreshAccessToken(
         authRepository,
         oauthConfig,
         webhookPayload.organizationId,
       );
+      if (refreshed.isErr()) {
+        return c.json({ error: refreshed.error.message }, 500);
+      }
+
+      accessToken = refreshed.value;
+    } else {
+      accessToken = accessTokenResult.value;
     }
+
     const linearService = new LinearService(accessToken);
 
     if (isAgentSessionEventWebhook(webhookPayload)) {

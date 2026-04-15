@@ -12,7 +12,7 @@ describe("OAuthStateRepository", () => {
 
     await store.issue("state-1", now, now + 60_000);
 
-    expect(await store.consume("state-1", now + 1)).toBe(true);
+    expect(await store.consume("state-1", now + 1)).toEqual(Result.ok(undefined));
     expect(await state.oauthState.has("state-1")).toEqual(Result.ok(false));
   });
 
@@ -23,7 +23,7 @@ describe("OAuthStateRepository", () => {
 
     await store.issue("state-1", now, now + 10);
 
-    expect(await store.consume("state-1", now + 11)).toBe(false);
+    expect(await store.consume("state-1", now + 11).then((r) => r.isErr())).toBe(true);
     expect(await state.oauthState.has("state-1")).toEqual(Result.ok(false));
   });
 });

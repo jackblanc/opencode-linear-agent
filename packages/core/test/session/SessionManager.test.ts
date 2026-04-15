@@ -63,7 +63,7 @@ describe("SessionManager", () => {
     );
 
     expect(Result.isError(result)).toBe(true);
-    expect(await repository.get("linear-1")).toEqual(existing);
+    expect(await repository.get("linear-1")).toEqual(Result.ok(existing));
   });
 
   test("creates fresh session when no existing state", async () => {
@@ -94,18 +94,18 @@ describe("SessionManager", () => {
     }
 
     const saved = await repository.get("linear-1");
-    expect(saved).not.toBeNull();
-    if (saved === null) {
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isError(saved)) {
       return;
     }
 
-    expect(saved.linearSessionId).toBe("linear-1");
-    expect(saved.opencodeSessionId).toBe("opencode-new");
-    expect(saved.organizationId).toBe("org-1");
-    expect(saved.issueId).toBe("issue-1");
-    expect(saved.projectId).toBe("project-1");
-    expect(saved.branchName).toBe("feature/code-1");
-    expect(saved.workdir).toBe("/tmp/worktree-1");
-    expect(typeof saved.lastActivityTime).toBe("number");
+    expect(saved.value.linearSessionId).toBe("linear-1");
+    expect(saved.value.opencodeSessionId).toBe("opencode-new");
+    expect(saved.value.organizationId).toBe("org-1");
+    expect(saved.value.issueId).toBe("issue-1");
+    expect(saved.value.projectId).toBe("project-1");
+    expect(saved.value.branchName).toBe("feature/code-1");
+    expect(saved.value.workdir).toBe("/tmp/worktree-1");
+    expect(typeof saved.value.lastActivityTime).toBe("number");
   });
 });

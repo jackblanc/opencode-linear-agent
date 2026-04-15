@@ -3,6 +3,7 @@ import { describe, test, expect } from "bun:test";
 
 import type { SessionState } from "../../src/state/schema";
 
+import { KvNotFoundError } from "../../src/kv/errors";
 import { IssueEventHandler } from "../../src/linear-event-processor/IssueEventHandler";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { SessionRepository } from "../../src/state/SessionRepository";
@@ -69,7 +70,9 @@ describe("IssueEventHandler", () => {
 
     expect(aborts).toEqual([{ sessionID: "opencode-1", directory: "/tmp/worktree-1" }]);
     expect(removes).toEqual(["/tmp/worktree-1"]);
-    expect(await repository.get("session-1")).toBeNull();
+    expect(await repository.get("session-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "session-1" })),
+    );
   });
 
   test("preserves state when worktree removal fails", async () => {
@@ -89,7 +92,7 @@ describe("IssueEventHandler", () => {
 
     await handler.process(createEvent("completed"));
 
-    expect(await repository.get("session-1")).toEqual(state);
+    expect(await repository.get("session-1")).toEqual(Result.ok(state));
   });
 
   test("ignores issue states outside completed and canceled", async () => {
