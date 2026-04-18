@@ -49,15 +49,14 @@ export class SessionManager {
       .tag("sessionId", linearSessionId);
 
     log.info("Looking up existing session state");
-
-    const existingStateResult = await this.repository.get(linearSessionId);
-    if (existingStateResult.isErr()) {
-      if (!KvNotFoundError.is(existingStateResult.error)) {
+    const existingState = await this.repository.get(linearSessionId);
+    if (existingState.isErr()) {
+      if (!KvNotFoundError.is(existingState.error)) {
         log.error("Failed to load existing session state", {
-          error: existingStateResult.error.message,
-          errorType: existingStateResult.error._tag,
+          error: existingState.error.message,
+          errorType: existingState.error._tag,
         });
-        return Result.err(existingStateResult.error);
+        return Result.err(existingState.error);
       }
 
       return this.createNewSession(
@@ -72,25 +71,24 @@ export class SessionManager {
       );
     }
 
-    const existingState = existingStateResult.value;
     const sessionLog = log
-      .tag("opencodeSession", existingState.opencodeSessionId.slice(0, 8))
-      .tag("opencodeSessionId", existingState.opencodeSessionId);
+      .tag("opencodeSession", existingState.value.opencodeSessionId.slice(0, 8))
+      .tag("opencodeSessionId", existingState.value.opencodeSessionId);
     sessionLog.info("Found existing state, attempting to resume");
 
-    const sessionResult = await this.opencode.getSession(existingState.opencodeSessionId, workdir);
-    if (sessionResult.isErr()) {
+    const session = await this.opencode.getSession(existingState.value.opencodeSessionId, workdir);
+    if (session.isErr()) {
       sessionLog.error("Failed to resume existing session", {
-        error: sessionResult.error.message,
-        errorType: sessionResult.error._tag,
+        error: session.error.message,
+        errorType: session.error._tag,
       });
-      return Result.err(sessionResult.error);
+      return Result.err(session.error);
     }
 
     sessionLog.info("Successfully resumed session");
     return Result.ok({
-      opencodeSessionId: sessionResult.value.id,
-      existingState,
+      opencodeSessionId: session.value.id,
+      existingState: existingState.value,
       isNewSession: false,
     });
   }
@@ -110,47 +108,51 @@ export class SessionManager {
   ): Promise<Result<SessionResult, SessionManagerError>> {
     log.info("Creating new OpenCode session");
 
-    return Result.gen(
-      async function* (this: SessionManager) {
-        const session = yield* Result.await(this.opencode.createSession(workdir));
-        const sessionId = session.id;
-        const sessionLog = log
-          .tag("opencodeSession", sessionId.slice(0, 8))
-          .tag("opencodeSessionId", sessionId);
-        sessionLog.info("Created OpenCode session");
+    const session = await this.opencode.createSession(workdir);
+    if (session.isErr()) {
+      log.error("Failed to create OpenCode session", {
+        error: session.error.message,
+        errorType: session.error._tag,
+      });
+      return Result.err(session.error);
+    }
 
-        const newState: SessionState = {
-          opencodeSessionId: sessionId,
-          linearSessionId,
-          organizationId,
-          issueId,
-          projectId,
-          branchName,
-          workdir,
-          lastActivityTime: Date.now(),
-        };
+    const sessionId = session.value.id;
+    const sessionLog = log
+      .tag("opencodeSession", sessionId.slice(0, 8))
+      .tag("opencodeSessionId", sessionId);
+    sessionLog.info("Created OpenCode session");
 
-        const saved = await this.repository.save(newState);
-        if (saved.isErr()) {
-          sessionLog.error("Failed to save session state", {
-            error: saved.error.message,
-            errorType: saved.error._tag,
-          });
-          return Result.err(saved.error);
-        }
+    const newState: SessionState = {
+      opencodeSessionId: sessionId,
+      linearSessionId,
+      organizationId,
+      issueId,
+      projectId,
+      branchName,
+      workdir,
+      lastActivityTime: Date.now(),
+    };
 
-        sessionLog.info("Saved session state to repository", {
-          branchName,
-          workdir,
-        });
+    const saved = await this.repository.save(newState);
+    if (saved.isErr()) {
+      sessionLog.error("Failed to save session state", {
+        error: saved.error.message,
+        errorType: saved.error._tag,
+      });
+      return Result.err(saved.error);
+    }
 
-        return Result.ok({
-          opencodeSessionId: sessionId,
-          existingState,
-          isNewSession: true,
-        });
-      }.bind(this),
-    );
+    sessionLog.info("Saved session state to repository", {
+      branchName,
+      workdir,
+    });
+
+    return Result.ok({
+      opencodeSessionId: sessionId,
+      existingState,
+      isNewSession: true,
+    });
   }
 
   /**

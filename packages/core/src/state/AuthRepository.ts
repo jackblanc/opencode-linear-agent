@@ -6,8 +6,6 @@ import type { KvError } from "../kv/errors";
 import type { AgentStateNamespace } from "./root";
 import type { AuthRecord } from "./schema";
 
-import { KvNotFoundError } from "../kv/errors";
-
 export class AuthTokenFileError extends TaggedError("AuthTokenFileError")<{
   message: string;
   reason: string;
@@ -20,7 +18,21 @@ export class AuthTokenFileError extends TaggedError("AuthTokenFileError")<{
   }
 }
 
-export type AuthRepositoryError = KvError | AuthTokenFileError;
+export class AuthAccessTokenExpiredError extends TaggedError("AuthAccessTokenExpiredError")<{
+  message: string;
+  organizationId: string;
+  expiresAt: number;
+}>() {
+  constructor(args: { organizationId: string; expiresAt: number }) {
+    super({
+      organizationId: args.organizationId,
+      expiresAt: args.expiresAt,
+      message: `OAuth access token expired for organization ${args.organizationId}`,
+    });
+  }
+}
+
+export type AuthRepositoryError = KvError | AuthTokenFileError | AuthAccessTokenExpiredError;
 
 type RefreshTokenData = {
   refreshToken: string;
@@ -48,7 +60,12 @@ export class AuthRepository {
       async function* (this: AuthRepository) {
         const record = yield* Result.await(this.agentState.auth.get(organizationId));
         if (!isAccessTokenValid(record, Date.now())) {
-          return Result.err(new KvNotFoundError({ key: organizationId }));
+          return Result.err(
+            new AuthAccessTokenExpiredError({
+              organizationId,
+              expiresAt: record.accessTokenExpiresAt,
+            }),
+          );
         }
 
         return Result.ok(record.accessToken);
@@ -84,15 +101,17 @@ export class AuthRepository {
       async function* (this: AuthRepository) {
         yield* Result.await(this.agentState.auth.put(record.organizationId, record));
 
-        if (this.writeTokenToFile) {
-          // The KV record is the source of truth. The token-file mirror is best-effort.
-          await Result.tryPromise({
-            try: async () => this.writeTokenToFile?.(record.accessToken),
-            catch: (cause: unknown) =>
-              new AuthTokenFileError({
-                reason: cause instanceof Error ? cause.message : String(cause),
-              }),
-          });
+        const writeTokenToFile = this.writeTokenToFile;
+        if (writeTokenToFile) {
+          yield* Result.await(
+            Result.tryPromise({
+              try: async () => writeTokenToFile(record.accessToken),
+              catch: (cause: unknown) =>
+                new AuthTokenFileError({
+                  reason: cause instanceof Error ? cause.message : String(cause),
+                }),
+            }),
+          );
         }
 
         return Result.ok(undefined);

@@ -15,14 +15,13 @@ import {
   LinearEventProcessor,
   LinearService,
   IssueEventHandler,
-  KvNotFoundError,
   Log,
 } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { refreshAccessToken } from "../../token";
+import { getLinearAccessToken } from "../../token";
 
 interface WebhookHandlerFactories {
   createProcessor?: (
@@ -111,32 +110,19 @@ export function createWebhookApp(
       return c.text("", 200);
     }
 
-    const accessTokenResult = await authRepository.getAccessToken(webhookPayload.organizationId);
-    let accessToken: string;
-    if (accessTokenResult.isErr()) {
-      if (!KvNotFoundError.is(accessTokenResult.error)) {
-        return c.json({ error: accessTokenResult.error.message }, 500);
-      }
-
-      const oauthConfig = {
+    const accessTokenResult = await getLinearAccessToken(
+      authRepository,
+      {
         clientId: config.linearClientId,
         clientSecret: config.linearClientSecret,
-      };
-      const refreshed = await refreshAccessToken(
-        authRepository,
-        oauthConfig,
-        webhookPayload.organizationId,
-      );
-      if (refreshed.isErr()) {
-        return c.json({ error: refreshed.error.message }, 500);
-      }
-
-      accessToken = refreshed.value;
-    } else {
-      accessToken = accessTokenResult.value;
+      },
+      webhookPayload.organizationId,
+    );
+    if (accessTokenResult.isErr()) {
+      return c.json({ error: accessTokenResult.error.message }, 500);
     }
 
-    const linearService = new LinearService(accessToken);
+    const linearService = new LinearService(accessTokenResult.value);
 
     if (isAgentSessionEventWebhook(webhookPayload)) {
       const processorConfig = {

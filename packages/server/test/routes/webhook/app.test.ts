@@ -2,6 +2,7 @@ import type { ApplicationConfig } from "@opencode-linear-agent/core";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { AuthRepository, SessionRepository, OpencodeService } from "@opencode-linear-agent/core";
+import { Result } from "better-result";
 import { beforeAll, describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
 
@@ -103,15 +104,17 @@ function agentSessionPayload(organizationId: string = ORG_ID) {
 }
 
 async function seedAuth(auth: AuthRepository) {
-  await auth.putAuthRecord({
-    organizationId: ORG_ID,
-    accessToken: "test-access-token",
-    accessTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    refreshToken: "test-refresh-token",
-    appId: "app-1",
-    installedAt: new Date().toISOString(),
-    workspaceName: "Test Workspace",
-  });
+  expect(
+    await auth.putAuthRecord({
+      organizationId: ORG_ID,
+      accessToken: "test-access-token",
+      accessTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      refreshToken: "test-refresh-token",
+      appId: "app-1",
+      installedAt: new Date().toISOString(),
+      workspaceName: "Test Workspace",
+    }),
+  ).toEqual(Result.ok(undefined));
 }
 
 const opencode = new OpencodeService(createOpencodeClient({ baseUrl: "http://test:0" }));
@@ -156,6 +159,60 @@ describe("webhook app", () => {
 
     expect(response.status).toBe(200);
     expect(seen).toEqual(["called"]);
+  });
+
+  test("refreshes expired access tokens before dispatch", async () => {
+    const freshRepos = createRepositories();
+    expect(
+      await freshRepos.auth.putAuthRecord({
+        organizationId: ORG_ID,
+        accessToken: "expired-token",
+        accessTokenExpiresAt: Date.now() - 1,
+        refreshToken: "refresh-token",
+        appId: "app-1",
+        installedAt: new Date().toISOString(),
+        workspaceName: "Test Workspace",
+      }),
+    ).toEqual(Result.ok(undefined));
+
+    const seen: string[] = [];
+    const originalFetch = globalThis.fetch;
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: () =>
+        new Response(
+          JSON.stringify({
+            access_token: "fresh-token",
+            refresh_token: "fresh-refresh-token",
+            expires_in: 3600,
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+    });
+
+    try {
+      const app = createWebhookApp(config, freshRepos.auth, freshRepos.session, opencode, {
+        createProcessor: () => ({
+          process: async () => {
+            seen.push("called");
+            return Promise.resolve();
+          },
+        }),
+      });
+      const response = await app.request(createSignedRequest(agentSessionPayload()));
+
+      expect(response.status).toBe(200);
+      expect(seen).toEqual(["called"]);
+      expect(await freshRepos.auth.getAccessToken(ORG_ID)).toEqual(Result.ok("fresh-token"));
+    } finally {
+      Object.defineProperty(globalThis, "fetch", {
+        configurable: true,
+        value: originalFetch,
+      });
+    }
   });
 
   test("rejects webhook from wrong organization", async () => {

@@ -4,6 +4,7 @@ import { describe, test, expect } from "bun:test";
 
 import type { SessionState } from "../../src/state/schema";
 
+import { KvNotFoundError } from "../../src/kv/errors";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import { SessionManager } from "../../src/session/SessionManager";
@@ -30,7 +31,7 @@ async function createRepository(state?: SessionState): Promise<{
   const agentState = createInMemoryAgentState();
   const repository = new SessionRepository(agentState);
   if (state) {
-    await repository.save(state);
+    expect(await repository.save(state)).toEqual(Result.ok(undefined));
   }
 
   return {
@@ -107,5 +108,41 @@ describe("SessionManager", () => {
     expect(saved.value.branchName).toBe("feature/code-1");
     expect(saved.value.workdir).toBe("/tmp/worktree-1");
     expect(typeof saved.value.lastActivityTime).toBe("number");
+  });
+
+  test("touch is a no-op when session is missing", async () => {
+    const agentState = createInMemoryAgentState();
+    const repository = new SessionRepository(agentState);
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+
+    const manager = new SessionManager(opencode, repository);
+
+    expect(await manager.touch("missing")).toEqual(Result.ok(undefined));
+
+    const missing = await repository.get("missing");
+    expect(Result.isError(missing)).toBe(true);
+    if (Result.isError(missing)) {
+      expect(KvNotFoundError.is(missing.error)).toBe(true);
+    }
+  });
+
+  test("touch updates last activity time for existing session", async () => {
+    const existing = createSessionState({ lastActivityTime: 1 });
+    const { repository } = await createRepository(existing);
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+
+    const manager = new SessionManager(opencode, repository);
+
+    expect(await manager.touch("linear-1")).toEqual(Result.ok(undefined));
+
+    const saved = await repository.get("linear-1");
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isOk(saved)) {
+      expect(saved.value.lastActivityTime).toBeGreaterThan(existing.lastActivityTime);
+    }
   });
 });

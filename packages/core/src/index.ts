@@ -19,6 +19,7 @@ export { OpencodeService } from "./opencode-service/OpencodeService";
 export { OAuthStateRepository } from "./state/OAuthStateRepository";
 export { AuthRepository } from "./state/AuthRepository";
 export type { AuthRepositoryError } from "./state/AuthRepository";
+export { AuthAccessTokenExpiredError } from "./state/AuthRepository";
 export { SessionRepository } from "./state/SessionRepository";
 /** @public */
 export type { SessionState, PendingRepoSelection, RepoSelectionOption } from "./state/schema";

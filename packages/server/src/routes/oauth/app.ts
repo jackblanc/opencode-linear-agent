@@ -24,12 +24,8 @@ export function createOAuthApp(
     const state = crypto.randomUUID();
     const now = Date.now();
     const issued = await oauthStateRepository.issue(state, now, now + 5 * 60 * 1000);
-    const issuedResponse = issued.match({
-      ok: () => null,
-      err: (error) => c.json({ message: error.message }, 500),
-    });
-    if (issuedResponse) {
-      return issuedResponse;
+    if (issued.isErr()) {
+      return c.json({ message: issued.error.message }, 500);
     }
 
     const params = new URLSearchParams({
@@ -57,20 +53,15 @@ export function createOAuthApp(
     async (c) => {
       const query = c.req.valid("query");
       const validState = await oauthStateRepository.consume(query.state, Date.now());
-      const stateErrorResponse = validState.match({
-        ok: () => null,
-        err: (error) =>
-          KvNotFoundError.is(error)
-            ? c.json(
-                {
-                  message: "Invalid or expired state parameter",
-                },
-                400,
-              )
-            : c.json({ message: error.message }, 500),
-      });
-      if (stateErrorResponse) {
-        return stateErrorResponse;
+      if (validState.isErr()) {
+        return KvNotFoundError.is(validState.error)
+          ? c.json(
+              {
+                message: "Invalid or expired state parameter",
+              },
+              400,
+            )
+          : c.json({ message: validState.error.message }, 500);
       }
 
       const response = await fetch("https://api.linear.app/oauth/token", {
@@ -108,12 +99,8 @@ export function createOAuthApp(
         installedAt: new Date().toISOString(),
         workspaceName: organization.name,
       });
-      const savedResponse = saved.match({
-        ok: () => null,
-        err: (error) => c.json({ message: error.message }, 500),
-      });
-      if (savedResponse) {
-        return savedResponse;
+      if (saved.isErr()) {
+        return c.json({ message: saved.error.message }, 500);
       }
 
       return c.json({
