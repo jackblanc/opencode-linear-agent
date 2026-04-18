@@ -6,7 +6,9 @@ import type { KvError } from "../kv/errors";
 import type { AgentStateNamespace } from "./root";
 import type { AuthRecord } from "./schema";
 
-export class AuthTokenFileError extends TaggedError("AuthTokenFileError")<{
+import { Log } from "../utils/logger";
+
+class AuthTokenFileError extends TaggedError("AuthTokenFileError")<{
   message: string;
   reason: string;
 }>() {
@@ -32,7 +34,7 @@ export class AuthAccessTokenExpiredError extends TaggedError("AuthAccessTokenExp
   }
 }
 
-export type AuthRepositoryError = KvError | AuthTokenFileError | AuthAccessTokenExpiredError;
+export type AuthRepositoryError = KvError | AuthAccessTokenExpiredError;
 
 type RefreshTokenData = {
   refreshToken: string;
@@ -103,15 +105,19 @@ export class AuthRepository {
 
         const writeTokenToFile = this.writeTokenToFile;
         if (writeTokenToFile) {
-          yield* Result.await(
-            Result.tryPromise({
-              try: async () => writeTokenToFile(record.accessToken),
-              catch: (cause: unknown) =>
-                new AuthTokenFileError({
-                  reason: cause instanceof Error ? cause.message : String(cause),
-                }),
-            }),
-          );
+          const written = await Result.tryPromise({
+            try: async () => writeTokenToFile(record.accessToken),
+            catch: (cause: unknown) =>
+              new AuthTokenFileError({
+                reason: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+          if (written.isErr()) {
+            Log.create({ service: "auth" }).warn("Failed to write OAuth access token file", {
+              organizationId: record.organizationId,
+              error: written.error.message,
+            });
+          }
         }
 
         return Result.ok(undefined);

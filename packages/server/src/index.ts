@@ -39,17 +39,15 @@ function startTokenRefreshTimer(config: ApplicationConfig, authRepository: AuthR
 
   const refresh = async (): Promise<void> => {
     const refreshed = await refreshAccessToken(authRepository, oauthConfig, organizationId);
-    refreshed.match({
-      ok: () => {
-        log.info("Proactive token refresh succeeded");
-      },
-      err: (error) => {
-        log.error("Proactive token refresh failed", {
-          error: error.message,
-          errorType: error._tag,
-        });
-      },
-    });
+    if (refreshed.isErr()) {
+      log.error("Proactive token refresh failed", {
+        error: refreshed.error.message,
+        errorType: refreshed.error._tag,
+      });
+      return;
+    }
+
+    log.info("Proactive token refresh succeeded");
   };
 
   void refresh();

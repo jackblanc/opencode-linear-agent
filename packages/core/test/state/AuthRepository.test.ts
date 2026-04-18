@@ -58,12 +58,12 @@ describe("AuthRepository", () => {
     expect(Result.isOk(await store.getAuthRecord("org-1"))).toBe(true);
   });
 
-  test("returns token file error after saving auth record", async () => {
+  test("preserves saved auth record when token file write fails", async () => {
     const state = createInMemoryAgentState();
     const store = new AuthRepository(state, async () => Promise.reject(new Error("disk full")));
     const record = createAuthRecord();
 
-    expect((await store.putAuthRecord(record)).isErr()).toBe(true);
+    expect(await store.putAuthRecord(record)).toEqual(Result.ok(undefined));
     expect(await store.getAuthRecord("org-1")).toEqual(Result.ok(record));
   });
 });
