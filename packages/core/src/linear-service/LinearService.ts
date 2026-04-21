@@ -356,7 +356,6 @@ export class LinearService {
       try: async () => {
         const response = await this.client.client.rawRequest<
           IssueRepositorySuggestionsQuery,
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-arguments
           {
             issueId: string;
             agentSessionId: string;
@@ -421,7 +420,6 @@ export class LinearService {
         if (!repoLabelId) {
           const response = await this.client.client.rawRequest<
             IssueLabelCreateMutation,
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-arguments
             { input: { name: string; teamId: string } }
           >(
             `mutation IssueLabelCreate($input: IssueLabelCreateInput!) {

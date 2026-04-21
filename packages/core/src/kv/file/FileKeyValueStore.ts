@@ -21,7 +21,7 @@ function operationKey(namespace: string, operation: string): string {
   return `op:${namespace}:${operation}`;
 }
 
-export class FileKeyValueStore<T> implements KeyValueStore<T> {
+export class FileKeyValueStore<T extends object> implements KeyValueStore<T> {
   private readonly namespacePath: string;
 
   constructor(

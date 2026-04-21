@@ -33,7 +33,7 @@ export function parseJson<T>(text: string, path: string, schema: z.ZodType<T>): 
   return Result.ok(parsed.data);
 }
 
-export function stringifyJson<T>(value: T, path: string): Result<string, KvError> {
+export function stringifyJson(value: object, path: string): Result<string, KvError> {
   try {
     return Result.ok(`${JSON.stringify(value, null, 2)}\n`);
   } catch (error) {
