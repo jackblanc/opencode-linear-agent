@@ -32,7 +32,7 @@ describe("SessionRepository", () => {
 
     await repo.save(state);
 
-    expect(await repo.get("linear-1")).toEqual(state);
+    expect(await repo.get("linear-1")).toEqual(Result.ok(state));
     expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
       Result.ok({ linearSessionId: "linear-1" }),
     );
@@ -90,13 +90,21 @@ describe("SessionRepository", () => {
 
     await repo.delete("linear-1");
 
-    expect(await repo.get("linear-1")).toBeNull();
+    expect(await repo.get("linear-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "linear-1" })),
+    );
     expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "opencode-1" })),
     );
-    expect(await repo.getPendingQuestion("linear-1")).toBeNull();
-    expect(await repo.getPendingPermission("linear-1")).toBeNull();
-    expect(await repo.getPendingRepoSelection("linear-1")).toBeNull();
+    expect(await repo.getPendingQuestion("linear-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "linear-1" })),
+    );
+    expect(await repo.getPendingPermission("linear-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "linear-1" })),
+    );
+    expect(await repo.getPendingRepoSelection("linear-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "linear-1" })),
+    );
   });
 
   test("rolls back fresh save when index put fails", async () => {
@@ -114,15 +122,10 @@ describe("SessionRepository", () => {
       new KvIoError({ path: "index", operation: "put", reason: "disk full" }),
     );
 
-    let threw = false;
-    try {
-      await repo.save(createSessionState());
-    } catch {
-      threw = true;
-    }
-
-    expect(threw).toBe(true);
-    expect(await repo.get("linear-1")).toBeNull();
+    expect((await repo.save(createSessionState())).isErr()).toBe(true);
+    expect(await repo.get("linear-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "linear-1" })),
+    );
   });
 
   test("rolls back update when index put fails, restoring prior state", async () => {
@@ -144,15 +147,8 @@ describe("SessionRepository", () => {
       new KvIoError({ path: "index", operation: "put", reason: "disk full" }),
     );
 
-    let threw = false;
-    try {
-      await repo.save(updated);
-    } catch {
-      threw = true;
-    }
-
-    expect(threw).toBe(true);
-    expect(await repo.get("linear-1")).toEqual(original);
+    expect((await repo.save(updated)).isErr()).toBe(true);
+    expect(await repo.get("linear-1")).toEqual(Result.ok(original));
     expect(await failingIndex.get("opencode-1")).toEqual(
       Result.ok({ linearSessionId: "linear-1" }),
     );

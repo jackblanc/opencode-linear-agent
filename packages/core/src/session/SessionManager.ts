@@ -1,12 +1,16 @@
 import { Result } from "better-result";
 
+import type { KvError } from "../kv/errors";
 import type { OpencodeServiceError } from "../opencode-service/errors";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
 import type { SessionState } from "../state/schema";
 import type { SessionRepository } from "../state/SessionRepository";
 import type { Logger } from "../utils/logger";
 
+import { KvNotFoundError } from "../kv/errors";
 import { Log } from "../utils/logger";
+
+type SessionManagerError = OpencodeServiceError | KvError;
 
 /**
  * Result of getting or creating a session
@@ -39,54 +43,54 @@ export class SessionManager {
     projectId: string,
     branchName: string,
     workdir: string,
-  ): Promise<Result<SessionResult, OpencodeServiceError>> {
+  ): Promise<Result<SessionResult, SessionManagerError>> {
     const log = Log.create({ service: "session" })
       .tag("issue", issueId)
       .tag("sessionId", linearSessionId);
 
     log.info("Looking up existing session state");
-
     const existingState = await this.repository.get(linearSessionId);
-
-    if (existingState?.opencodeSessionId) {
-      const sessionLog = log
-        .tag("opencodeSession", existingState.opencodeSessionId.slice(0, 8))
-        .tag("opencodeSessionId", existingState.opencodeSessionId);
-      sessionLog.info("Found existing state, attempting to resume");
-
-      const sessionResult = await this.opencode.getSession(
-        existingState.opencodeSessionId,
-        workdir,
-      );
-
-      if (Result.isOk(sessionResult)) {
-        sessionLog.info("Successfully resumed session");
-        return Result.ok({
-          opencodeSessionId: sessionResult.value.id,
-          existingState,
-          isNewSession: false,
+    if (existingState.isErr()) {
+      if (!KvNotFoundError.is(existingState.error)) {
+        log.error("Failed to load existing session state", {
+          error: existingState.error.message,
+          errorType: existingState.error._tag,
         });
+        return Result.err(existingState.error);
       }
 
-      sessionLog.error("Failed to resume existing session", {
-        error: sessionResult.error.message,
-        errorType: sessionResult.error._tag,
-      });
-
-      return Result.err(sessionResult.error);
+      return this.createNewSession(
+        linearSessionId,
+        organizationId,
+        issueId,
+        projectId,
+        branchName,
+        workdir,
+        null,
+        log,
+      );
     }
 
-    // No existing state - create fresh session
-    return this.createNewSession(
-      linearSessionId,
-      organizationId,
-      issueId,
-      projectId,
-      branchName,
-      workdir,
-      null,
-      log,
-    );
+    const sessionLog = log
+      .tag("opencodeSession", existingState.value.opencodeSessionId.slice(0, 8))
+      .tag("opencodeSessionId", existingState.value.opencodeSessionId);
+    sessionLog.info("Found existing state, attempting to resume");
+
+    const session = await this.opencode.getSession(existingState.value.opencodeSessionId, workdir);
+    if (session.isErr()) {
+      sessionLog.error("Failed to resume existing session", {
+        error: session.error.message,
+        errorType: session.error._tag,
+      });
+      return Result.err(session.error);
+    }
+
+    sessionLog.info("Successfully resumed session");
+    return Result.ok({
+      opencodeSessionId: session.value.id,
+      existingState: existingState.value,
+      isNewSession: false,
+    });
   }
 
   /**
@@ -101,22 +105,19 @@ export class SessionManager {
     workdir: string,
     existingState: SessionState | null,
     log: Logger,
-  ): Promise<Result<SessionResult, OpencodeServiceError>> {
+  ): Promise<Result<SessionResult, SessionManagerError>> {
     log.info("Creating new OpenCode session");
 
-    // Don't pass a title - OpenCode auto-generates titles based on the first prompt
-    const sessionResult = await this.opencode.createSession(workdir);
-
-    if (Result.isError(sessionResult)) {
+    const session = await this.opencode.createSession(workdir);
+    if (session.isErr()) {
       log.error("Failed to create OpenCode session", {
-        error: sessionResult.error.message,
-        errorType: sessionResult.error._tag,
+        error: session.error.message,
+        errorType: session.error._tag,
       });
-      return Result.err(sessionResult.error);
+      return Result.err(session.error);
     }
 
-    const sessionId = sessionResult.value.id;
-
+    const sessionId = session.value.id;
     const sessionLog = log
       .tag("opencodeSession", sessionId.slice(0, 8))
       .tag("opencodeSessionId", sessionId);
@@ -133,7 +134,14 @@ export class SessionManager {
       lastActivityTime: Date.now(),
     };
 
-    await this.repository.save(newState);
+    const saved = await this.repository.save(newState);
+    if (saved.isErr()) {
+      sessionLog.error("Failed to save session state", {
+        error: saved.error.message,
+        errorType: saved.error._tag,
+      });
+      return Result.err(saved.error);
+    }
 
     sessionLog.info("Saved session state to repository", {
       branchName,
@@ -150,18 +158,20 @@ export class SessionManager {
   /**
    * Update last activity time for a session
    */
-  async touch(linearSessionId: string): Promise<void> {
+  async touch(linearSessionId: string): Promise<Result<void, KvError>> {
     const state = await this.repository.get(linearSessionId);
-    if (state) {
-      state.lastActivityTime = Date.now();
-      await this.repository.save(state);
+    if (state.isErr()) {
+      return KvNotFoundError.is(state.error) ? Result.ok(undefined) : Result.err(state.error);
     }
+
+    state.value.lastActivityTime = Date.now();
+    return this.repository.save(state.value);
   }
 
   /**
    * Clean up session state
    */
-  async cleanup(linearSessionId: string): Promise<void> {
-    await this.repository.delete(linearSessionId);
+  async cleanup(linearSessionId: string): Promise<Result<void, KvError>> {
+    return this.repository.delete(linearSessionId);
   }
 }

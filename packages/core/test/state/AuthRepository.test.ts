@@ -1,8 +1,9 @@
+import { Result } from "better-result";
 import { describe, expect, test } from "bun:test";
 
 import type { AuthRecord } from "../../src/state/schema";
 
-import { AuthRepository } from "../../src/state/AuthRepository";
+import { AuthRepository, AuthAccessTokenExpiredError } from "../../src/state/AuthRepository";
 import { createInMemoryAgentState } from "./InMemoryAgentNamespace";
 
 function createAuthRecord(overrides: Partial<AuthRecord> = {}): AuthRecord {
@@ -24,25 +25,45 @@ describe("AuthRepository", () => {
     const store = new AuthRepository(state);
     const record = createAuthRecord();
 
-    await store.putAuthRecord(record);
+    expect(await store.putAuthRecord(record)).toEqual(Result.ok(undefined));
 
-    expect(await store.getAuthRecord("org-1")).toEqual(record);
-    expect(await store.getAccessToken("org-1")).toBe("token-1");
-    expect(await store.getRefreshTokenData("org-1")).toEqual({
-      refreshToken: "refresh-1",
-      appId: "app-1",
-      organizationId: "org-1",
-      installedAt: record.installedAt,
-      workspaceName: "workspace-1",
-    });
+    expect(await store.getAuthRecord("org-1")).toEqual(Result.ok(record));
+    expect(await store.getAccessToken("org-1")).toEqual(Result.ok("token-1"));
+    expect(await store.getRefreshTokenData("org-1")).toEqual(
+      Result.ok({
+        refreshToken: "refresh-1",
+        appId: "app-1",
+        organizationId: "org-1",
+        installedAt: record.installedAt,
+        workspaceName: "workspace-1",
+      }),
+    );
   });
 
   test("hides expired access tokens but keeps auth record", async () => {
     const state = createInMemoryAgentState();
     const store = new AuthRepository(state);
-    await store.putAuthRecord(createAuthRecord({ accessTokenExpiresAt: Date.now() - 1 }));
+    expect(
+      await store.putAuthRecord(createAuthRecord({ accessTokenExpiresAt: Date.now() - 1 })),
+    ).toEqual(Result.ok(undefined));
 
-    expect(await store.getAccessToken("org-1")).toBeNull();
-    expect(await store.getAuthRecord("org-1")).not.toBeNull();
+    const token = await store.getAccessToken("org-1");
+    expect(Result.isError(token)).toBe(true);
+    if (Result.isError(token)) {
+      expect(AuthAccessTokenExpiredError.is(token.error)).toBe(true);
+      if (AuthAccessTokenExpiredError.is(token.error)) {
+        expect(token.error.organizationId).toBe("org-1");
+      }
+    }
+    expect(Result.isOk(await store.getAuthRecord("org-1"))).toBe(true);
+  });
+
+  test("preserves saved auth record when token file write fails", async () => {
+    const state = createInMemoryAgentState();
+    const store = new AuthRepository(state, async () => Promise.reject(new Error("disk full")));
+    const record = createAuthRecord();
+
+    expect(await store.putAuthRecord(record)).toEqual(Result.ok(undefined));
+    expect(await store.getAuthRecord("org-1")).toEqual(Result.ok(record));
   });
 });

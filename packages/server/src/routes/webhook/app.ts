@@ -21,7 +21,7 @@ import { Result } from "better-result";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { refreshAccessToken } from "../../token";
+import { getLinearAccessToken } from "../../token";
 
 interface WebhookHandlerFactories {
   createProcessor?: (
@@ -110,19 +110,19 @@ export function createWebhookApp(
       return c.text("", 200);
     }
 
-    let accessToken = await authRepository.getAccessToken(webhookPayload.organizationId);
-    if (!accessToken) {
-      const oauthConfig = {
+    const accessTokenResult = await getLinearAccessToken(
+      authRepository,
+      {
         clientId: config.linearClientId,
         clientSecret: config.linearClientSecret,
-      };
-      accessToken = await refreshAccessToken(
-        authRepository,
-        oauthConfig,
-        webhookPayload.organizationId,
-      );
+      },
+      webhookPayload.organizationId,
+    );
+    if (accessTokenResult.isErr()) {
+      return c.json({ error: accessTokenResult.error.message }, 500);
     }
-    const linearService = new LinearService(accessToken);
+
+    const linearService = new LinearService(accessTokenResult.value);
 
     if (isAgentSessionEventWebhook(webhookPayload)) {
       const processorConfig = {

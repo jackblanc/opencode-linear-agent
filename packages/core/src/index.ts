@@ -18,10 +18,13 @@ export { OpencodeService } from "./opencode-service/OpencodeService";
 // Application State Module
 export { OAuthStateRepository } from "./state/OAuthStateRepository";
 export { AuthRepository } from "./state/AuthRepository";
+export type { AuthRepositoryError } from "./state/AuthRepository";
+export { AuthAccessTokenExpiredError } from "./state/AuthRepository";
 export { SessionRepository } from "./state/SessionRepository";
 /** @public */
 export type { SessionState, PendingRepoSelection, RepoSelectionOption } from "./state/schema";
 export { createFileAgentState } from "./state/root";
+export { KvNotFoundError } from "./kv/errors";
 
 // Util Module
 export { Log, createFileLogSink } from "./utils/logger";

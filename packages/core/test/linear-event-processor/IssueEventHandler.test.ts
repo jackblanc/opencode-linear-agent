@@ -3,10 +3,12 @@ import { describe, test, expect } from "bun:test";
 
 import type { SessionState } from "../../src/state/schema";
 
+import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
 import { IssueEventHandler } from "../../src/linear-event-processor/IssueEventHandler";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { SessionRepository } from "../../src/state/SessionRepository";
 import { TestLinearService } from "../linear-service/TestLinearService";
+import { FailingKeyValueStore } from "../state/FailingKeyValueStore";
 import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
 function createSessionState(): SessionState {
@@ -28,6 +30,22 @@ async function createRepository(state?: SessionState): Promise<SessionRepository
     await repository.save(state);
   }
   return repository;
+}
+
+async function createFailingRepository(state?: SessionState): Promise<{
+  repository: SessionRepository;
+  sessionStore: FailingKeyValueStore<SessionState>;
+}> {
+  const agentState = createInMemoryAgentState();
+  const sessionStore = new FailingKeyValueStore(agentState.session);
+  const repository = new SessionRepository({
+    ...agentState,
+    session: sessionStore,
+  });
+  if (state) {
+    await repository.save(state);
+  }
+  return { repository, sessionStore };
 }
 
 function createEvent(stateType: string) {
@@ -69,7 +87,9 @@ describe("IssueEventHandler", () => {
 
     expect(aborts).toEqual([{ sessionID: "opencode-1", directory: "/tmp/worktree-1" }]);
     expect(removes).toEqual(["/tmp/worktree-1"]);
-    expect(await repository.get("session-1")).toBeNull();
+    expect(await repository.get("session-1")).toEqual(
+      Result.err(new KvNotFoundError({ key: "session-1" })),
+    );
   });
 
   test("preserves state when worktree removal fails", async () => {
@@ -89,7 +109,57 @@ describe("IssueEventHandler", () => {
 
     await handler.process(createEvent("completed"));
 
-    expect(await repository.get("session-1")).toEqual(state);
+    expect(await repository.get("session-1")).toEqual(Result.ok(state));
+  });
+
+  test("throws when session state load fails during cleanup", async () => {
+    const state = createSessionState();
+    const { repository, sessionStore } = await createFailingRepository(state);
+    const err = new KvIoError({ path: "session", operation: "get", reason: "disk full" });
+    sessionStore.failOnce("get", err);
+
+    const handler = new IssueEventHandler(
+      new TestLinearService({
+        getIssueAgentSessionIds: async () => Promise.resolve(Result.ok(["session-1"])),
+      }),
+      {
+        abortSession: async () => Promise.resolve(Result.ok(undefined)),
+        removeWorktree: async () => Promise.resolve(Result.ok(undefined)),
+      },
+      repository,
+    );
+
+    const caught = await handler.process(createEvent("completed")).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(caught).toEqual(err);
+    expect(await repository.get("session-1")).toEqual(Result.ok(state));
+  });
+
+  test("throws when session state delete fails after cleanup", async () => {
+    const state = createSessionState();
+    const { repository, sessionStore } = await createFailingRepository(state);
+    const err = new KvIoError({ path: "session", operation: "delete", reason: "disk full" });
+    sessionStore.failOnce("delete", err);
+
+    const handler = new IssueEventHandler(
+      new TestLinearService({
+        getIssueAgentSessionIds: async () => Promise.resolve(Result.ok(["session-1"])),
+      }),
+      {
+        abortSession: async () => Promise.resolve(Result.ok(undefined)),
+        removeWorktree: async () => Promise.resolve(Result.ok(undefined)),
+      },
+      repository,
+    );
+
+    const caught = await handler.process(createEvent("completed")).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(caught).toEqual(err);
+    expect(await repository.get("session-1")).toEqual(Result.ok(state));
   });
 
   test("ignores issue states outside completed and canceled", async () => {

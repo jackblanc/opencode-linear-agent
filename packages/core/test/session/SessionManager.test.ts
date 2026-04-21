@@ -4,6 +4,7 @@ import { describe, test, expect } from "bun:test";
 
 import type { SessionState } from "../../src/state/schema";
 
+import { KvNotFoundError } from "../../src/kv/errors";
 import { OpencodeUnknownError } from "../../src/opencode-service/errors";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import { SessionManager } from "../../src/session/SessionManager";
@@ -30,7 +31,7 @@ async function createRepository(state?: SessionState): Promise<{
   const agentState = createInMemoryAgentState();
   const repository = new SessionRepository(agentState);
   if (state) {
-    await repository.save(state);
+    expect(await repository.save(state)).toEqual(Result.ok(undefined));
   }
 
   return {
@@ -63,7 +64,7 @@ describe("SessionManager", () => {
     );
 
     expect(Result.isError(result)).toBe(true);
-    expect(await repository.get("linear-1")).toEqual(existing);
+    expect(await repository.get("linear-1")).toEqual(Result.ok(existing));
   });
 
   test("creates fresh session when no existing state", async () => {
@@ -94,18 +95,54 @@ describe("SessionManager", () => {
     }
 
     const saved = await repository.get("linear-1");
-    expect(saved).not.toBeNull();
-    if (saved === null) {
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isError(saved)) {
       return;
     }
 
-    expect(saved.linearSessionId).toBe("linear-1");
-    expect(saved.opencodeSessionId).toBe("opencode-new");
-    expect(saved.organizationId).toBe("org-1");
-    expect(saved.issueId).toBe("issue-1");
-    expect(saved.projectId).toBe("project-1");
-    expect(saved.branchName).toBe("feature/code-1");
-    expect(saved.workdir).toBe("/tmp/worktree-1");
-    expect(typeof saved.lastActivityTime).toBe("number");
+    expect(saved.value.linearSessionId).toBe("linear-1");
+    expect(saved.value.opencodeSessionId).toBe("opencode-new");
+    expect(saved.value.organizationId).toBe("org-1");
+    expect(saved.value.issueId).toBe("issue-1");
+    expect(saved.value.projectId).toBe("project-1");
+    expect(saved.value.branchName).toBe("feature/code-1");
+    expect(saved.value.workdir).toBe("/tmp/worktree-1");
+    expect(typeof saved.value.lastActivityTime).toBe("number");
+  });
+
+  test("touch is a no-op when session is missing", async () => {
+    const agentState = createInMemoryAgentState();
+    const repository = new SessionRepository(agentState);
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+
+    const manager = new SessionManager(opencode, repository);
+
+    expect(await manager.touch("missing")).toEqual(Result.ok(undefined));
+
+    const missing = await repository.get("missing");
+    expect(Result.isError(missing)).toBe(true);
+    if (Result.isError(missing)) {
+      expect(KvNotFoundError.is(missing.error)).toBe(true);
+    }
+  });
+
+  test("touch updates last activity time for existing session", async () => {
+    const existing = createSessionState({ lastActivityTime: 1 });
+    const { repository } = await createRepository(existing);
+    const opencode = new OpencodeService(
+      createOpencodeClient({ baseUrl: "http://localhost:4096" }),
+    );
+
+    const manager = new SessionManager(opencode, repository);
+
+    expect(await manager.touch("linear-1")).toEqual(Result.ok(undefined));
+
+    const saved = await repository.get("linear-1");
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isOk(saved)) {
+      expect(saved.value.lastActivityTime).toBeGreaterThan(existing.lastActivityTime);
+    }
   });
 });

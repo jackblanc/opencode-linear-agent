@@ -11,11 +11,13 @@ import type {
   PendingQuestion,
   PendingRepoSelection,
   RepoSelectionOption,
+  SessionState,
 } from "../state/schema";
 import type { SessionRepository } from "../state/SessionRepository";
 import type { AgentMode } from "../utils/determineAgentMode";
 import type { Logger } from "../utils/logger";
 
+import { KvNotFoundError } from "../kv/errors";
 import { LinearForbiddenError } from "../linear-service/errors";
 import { findRepoLabel, parseRepoLabel } from "../linear-service/label-parser";
 import { buildCreatedPrompt } from "../session/PromptBuilder";
@@ -350,256 +352,257 @@ export class LinearEventProcessor {
 
     log.info("Processing event", { action: event.action });
 
-    const action = this.toSessionWorktreeAction(event.action);
-    if (!action) {
-      log.info("Ignoring unsupported agent session action", {
-        action: event.action,
+    const result = await this.processResult(event, log);
+    if (result.isErr()) {
+      log.error("Failed to process event", {
+        error: result.error.message,
       });
-      return;
-    }
-
-    const pendingSelection = await this.sessions.getPendingRepoSelection(linearSessionId);
-    if (pendingSelection) {
-      await this.handleRepoSelectionPrompt(event, pendingSelection, log);
-      return;
-    }
-
-    const sessionState = await this.sessions.get(linearSessionId);
-    if (action === "prompted" && sessionState) {
-      log.info("Using existing session project", {
-        projectId: sessionState.projectId,
-        workdir: sessionState.workdir,
-      });
-      const ok = await this.processWithProject(
-        event,
-        {
-          id: sessionState.projectId,
-          worktree: sessionState.workdir,
-        },
-        log,
-      );
-      if (!ok) {
-        await this.linear.postError(linearSessionId, new Error("Session startup failed"));
-      }
-      return;
-    }
-
-    if (!issueId) {
-      await this.linear.postError(linearSessionId, new Error("Missing issue id"));
-      return;
-    }
-
-    const projectsResult = await this.opencode.listProjects();
-    if (Result.isError(projectsResult)) {
-      log.error("Failed to list OpenCode projects", {
-        error: projectsResult.error.message,
-      });
-      await this.linear.postError(linearSessionId, projectsResult.error);
-      return;
-    }
-
-    const projects = projectsResult.value.projects;
-    if (projects.length === 0) {
-      await this.linear.postError(
-        linearSessionId,
-        new Error("No OpenCode projects found. Open the repo in OpenCode first, then retry."),
-      );
-      return;
-    }
-
-    const labelsResult = await this.linear.getIssueLabels(issueId);
-    if (Result.isError(labelsResult)) {
-      await this.linear.postError(linearSessionId, labelsResult.error);
-      return;
-    }
-
-    const parsedRepoLabel = parseRepoLabel(labelsResult.value);
-    const repoLabel = findRepoLabel(labelsResult.value);
-
-    if (!parsedRepoLabel) {
-      await this.promptForRepoSelection(
-        linearSessionId,
-        issueId,
-        buildProjectResolution(
-          projects,
-          repoLabel.status === "invalid" ? "invalid" : "missing",
-          repoLabel.status === "invalid" ? repoLabel.label : undefined,
-        ),
-        readPromptContextText(event.promptContext) ?? undefined,
-      );
-      return;
-    }
-
-    const matchedProject = matchProjectByRepoName(parsedRepoLabel.repositoryName, projects);
-
-    if (!matchedProject) {
-      const unmatchedLabel =
-        repoLabel.status === "valid" || repoLabel.status === "invalid"
-          ? repoLabel.label
-          : undefined;
-      await this.promptForRepoSelection(
-        linearSessionId,
-        issueId,
-        buildProjectResolution(projects, "no_match", undefined, unmatchedLabel),
-        readPromptContextText(event.promptContext) ?? undefined,
-      );
-      return;
-    }
-
-    log.info("Using matched OpenCode project", {
-      projectId: matchedProject.id,
-      worktree: matchedProject.worktree,
-    });
-
-    const ok = await this.processWithProject(
-      sessionState ? event : toStartupEvent(event),
-      { id: matchedProject.id, worktree: matchedProject.worktree },
-      log,
-    );
-    if (!ok) {
-      await this.linear.postError(linearSessionId, new Error("Session startup failed"));
+      await this.linear.postError(linearSessionId, result.error);
     }
   }
 
-  // TODO: This should not return a boolean, it should return a Result type
+  private async processResult(
+    event: AgentSessionEventWebhookPayload,
+    log: Logger,
+  ): Promise<Result<void, Error>> {
+    return Result.gen(
+      async function* (this: LinearEventProcessor) {
+        const linearSessionId = event.agentSession.id;
+        const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
+
+        const action = this.toSessionWorktreeAction(event.action);
+        if (!action) {
+          log.info("Ignoring unsupported agent session action", {
+            action: event.action,
+          });
+          return Result.ok(undefined);
+        }
+
+        const pendingSelection = await this.sessions.getPendingRepoSelection(linearSessionId);
+        if (pendingSelection.isOk()) {
+          yield* Result.await(this.handleRepoSelectionPrompt(event, pendingSelection.value, log));
+          return Result.ok(undefined);
+        }
+        if (!KvNotFoundError.is(pendingSelection.error)) {
+          return Result.err(pendingSelection.error);
+        }
+
+        const sessionState = await this.sessions.get(linearSessionId);
+        if (sessionState.isOk() && action === "prompted") {
+          log.info("Using existing session project", {
+            projectId: sessionState.value.projectId,
+            workdir: sessionState.value.workdir,
+          });
+          yield* Result.await(
+            this.processWithProject(
+              event,
+              {
+                id: sessionState.value.projectId,
+                worktree: sessionState.value.workdir,
+              },
+              sessionState.value,
+              log,
+            ),
+          );
+          return Result.ok(undefined);
+        }
+        if (sessionState.isErr() && !KvNotFoundError.is(sessionState.error)) {
+          return Result.err(sessionState.error);
+        }
+
+        if (!issueId) {
+          return Result.err(new Error("Missing issue id"));
+        }
+
+        const projectsResult = yield* Result.await(this.opencode.listProjects());
+        const projects = projectsResult.projects;
+        if (projects.length === 0) {
+          return Result.err(
+            new Error("No OpenCode projects found. Open the repo in OpenCode first, then retry."),
+          );
+        }
+
+        const labels = yield* Result.await(this.linear.getIssueLabels(issueId));
+        const parsedRepoLabel = parseRepoLabel(labels);
+        const repoLabel = findRepoLabel(labels);
+
+        if (!parsedRepoLabel) {
+          yield* Result.await(
+            this.promptForRepoSelection(
+              linearSessionId,
+              issueId,
+              buildProjectResolution(
+                projects,
+                repoLabel.status === "invalid" ? "invalid" : "missing",
+                repoLabel.status === "invalid" ? repoLabel.label : undefined,
+              ),
+              readPromptContextText(event.promptContext) ?? undefined,
+            ),
+          );
+          return Result.ok(undefined);
+        }
+
+        const matchedProject = matchProjectByRepoName(parsedRepoLabel.repositoryName, projects);
+        if (!matchedProject) {
+          const unmatchedLabel =
+            repoLabel.status === "valid" || repoLabel.status === "invalid"
+              ? repoLabel.label
+              : undefined;
+          yield* Result.await(
+            this.promptForRepoSelection(
+              linearSessionId,
+              issueId,
+              buildProjectResolution(projects, "no_match", undefined, unmatchedLabel),
+              readPromptContextText(event.promptContext) ?? undefined,
+            ),
+          );
+          return Result.ok(undefined);
+        }
+
+        log.info("Using matched OpenCode project", {
+          projectId: matchedProject.id,
+          worktree: matchedProject.worktree,
+        });
+        yield* Result.await(
+          this.processWithProject(
+            sessionState.isOk() ? event : toStartupEvent(event),
+            { id: matchedProject.id, worktree: matchedProject.worktree },
+            sessionState.isOk() ? sessionState.value : undefined,
+            log,
+          ),
+        );
+
+        return Result.ok(undefined);
+      }.bind(this),
+    );
+  }
+
   private async processWithProject(
     event: AgentSessionEventWebhookPayload,
     project: ProjectRef,
+    sessionState: SessionState | undefined,
     log: Logger,
-  ): Promise<boolean> {
-    const linearSessionId = event.agentSession.id;
-    const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
-    const sessionState = await this.sessions.get(linearSessionId);
-    let issue: WorktreeIssue = {
-      identifier: event.agentSession.issue?.identifier ?? issueId ?? "unknown",
-      branchName: readStringField(event.agentSession.issue, "branchName") ?? undefined,
-    };
-
-    if (issueId && !issue.branchName) {
-      const issueResult = await this.linear.getIssue(issueId);
-      if (Result.isOk(issueResult)) {
-        issue = {
-          identifier: issueResult.value.identifier,
-          branchName: issueResult.value.branchName,
+  ): Promise<Result<void, Error>> {
+    return Result.gen(
+      async function* (this: LinearEventProcessor) {
+        const linearSessionId = event.agentSession.id;
+        const issueId = event.agentSession.issue?.id ?? event.agentSession.issueId;
+        let issue: WorktreeIssue = {
+          identifier: event.agentSession.issue?.identifier ?? issueId ?? "unknown",
+          branchName: readStringField(event.agentSession.issue, "branchName") ?? undefined,
         };
-      }
-    }
 
-    const action = this.toSessionWorktreeAction(event.action);
-    if (!action) {
-      return true;
-    }
-
-    let workdir = sessionState?.workdir;
-    let branchName = sessionState?.branchName;
-
-    if (!workdir || !branchName || sessionState?.projectId !== project.id) {
-      await this.linear.postStageActivity(linearSessionId, "git_setup");
-      const worktreeName = this.buildWorktreeName(issue, linearSessionId);
-      const worktreeResult = await this.opencode.createWorktree(project.worktree, worktreeName);
-
-      if (Result.isError(worktreeResult)) {
-        await this.linear.postError(linearSessionId, worktreeResult.error);
-        return false;
-      }
-
-      workdir = worktreeResult.value.directory;
-      branchName = worktreeResult.value.branch;
-    }
-
-    let mode: AgentMode = "build";
-
-    if (issueId) {
-      const stateResult = await this.linear.getIssueState(issueId);
-      if (Result.isOk(stateResult)) {
-        mode = determineAgentMode(stateResult.value.type);
-        log.info("Determined agent mode", {
-          mode,
-          stateType: stateResult.value.type,
-          stateName: stateResult.value.name,
-        });
-      } else {
-        log.warn("Failed to get issue state, defaulting to build mode", {
-          error: stateResult.error.message,
-          errorType: stateResult.error._tag,
-        });
-      }
-
-      if (mode === "build") {
-        const statusResult = await this.linear.moveIssueToInProgress(issueId);
-        if (Result.isError(statusResult)) {
-          log.warn("Failed to move issue to In Progress", {
-            error: statusResult.error.message,
-            errorType: statusResult.error._tag,
-          });
+        if (issueId && !issue.branchName) {
+          const issueResult = await this.linear.getIssue(issueId);
+          if (Result.isOk(issueResult)) {
+            issue = {
+              identifier: issueResult.value.identifier,
+              branchName: issueResult.value.branchName,
+            };
+          }
         }
-      }
-    }
 
-    await this.linear.postStageActivity(
-      linearSessionId,
-      "session_ready",
-      `Branch: \`${branchName}\``,
-    );
+        const action = this.toSessionWorktreeAction(event.action);
+        if (!action) {
+          return Result.ok(undefined);
+        }
 
-    const sessionResult = await this.sessionManager.getOrCreateSession(
-      linearSessionId,
-      this.config.organizationId,
-      issueId ?? "unknown",
-      project.id,
-      branchName,
-      workdir,
-    );
+        let workdir = sessionState?.workdir;
+        let branchName = sessionState?.branchName;
 
-    if (Result.isError(sessionResult)) {
-      log.error("Error getting/creating session", {
-        error: sessionResult.error.message,
-        errorType: sessionResult.error._tag,
-      });
-      await this.linear.postError(linearSessionId, sessionResult.error);
-      return false;
-    }
+        if (!workdir || !branchName || sessionState?.projectId !== project.id) {
+          yield* Result.await(this.linear.postStageActivity(linearSessionId, "git_setup"));
+          const worktreeName = this.buildWorktreeName(issue, linearSessionId);
+          const worktree = yield* Result.await(
+            this.opencode.createWorktree(project.worktree, worktreeName),
+          );
+          workdir = worktree.directory;
+          branchName = worktree.branch;
+        }
 
-    const session = sessionResult.value;
-    const opencodeSessionId = session.opencodeSessionId;
-    const sessionLog = log
-      .tag("opencodeSession", opencodeSessionId.slice(0, 8))
-      .tag("opencodeSessionId", opencodeSessionId);
+        let mode: AgentMode = "build";
 
-    sessionLog.info("OpenCode session ready", {
-      workdir,
-      isNewSession: session.isNewSession,
-    });
+        if (issueId) {
+          const stateResult = await this.linear.getIssueState(issueId);
+          if (Result.isOk(stateResult)) {
+            mode = determineAgentMode(stateResult.value.type);
+            log.info("Determined agent mode", {
+              mode,
+              stateType: stateResult.value.type,
+              stateName: stateResult.value.name,
+            });
+          } else {
+            log.warn("Failed to get issue state, defaulting to build mode", {
+              error: stateResult.error.message,
+              errorType: stateResult.error._tag,
+            });
+          }
 
-    const opencodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
-    const encodedWorkdir = base64Encode(workdir);
-    const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
-    await this.linear.setExternalLink(linearSessionId, externalLink);
+          if (mode === "build") {
+            const statusResult = await this.linear.moveIssueToInProgress(issueId);
+            if (Result.isError(statusResult)) {
+              log.warn("Failed to move issue to In Progress", {
+                error: statusResult.error.message,
+                errorType: statusResult.error._tag,
+              });
+            }
+          }
+        }
 
-    switch (action) {
-      case "created":
-        await this.handleCreated(
-          event,
-          opencodeSessionId,
-          linearSessionId,
-          workdir,
-          mode,
-          sessionLog,
+        yield* Result.await(
+          this.linear.postStageActivity(
+            linearSessionId,
+            "session_ready",
+            `Branch: \`${branchName}\``,
+          ),
         );
-        return true;
-      case "prompted":
-        await this.handlePrompted(
-          event,
-          opencodeSessionId,
-          linearSessionId,
-          workdir,
-          mode,
-          sessionLog,
+
+        const session = yield* Result.await(
+          this.sessionManager.getOrCreateSession(
+            linearSessionId,
+            this.config.organizationId,
+            issueId ?? "unknown",
+            project.id,
+            branchName,
+            workdir,
+          ),
         );
-        return true;
-      default:
-        return false;
-    }
+        const opencodeSessionId = session.opencodeSessionId;
+        const sessionLog = log
+          .tag("opencodeSession", opencodeSessionId.slice(0, 8))
+          .tag("opencodeSessionId", opencodeSessionId);
+
+        sessionLog.info("OpenCode session ready", {
+          workdir,
+          isNewSession: session.isNewSession,
+        });
+
+        const opencodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
+        const encodedWorkdir = base64Encode(workdir);
+        const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
+        yield* Result.await(this.linear.setExternalLink(linearSessionId, externalLink));
+
+        if (action === "created") {
+          yield* Result.await(
+            this.handleCreated(
+              event,
+              opencodeSessionId,
+              linearSessionId,
+              workdir,
+              mode,
+              sessionLog,
+            ),
+          );
+          return Result.ok(undefined);
+        }
+
+        yield* Result.await(
+          this.handlePrompted(event, opencodeSessionId, linearSessionId, workdir, mode, sessionLog),
+        );
+
+        return Result.ok(undefined);
+      }.bind(this),
+    );
   }
 
   private async promptForRepoSelection(
@@ -608,26 +611,34 @@ export class LinearEventProcessor {
     resolution: ProjectResolution,
     promptContext?: string,
     invalidResponse?: string,
-  ): Promise<void> {
-    const pendingSelection: PendingRepoSelection = {
-      linearSessionId,
-      issueId,
-      options: resolution.options,
-      promptContext,
-      createdAt: Date.now(),
-    };
+  ): Promise<Result<void, Error>> {
+    return Result.gen(
+      async function* (this: LinearEventProcessor) {
+        const pendingSelection: PendingRepoSelection = {
+          linearSessionId,
+          issueId,
+          options: resolution.options,
+          promptContext,
+          createdAt: Date.now(),
+        };
 
-    await this.sessions.savePendingRepoSelection(pendingSelection);
-    await this.linear.postElicitation(
-      linearSessionId,
-      buildRepoSelectionBody(resolution, invalidResponse),
-      "select",
-      {
-        options: resolution.options.map((option) => ({
-          label: option.label,
-          value: option.repoLabel,
-        })),
-      },
+        yield* Result.await(this.sessions.savePendingRepoSelection(pendingSelection));
+        yield* Result.await(
+          this.linear.postElicitation(
+            linearSessionId,
+            buildRepoSelectionBody(resolution, invalidResponse),
+            "select",
+            {
+              options: resolution.options.map((option) => ({
+                label: option.label,
+                value: option.repoLabel,
+              })),
+            },
+          ),
+        );
+
+        return Result.ok(undefined);
+      }.bind(this),
     );
   }
 
@@ -635,98 +646,103 @@ export class LinearEventProcessor {
     event: AgentSessionEventWebhookPayload,
     pendingSelection: PendingRepoSelection,
     log: Logger,
-  ): Promise<void> {
-    const linearSessionId = event.agentSession.id;
-    const userResponse = extractPromptedUserResponse(event);
-    const selectedLabel =
-      matchOption(userResponse, pendingSelection.options, {
-        getLabel: (option) => option.repoLabel,
-        getAliases: (option) => [option.label, ...option.aliases],
-        exactOnly: true,
-      }) ??
-      (() => {
-        const normalized = normalizeRepoLabelInput(userResponse);
-        if (!normalized) {
-          return null;
+  ): Promise<Result<void, Error>> {
+    return Result.gen(
+      async function* (this: LinearEventProcessor) {
+        const linearSessionId = event.agentSession.id;
+        const userResponse = extractPromptedUserResponse(event);
+        const selectedLabel =
+          matchOption(userResponse, pendingSelection.options, {
+            getLabel: (option) => option.repoLabel,
+            getAliases: (option) => [option.label, ...option.aliases],
+            exactOnly: true,
+          }) ??
+          (() => {
+            const normalized = normalizeRepoLabelInput(userResponse);
+            if (!normalized) {
+              return null;
+            }
+
+            const option = pendingSelection.options.find(
+              (item) => normalizeMatchInput(item.repoLabel) === normalizeMatchInput(normalized),
+            );
+            return option?.repoLabel ?? null;
+          })() ??
+          matchOption(userResponse, pendingSelection.options, {
+            getLabel: (option) => option.repoLabel,
+            getAliases: (option) => [option.label, ...option.aliases],
+          });
+
+        if (!selectedLabel) {
+          yield* Result.await(
+            this.promptForRepoSelection(
+              linearSessionId,
+              pendingSelection.issueId,
+              {
+                reason: "missing",
+                exampleLabel:
+                  pendingSelection.options[0]?.repoLabel ?? "repo:opencode-linear-agent",
+                options: pendingSelection.options,
+              },
+              pendingSelection.promptContext,
+              userResponse,
+            ),
+          );
+          return Result.ok(undefined);
         }
 
-        const option = pendingSelection.options.find(
-          (item) => normalizeMatchInput(item.repoLabel) === normalizeMatchInput(normalized),
+        const selectedOption =
+          pendingSelection.options.find((option) => option.repoLabel === selectedLabel) ?? null;
+        if (!selectedOption) {
+          return Result.err(new Error(`Invalid repo label selected: ${selectedLabel}`));
+        }
+
+        const setLabelResult = await this.linear.setIssueRepoLabel(
+          pendingSelection.issueId,
+          selectedLabel,
         );
-        return option?.repoLabel ?? null;
-      })() ??
-      matchOption(userResponse, pendingSelection.options, {
-        getLabel: (option) => option.repoLabel,
-        getAliases: (option) => [option.label, ...option.aliases],
-      });
+        if (Result.isError(setLabelResult)) {
+          const noteBody =
+            setLabelResult.error instanceof LinearForbiddenError
+              ? `Warning: couldn't sync issue repo label to Linear because this agent can't update labels, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed.`
+              : `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`;
 
-    if (!selectedLabel) {
-      await this.promptForRepoSelection(
-        linearSessionId,
-        pendingSelection.issueId,
-        {
-          reason: "missing",
-          exampleLabel: pendingSelection.options[0]?.repoLabel ?? "repo:opencode-linear-agent",
-          options: pendingSelection.options,
-        },
-        pendingSelection.promptContext,
-        userResponse,
-      );
-      return;
-    }
+          log.error("Failed to set selected repo label", {
+            labelValue: selectedLabel,
+            error: setLabelResult.error.message,
+            errorType: setLabelResult.error._tag,
+          });
 
-    const selectedOption =
-      pendingSelection.options.find((option) => option.repoLabel === selectedLabel) ?? null;
-    if (!selectedOption) {
-      await this.linear.postError(
-        linearSessionId,
-        new Error(`Invalid repo label selected: ${selectedLabel}`),
-      );
-      return;
-    }
+          const note = await this.linear.postActivity(linearSessionId, {
+            type: "response",
+            body: noteBody,
+          });
 
-    const setLabelResult = await this.linear.setIssueRepoLabel(
-      pendingSelection.issueId,
-      selectedLabel,
+          if (Result.isError(note)) {
+            log.warn("Failed to post repo label sync warning", {
+              labelValue: selectedLabel,
+              error: note.error.message,
+              errorType: note.error._tag,
+            });
+          }
+        }
+
+        yield* Result.await(
+          this.processWithProject(
+            toStartupEvent(event, pendingSelection.promptContext),
+            {
+              id: selectedOption.projectId,
+              worktree: selectedOption.worktree,
+            },
+            undefined,
+            log,
+          ),
+        );
+        yield* Result.await(this.sessions.deletePendingRepoSelection(linearSessionId));
+
+        return Result.ok(undefined);
+      }.bind(this),
     );
-    if (Result.isError(setLabelResult)) {
-      const noteBody =
-        setLabelResult.error instanceof LinearForbiddenError
-          ? `Warning: couldn't sync issue repo label to Linear because this agent can't update labels, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed.`
-          : `Warning: couldn't sync issue repo label to Linear, but startup will continue using local repo \`${selectedLabel}\`. Update the issue label manually if needed. Error: ${setLabelResult.error.message}`;
-
-      log.error("Failed to set selected repo label", {
-        labelValue: selectedLabel,
-        error: setLabelResult.error.message,
-        errorType: setLabelResult.error._tag,
-      });
-
-      const note = await this.linear.postActivity(linearSessionId, {
-        type: "response",
-        body: noteBody,
-      });
-
-      if (Result.isError(note)) {
-        log.warn("Failed to post repo label sync warning", {
-          labelValue: selectedLabel,
-          error: note.error.message,
-          errorType: note.error._tag,
-        });
-      }
-    }
-
-    const startupOk = await this.processWithProject(
-      toStartupEvent(event, pendingSelection.promptContext),
-      {
-        id: selectedOption.projectId,
-        worktree: selectedOption.worktree,
-      },
-      log,
-    );
-
-    if (startupOk) {
-      await this.sessions.deletePendingRepoSelection(linearSessionId);
-    }
   }
 
   private toSessionWorktreeAction(value: string): SessionWorktreeAction | null {
@@ -754,29 +770,18 @@ export class LinearEventProcessor {
     prompt: string,
     agent: AgentMode,
     log: Logger,
-  ): Promise<void> {
-    // Post sending prompt stage activity
-    await this.linear.postStageActivity(linearSessionId, "sending_prompt");
+  ): Promise<Result<void, Error>> {
+    return Result.gen(
+      async function* (this: LinearEventProcessor) {
+        yield* Result.await(this.linear.postStageActivity(linearSessionId, "sending_prompt"));
+        yield* Result.await(
+          this.opencode.prompt(opencodeSessionId, workdir, [{ type: "text", text: prompt }], agent),
+        );
 
-    // Fire-and-forget the prompt with the specified agent mode
-    // The plugin handles event streaming to Linear
-    const result = await this.opencode.prompt(
-      opencodeSessionId,
-      workdir,
-      [{ type: "text", text: prompt }],
-      agent,
+        log.info("Prompt sent, plugin will handle events", { agent });
+        return Result.ok(undefined);
+      }.bind(this),
     );
-
-    if (Result.isError(result)) {
-      log.error("Prompt failed", {
-        error: result.error.message,
-        errorType: result.error._tag,
-      });
-      await this.linear.postError(linearSessionId, result.error);
-      return;
-    }
-
-    log.info("Prompt sent, plugin will handle events", { agent });
   }
 
   /**
@@ -789,12 +794,11 @@ export class LinearEventProcessor {
     workdir: string,
     mode: AgentMode,
     log: Logger,
-  ): Promise<void> {
+  ): Promise<Result<void, Error>> {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session silently");
 
       const abortResult = await this.opencode.abortSession(opencodeSessionId, workdir);
-
       if (Result.isError(abortResult)) {
         log.warn("Failed to abort session", {
           error: abortResult.error.message,
@@ -802,13 +806,12 @@ export class LinearEventProcessor {
         });
       }
 
-      // Post response to confirm stop - required by Linear agent protocol
-      await this.linear.postActivity(
+      const stopped = await this.linear.postActivity(
         linearSessionId,
         { type: "response", body: "Stopped." },
         false,
       );
-      return;
+      return stopped.isErr() ? Result.err(stopped.error) : Result.ok(undefined);
     }
 
     // Build prompt with mode-specific instructions + issue context + previous context
@@ -819,8 +822,7 @@ export class LinearEventProcessor {
       mode,
     });
 
-    // Send prompt (fire-and-forget - plugin handles events)
-    await this.executePrompt(opencodeSessionId, linearSessionId, workdir, prompt, mode, log);
+    return this.executePrompt(opencodeSessionId, linearSessionId, workdir, prompt, mode, log);
   }
 
   /**
@@ -833,13 +835,11 @@ export class LinearEventProcessor {
     workdir: string,
     mode: AgentMode,
     log: Logger,
-  ): Promise<void> {
-    // Check for stop signal
+  ): Promise<Result<void, Error>> {
     if (event.agentActivity && hasStopSignal(event.agentActivity)) {
       log.info("Stop signal received, aborting session silently");
 
       const abortResult = await this.opencode.abortSession(opencodeSessionId, workdir);
-
       if (Result.isError(abortResult)) {
         log.warn("Failed to abort session", {
           error: abortResult.error.message,
@@ -847,66 +847,76 @@ export class LinearEventProcessor {
         });
       }
 
-      // Post response to confirm stop - required by Linear agent protocol
-      await this.linear.postActivity(
+      const stopped = await this.linear.postActivity(
         linearSessionId,
         { type: "response", body: "Stopped." },
         false,
       );
-      return;
+      return stopped.isErr() ? Result.err(stopped.error) : Result.ok(undefined);
     }
 
-    const userResponse = extractPromptedUserResponse(event);
+    return Result.gen(
+      async function* (this: LinearEventProcessor) {
+        const userResponse = extractPromptedUserResponse(event);
+        const pendingPermission = await this.sessions.getPendingPermission(linearSessionId);
+        if (pendingPermission.isOk()) {
+          yield* Result.await(
+            this.handlePermissionResponse(
+              pendingPermission.value,
+              userResponse,
+              opencodeSessionId,
+              linearSessionId,
+              workdir,
+              mode,
+              log,
+            ),
+          );
+          return Result.ok(undefined);
+        }
+        if (!KvNotFoundError.is(pendingPermission.error)) {
+          return Result.err(pendingPermission.error);
+        }
 
-    // Check if there's a pending permission for this session
-    const pendingPermission = await this.sessions.getPendingPermission(linearSessionId);
+        const pendingQuestion = await this.sessions.getPendingQuestion(linearSessionId);
+        if (pendingQuestion.isErr() && !KvNotFoundError.is(pendingQuestion.error)) {
+          return Result.err(pendingQuestion.error);
+        }
+        log.info("Checking for pending question", {
+          hasPendingQuestion: pendingQuestion.isOk(),
+          pendingRequestId: pendingQuestion.isOk() ? pendingQuestion.value.requestId : undefined,
+        });
 
-    if (pendingPermission) {
-      await this.handlePermissionResponse(
-        pendingPermission,
-        userResponse,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        log,
-      );
-      return;
-    }
+        if (pendingQuestion.isOk()) {
+          yield* Result.await(
+            this.handleQuestionResponse(
+              pendingQuestion.value,
+              userResponse,
+              opencodeSessionId,
+              linearSessionId,
+              workdir,
+              mode,
+              log,
+            ),
+          );
+          return Result.ok(undefined);
+        }
 
-    // Check if there's a pending question for this session
-    const pendingQuestion = await this.sessions.getPendingQuestion(linearSessionId);
+        if (userResponse.length === 0) {
+          log.info("Empty prompted response, skipping prompt");
+          return Result.ok(undefined);
+        }
 
-    log.info("Checking for pending question", {
-      hasPendingQuestion: !!pendingQuestion,
-      pendingRequestId: pendingQuestion?.requestId,
-    });
+        log.info("Sending follow-up prompt", {
+          promptLength: userResponse.length,
+          mode,
+        });
+        yield* Result.await(
+          this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log),
+        );
 
-    if (pendingQuestion) {
-      await this.handleQuestionResponse(
-        pendingQuestion,
-        userResponse,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        log,
-      );
-      return;
-    }
-
-    if (userResponse.length === 0) {
-      log.info("Empty prompted response, skipping prompt");
-      return;
-    }
-
-    log.info("Sending follow-up prompt", {
-      promptLength: userResponse.length,
-      mode,
-    });
-
-    // Send prompt (fire-and-forget - plugin handles events)
-    await this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log);
+        return Result.ok(undefined);
+      }.bind(this),
+    );
   }
 
   /**
@@ -926,7 +936,7 @@ export class LinearEventProcessor {
     workdir: string,
     mode: AgentMode,
     log: Logger,
-  ): Promise<void> {
+  ): Promise<Result<void, Error>> {
     log.info("Received response while question pending", {
       requestId: pending.requestId,
       responseLength: userResponse.length,
@@ -938,10 +948,12 @@ export class LinearEventProcessor {
     const answerIndex = pending.answers.findIndex((a) => a === null);
 
     if (answerIndex === -1) {
-      // All questions already answered - this shouldn't happen, but handle gracefully
       log.warn("All questions already answered - clearing pending and treating as follow-up");
-      await this.sessions.deletePendingQuestion(linearSessionId);
-      await this.sendFollowUpPrompt(
+      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      if (removed.isErr()) {
+        return Result.err(removed.error);
+      }
+      return this.sendFollowUpPrompt(
         userResponse,
         opencodeSessionId,
         linearSessionId,
@@ -949,15 +961,16 @@ export class LinearEventProcessor {
         mode,
         log,
       );
-      return;
     }
 
-    // Try to match user response to an option label
     const currentQuestion = pending.questions[answerIndex];
     if (!currentQuestion) {
       log.warn("No current question found at index", { answerIndex });
-      await this.sessions.deletePendingQuestion(linearSessionId);
-      return;
+      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      if (removed.isErr()) {
+        return Result.err(removed.error);
+      }
+      return Result.ok(undefined);
     }
 
     const matchedLabel = matchOption(userResponse, currentQuestion.options, {
@@ -966,14 +979,15 @@ export class LinearEventProcessor {
     });
 
     if (!matchedLabel) {
-      // User response doesn't match any option - they're ignoring the question
-      // Clear pending question and send as a regular follow-up prompt
       log.info("User response doesn't match any option - treating as new prompt", {
         response: userResponse.slice(0, 100),
         availableOptions: currentQuestion.options.map((o) => o.label),
       });
-      await this.sessions.deletePendingQuestion(linearSessionId);
-      await this.sendFollowUpPrompt(
+      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      if (removed.isErr()) {
+        return Result.err(removed.error);
+      }
+      return this.sendFollowUpPrompt(
         userResponse,
         opencodeSessionId,
         linearSessionId,
@@ -981,10 +995,8 @@ export class LinearEventProcessor {
         mode,
         log,
       );
-      return;
     }
 
-    // Store the matched label as the answer
     pending.answers[answerIndex] = [matchedLabel];
 
     log.info("Matched user response to option", {
@@ -992,43 +1004,37 @@ export class LinearEventProcessor {
       matchedLabel,
     });
 
-    // Check if all questions are now answered
     const allAnswered = pending.answers.every((a) => a !== null);
 
     if (!allAnswered) {
-      // More questions to answer - save updated pending question and wait
-      await this.sessions.savePendingQuestion(pending);
+      const saved = await this.sessions.savePendingQuestion(pending);
+      if (saved.isErr()) {
+        return Result.err(saved.error);
+      }
       log.info("Waiting for more question responses", {
         answered: pending.answers.filter((a) => a !== null).length,
         total: pending.questions.length,
       });
-      return;
+      return Result.ok(undefined);
     }
 
-    // All questions answered - reply to OpenCode
     log.info("All questions answered - replying to OpenCode", {
       answerCount: pending.answers.length,
     });
 
-    // Filter out nulls (we just verified all are non-null above)
     const answers = pending.answers.filter((a): a is string[] => a !== null);
-
     const replyResult = await this.opencode.replyQuestion(pending.requestId, answers, workdir);
-
-    // Clean up pending question regardless of result
-    await this.sessions.deletePendingQuestion(linearSessionId);
-
-    if (Result.isError(replyResult)) {
-      log.error("Failed to reply to question", {
-        error: replyResult.error.message,
-        errorType: replyResult.error._tag,
-      });
-      await this.linear.postError(linearSessionId, replyResult.error);
-      return;
+    const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+    if (removed.isErr()) {
+      return Result.err(removed.error);
     }
 
-    // Reply sent - plugin handles subsequent events
+    if (replyResult.isErr()) {
+      return Result.err(replyResult.error);
+    }
+
     log.info("Question reply sent, plugin will handle events");
+    return Result.ok(undefined);
   }
 
   /**
@@ -1048,22 +1054,19 @@ export class LinearEventProcessor {
     workdir: string,
     mode: AgentMode,
     log: Logger,
-  ): Promise<void> {
+  ): Promise<Result<void, Error>> {
     log.info("Received response while permission pending", {
       requestId: pending.requestId,
       responseLength: userResponse.length,
       permission: pending.permission,
     });
 
-    // Map user responses to permission reply types
     const permissionOptions = ["Approve", "Approve Always", "Reject"];
     const matchedOption = matchOption(userResponse, permissionOptions, {
       getLabel: (option) => option,
     });
 
     if (!matchedOption) {
-      // User response doesn't match any option - they're ignoring the permission
-      // Reject the permission and send as a regular follow-up prompt
       log.info(
         "User response doesn't match any permission option - rejecting and treating as new prompt",
         {
@@ -1071,9 +1074,15 @@ export class LinearEventProcessor {
         },
       );
 
-      await this.opencode.replyPermission(pending.requestId, "reject", workdir);
-      await this.sessions.deletePendingPermission(linearSessionId);
-      await this.sendFollowUpPrompt(
+      const rejected = await this.opencode.replyPermission(pending.requestId, "reject", workdir);
+      if (rejected.isErr()) {
+        return Result.err(rejected.error);
+      }
+      const removed = await this.sessions.deletePendingPermission(linearSessionId);
+      if (removed.isErr()) {
+        return Result.err(removed.error);
+      }
+      return this.sendFollowUpPrompt(
         userResponse,
         opencodeSessionId,
         linearSessionId,
@@ -1081,10 +1090,8 @@ export class LinearEventProcessor {
         mode,
         log,
       );
-      return;
     }
 
-    // Map the option to the OpenCode reply type
     let reply: "once" | "always" | "reject";
     if (matchedOption === "Approve") {
       reply = "once";
@@ -1100,23 +1107,18 @@ export class LinearEventProcessor {
       reply,
     });
 
-    // Reply to the permission request
     const replyResult = await this.opencode.replyPermission(pending.requestId, reply, workdir);
-
-    // Clean up pending permission regardless of result
-    await this.sessions.deletePendingPermission(linearSessionId);
-
-    if (Result.isError(replyResult)) {
-      log.error("Failed to reply to permission", {
-        error: replyResult.error.message,
-        errorType: replyResult.error._tag,
-      });
-      await this.linear.postError(linearSessionId, replyResult.error);
-      return;
+    const removed = await this.sessions.deletePendingPermission(linearSessionId);
+    if (removed.isErr()) {
+      return Result.err(removed.error);
     }
 
-    // Reply sent - plugin handles subsequent events
+    if (replyResult.isErr()) {
+      return Result.err(replyResult.error);
+    }
+
     log.info("Permission reply sent, plugin will handle events", { reply });
+    return Result.ok(undefined);
   }
 
   /**
@@ -1129,10 +1131,10 @@ export class LinearEventProcessor {
     workdir: string,
     mode: AgentMode,
     log: Logger,
-  ): Promise<void> {
+  ): Promise<Result<void, Error>> {
     if (userResponse.length === 0) {
       log.info("Empty follow-up response, skipping prompt");
-      return;
+      return Result.ok(undefined);
     }
 
     log.info("Sending follow-up prompt", {
@@ -1140,8 +1142,7 @@ export class LinearEventProcessor {
       mode,
     });
 
-    // Send prompt (fire-and-forget - plugin handles events)
-    await this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log);
+    return this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log);
   }
 
   private buildWorktreeName(issue: WorktreeIssue, linearSessionId: string): string {

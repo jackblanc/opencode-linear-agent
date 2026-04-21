@@ -6,6 +6,7 @@ import { describe, test, expect } from "bun:test";
 
 import type { PendingQuestion } from "../../src/state/schema";
 
+import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
 import { LinearEventProcessor } from "../../src/linear-event-processor/LinearEventProcessor";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
 import { SessionRepository } from "../../src/state/SessionRepository";
@@ -229,7 +230,7 @@ describe("LinearEventProcessor.process", () => {
     await harness.processor.process(createEvent("prompted", "Merge immediately"));
 
     expect(harness.opencodeCalls.replyQuestion).toEqual([[["Ship now"]]]);
-    expect(await harness.repository.getPendingQuestion("linear-session-1")).toBeNull();
+    expect((await harness.repository.getPendingQuestion("linear-session-1")).isErr()).toBe(true);
   });
 
   test("prompts for project selection when repo label is missing", async () => {
@@ -238,7 +239,12 @@ describe("LinearEventProcessor.process", () => {
     await harness.processor.process(createEvent("created"));
 
     const pending = await harness.repository.getPendingRepoSelection("linear-session-1");
-    expect(pending?.options).toEqual([
+    expect(Result.isOk(pending)).toBe(true);
+    if (Result.isError(pending)) {
+      return;
+    }
+
+    expect(pending.value.options).toEqual([
       {
         label: "linear-agent",
         projectId: "project-1",
@@ -280,21 +286,23 @@ describe("LinearEventProcessor.process", () => {
       },
     ]);
     expect(harness.opencodeCalls.listProjects).toBe(0);
-    expect(await harness.repository.getPendingRepoSelection("linear-session-1")).toBeNull();
+    expect((await harness.repository.getPendingRepoSelection("linear-session-1")).isErr()).toBe(
+      true,
+    );
     const saved = await harness.repository.get("linear-session-1");
-    expect(saved).not.toBeNull();
-    if (saved === null) {
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isError(saved)) {
       return;
     }
 
-    expect(saved.linearSessionId).toBe("linear-session-1");
-    expect(saved.opencodeSessionId).toBe("opencode-1");
-    expect(saved.organizationId).toBe("org-1");
-    expect(saved.issueId).toBe("issue-1");
-    expect(saved.projectId).toBe("project-1");
-    expect(saved.branchName).toBe("feature/code-1");
-    expect(saved.workdir).toBe("/repos/opencode-linear-agent/.worktrees/code-1");
-    expect(typeof saved.lastActivityTime).toBe("number");
+    expect(saved.value.linearSessionId).toBe("linear-session-1");
+    expect(saved.value.opencodeSessionId).toBe("opencode-1");
+    expect(saved.value.organizationId).toBe("org-1");
+    expect(saved.value.issueId).toBe("issue-1");
+    expect(saved.value.projectId).toBe("project-1");
+    expect(saved.value.branchName).toBe("feature/code-1");
+    expect(saved.value.workdir).toBe("/repos/opencode-linear-agent/.worktrees/code-1");
+    expect(typeof saved.value.lastActivityTime).toBe("number");
   });
 
   test("reuses stored project session for prompted follow-ups", async () => {
@@ -450,5 +458,29 @@ describe("LinearEventProcessor.process", () => {
     expect(harness.linearCalls.elicitations[0]?.body).toContain(
       "No OpenCode project matches `repo:jackblanc/missing-repo`.",
     );
+  });
+
+  test("posts one error when project startup session lookup fails", async () => {
+    const harness = createProcessorHarness({
+      labels: [{ id: "label-1", name: "repo:opencode-linear-agent" }],
+    });
+    let reads = 0;
+    const error = new KvIoError({ path: "session", operation: "read", reason: "disk full" });
+
+    Object.defineProperty(harness.repository, "get", {
+      value: async () => {
+        reads += 1;
+        const result = await Promise.resolve(
+          reads === 1
+            ? Result.err(new KvNotFoundError({ key: "linear-session-1" }))
+            : Result.err(error),
+        );
+        return result;
+      },
+    });
+
+    await harness.processor.process(createEvent("created"));
+
+    expect(harness.linearCalls.errors).toEqual([error.message]);
   });
 });
