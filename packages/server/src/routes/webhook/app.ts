@@ -93,6 +93,7 @@ export function createWebhookApp(
       );
     }
     const webhookPayload = webhookPayloadResult.value;
+    log.info("Linear webhook payload:\n" + JSON.stringify(webhookPayload, null, 2));
 
     if (
       config.linearOrganizationId &&
