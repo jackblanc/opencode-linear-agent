@@ -22,19 +22,21 @@ export const oauthStateRecordSchema = z.object({
 
 export type OAuthStateRecord = z.infer<typeof oauthStateRecordSchema>;
 
+// Linear Issue ID (UUID) -> OpenCode Project ID + Workspace ID
+export const issueProjectWorkspaceSchema = z.object({
+  workspaceID: z.string(), // UUID
+});
+export type IssueProjectWorkspace = z.infer<typeof issueProjectWorkspaceSchema>;
+
+// Linear's Agent Session ID -> OpenCode's Session ID
 export const sessionStateSchema = z.object({
   opencodeSessionId: z.string(),
-  linearSessionId: z.string(),
   organizationId: z.string(),
-  issueId: z.string(),
-  projectId: z.string(),
-  branchName: z.string(),
-  workdir: z.string(),
-  lastActivityTime: z.number(),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;
 
+// OpenCode's Session ID -> Linear's Agent Session ID
 export const sessionByOpencodeRecordSchema = z.object({
   linearSessionId: z.string(),
 });

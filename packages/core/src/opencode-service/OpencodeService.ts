@@ -81,6 +81,25 @@ export class OpencodeService {
     });
   }
 
+  async createWorkspaceInProject(
+    projectDirectory: string,
+    branchName: string,
+    linearIssueId: string,
+  ) {
+    const result = await this.client.experimental.workspace.create({
+      directory: projectDirectory,
+      branch: branchName,
+      extra: { linearIssueId },
+    });
+
+    if (!result.data) {
+      const errorDetails = this.extractErrorDetails(result.error);
+      return Result.err(new OpencodeUnknownError({ reason: errorDetails }));
+    }
+
+    return Result.ok(result.data);
+  }
+
   async removeWorktree(directory: string): Promise<Result<void, OpencodeServiceError>> {
     const result = await this.client.worktree.remove({
       worktreeRemoveInput: { directory },
@@ -132,6 +151,20 @@ export class OpencodeService {
   ): Promise<Result<OpencodeSessionResult, OpencodeServiceError>> {
     const result = await this.client.session.create({
       directory,
+    });
+
+    if (!result.data) {
+      return Result.err(mapOpencodeError(result.error));
+    }
+
+    return Result.ok({ id: result.data.id });
+  }
+
+  async createSessionInWorkspace(
+    workspaceID: string,
+  ): Promise<Result<OpencodeSessionResult, OpencodeServiceError>> {
+    const result = await this.client.session.create({
+      workspace: workspaceID,
     });
 
     if (!result.data) {
@@ -210,13 +243,11 @@ export class OpencodeService {
    */
   async prompt(
     sessionID: string,
-    directory: string,
     parts: Array<{ type: "text"; text: string }>,
     agent?: string,
   ): Promise<Result<void, OpencodeServiceError>> {
     const result = await this.client.session.promptAsync({
       sessionID,
-      directory,
       parts,
       agent,
     });
