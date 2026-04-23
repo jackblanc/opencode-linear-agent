@@ -13,17 +13,13 @@ import type { OpencodeServiceError } from "./errors";
 
 import { mapOpencodeError, getOpencodeErrorMessage, OpencodeUnknownError } from "./errors";
 
-/**
- * Worktree creation result
- */
-interface WorktreeResult {
+interface OpencodeWorkspaceResult {
+  id: string;
   directory: string;
-  branch: string;
+  branch: string | null;
+  projectId: string;
 }
 
-/**
- * Session creation/retrieval result
- */
 interface OpencodeSessionResult {
   id: string;
 }
@@ -57,17 +53,16 @@ export class OpencodeService {
     return this.client;
   }
 
-  /**
-   * Create a worktree
-   */
-  async createWorktree(
+  async createWorkspace(
     directory: string,
-    name: string,
-    startCommand?: string,
-  ): Promise<Result<WorktreeResult, OpencodeServiceError>> {
-    const result = await this.client.worktree.create({
+    branchName: string | null,
+    issueId?: string,
+  ): Promise<Result<OpencodeWorkspaceResult, OpencodeServiceError>> {
+    const result = await this.client.experimental.workspace.create({
       directory,
-      worktreeCreateInput: { name, startCommand },
+      type: "worktree",
+      branch: branchName,
+      extra: issueId ? { issueId } : null,
     });
 
     if (!result.data) {
@@ -75,15 +70,21 @@ export class OpencodeService {
       return Result.err(new OpencodeUnknownError({ reason: errorDetails }));
     }
 
+    if (!result.data.directory) {
+      return Result.err(new OpencodeUnknownError({ reason: "Workspace missing directory" }));
+    }
+
     return Result.ok({
+      id: result.data.id,
       directory: result.data.directory,
       branch: result.data.branch,
+      projectId: result.data.projectID,
     });
   }
 
-  async removeWorktree(directory: string): Promise<Result<void, OpencodeServiceError>> {
-    const result = await this.client.worktree.remove({
-      worktreeRemoveInput: { directory },
+  async removeWorkspace(workspaceId: string): Promise<Result<void, OpencodeServiceError>> {
+    const result = await this.client.experimental.workspace.remove({
+      id: workspaceId,
     });
 
     if (result.error) {
@@ -122,16 +123,13 @@ export class OpencodeService {
     return Result.ok(result.data);
   }
 
-  /**
-   * Create a new session
-   *
-   * Title is not passed - OpenCode auto-generates titles based on the first prompt
-   */
   async createSession(
     directory: string,
+    workspaceId?: string,
   ): Promise<Result<OpencodeSessionResult, OpencodeServiceError>> {
     const result = await this.client.session.create({
       directory,
+      workspace: workspaceId,
     });
 
     if (!result.data) {

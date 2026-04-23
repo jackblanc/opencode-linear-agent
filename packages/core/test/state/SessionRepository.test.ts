@@ -5,7 +5,7 @@ import type { PendingPermission, PendingQuestion, SessionState } from "../../src
 
 import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
 import { sessionByOpencodeRecordSchema } from "../../src/state/schema";
-import { SessionRepository } from "../../src/state/SessionRepository";
+import { deleteSessionState, saveSessionState } from "../../src/state/session-state";
 import { FailingKeyValueStore } from "./FailingKeyValueStore";
 import { createInMemoryAgentState } from "./InMemoryAgentNamespace";
 import { MemoryKeyValueStore } from "./MemoryKeyValueStore";
@@ -24,15 +24,14 @@ function createSessionState(overrides: Partial<SessionState> = {}): SessionState
   };
 }
 
-describe("SessionRepository", () => {
+describe("session-state helpers", () => {
   test("saves canonical session and opencode index", async () => {
     const agentState = createInMemoryAgentState();
-    const repo = new SessionRepository(agentState);
     const state = createSessionState();
 
-    await repo.save(state);
+    await saveSessionState(agentState, state);
 
-    expect(await repo.get("linear-1")).toEqual(Result.ok(state));
+    expect(await agentState.session.get("linear-1")).toEqual(Result.ok(state));
     expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
       Result.ok({ linearSessionId: "linear-1" }),
     );
@@ -40,10 +39,9 @@ describe("SessionRepository", () => {
 
   test("updates opencode index when session id changes", async () => {
     const agentState = createInMemoryAgentState();
-    const repo = new SessionRepository(agentState);
 
-    await repo.save(createSessionState());
-    await repo.save(createSessionState({ opencodeSessionId: "opencode-2" }));
+    await saveSessionState(agentState, createSessionState());
+    await saveSessionState(agentState, createSessionState({ opencodeSessionId: "opencode-2" }));
 
     expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "opencode-1" })),
@@ -55,7 +53,6 @@ describe("SessionRepository", () => {
 
   test("deletes session index and pending records on cleanup", async () => {
     const agentState = createInMemoryAgentState();
-    const repo = new SessionRepository(agentState);
     const question: PendingQuestion = {
       requestId: "q-1",
       opencodeSessionId: "opencode-1",
@@ -78,9 +75,9 @@ describe("SessionRepository", () => {
       createdAt: Date.now(),
     };
 
-    await repo.save(createSessionState());
-    await repo.savePendingQuestion(question);
-    await repo.savePendingPermission(permission);
+    await saveSessionState(agentState, createSessionState());
+    await agentState.question.put("linear-1", question);
+    await agentState.permission.put("linear-1", permission);
     await agentState.repoSelection.put("linear-1", {
       linearSessionId: "linear-1",
       issueId: "issue-1",
@@ -88,21 +85,21 @@ describe("SessionRepository", () => {
       createdAt: Date.now(),
     });
 
-    await repo.delete("linear-1");
+    await deleteSessionState(agentState, "linear-1");
 
-    expect(await repo.get("linear-1")).toEqual(
+    expect(await agentState.session.get("linear-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "linear-1" })),
     );
     expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "opencode-1" })),
     );
-    expect(await repo.getPendingQuestion("linear-1")).toEqual(
+    expect(await agentState.question.get("linear-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "linear-1" })),
     );
-    expect(await repo.getPendingPermission("linear-1")).toEqual(
+    expect(await agentState.permission.get("linear-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "linear-1" })),
     );
-    expect(await repo.getPendingRepoSelection("linear-1")).toEqual(
+    expect(await agentState.repoSelection.get("linear-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "linear-1" })),
     );
   });
@@ -112,18 +109,18 @@ describe("SessionRepository", () => {
     const failingIndex = new FailingKeyValueStore(
       new MemoryKeyValueStore(sessionByOpencodeRecordSchema),
     );
-    const repo = new SessionRepository({
+    const state = {
       ...agentState,
       sessionByOpencode: failingIndex,
-    });
+    };
 
     failingIndex.failOnce(
       "put",
       new KvIoError({ path: "index", operation: "put", reason: "disk full" }),
     );
 
-    expect((await repo.save(createSessionState())).isErr()).toBe(true);
-    expect(await repo.get("linear-1")).toEqual(
+    expect((await saveSessionState(state, createSessionState())).isErr()).toBe(true);
+    expect(await state.session.get("linear-1")).toEqual(
       Result.err(new KvNotFoundError({ key: "linear-1" })),
     );
   });
@@ -133,13 +130,13 @@ describe("SessionRepository", () => {
     const failingIndex = new FailingKeyValueStore(
       new MemoryKeyValueStore(sessionByOpencodeRecordSchema),
     );
-    const repo = new SessionRepository({
+    const state = {
       ...agentState,
       sessionByOpencode: failingIndex,
-    });
+    };
 
     const original = createSessionState();
-    await repo.save(original);
+    await saveSessionState(state, original);
 
     const updated = createSessionState({ opencodeSessionId: "opencode-2" });
     failingIndex.failOnce(
@@ -147,8 +144,8 @@ describe("SessionRepository", () => {
       new KvIoError({ path: "index", operation: "put", reason: "disk full" }),
     );
 
-    expect((await repo.save(updated)).isErr()).toBe(true);
-    expect(await repo.get("linear-1")).toEqual(Result.ok(original));
+    expect((await saveSessionState(state, updated)).isErr()).toBe(true);
+    expect(await state.session.get("linear-1")).toEqual(Result.ok(original));
     expect(await failingIndex.get("opencode-1")).toEqual(
       Result.ok({ linearSessionId: "linear-1" }),
     );

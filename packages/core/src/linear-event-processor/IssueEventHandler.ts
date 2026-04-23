@@ -1,8 +1,9 @@
 import type { LinearService } from "../linear-service/LinearService";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
-import type { SessionRepository } from "../state/SessionRepository";
+import type { AgentStateNamespace } from "../state/root";
 
 import { KvNotFoundError } from "../kv/errors";
+import { deleteSessionState } from "../state/session-state";
 import { Log } from "../utils/logger";
 
 type CleanupIssueStateType = "completed" | "canceled";
@@ -27,8 +28,8 @@ interface IssueCleanupWebhookPayload {
 export class IssueEventHandler {
   constructor(
     private readonly linear: LinearService,
-    private readonly opencode: Pick<OpencodeService, "abortSession" | "removeWorktree">,
-    private readonly repository: SessionRepository,
+    private readonly opencode: Pick<OpencodeService, "abortSession" | "removeWorkspace">,
+    private readonly agentState: AgentStateNamespace,
   ) {}
 
   async process(event: IssueCleanupWebhookPayload): Promise<void> {
@@ -46,6 +47,15 @@ export class IssueEventHandler {
       .tag("issueId", event.data.id)
       .tag("stateType", issueStateType);
 
+    const workspace = await this.agentState.issueWorkspace.get(event.data.id);
+    if (workspace.isErr() && !KvNotFoundError.is(workspace.error)) {
+      log.warn("Failed to load issue workspace state for cleanup", {
+        error: workspace.error.message,
+        errorType: workspace.error._tag,
+      });
+      throw workspace.error;
+    }
+
     const sessionIdsResult = await this.getIssueSessionIdsWithRetry(event.data.id, log);
     if (sessionIdsResult.isErr()) {
       log.warn("Failed to load issue sessions from Linear", {
@@ -56,8 +66,8 @@ export class IssueEventHandler {
     }
     const sessionIds = sessionIdsResult.value;
 
-    if (sessionIds.length === 0) {
-      log.info("No sessions found for issue cleanup");
+    if (sessionIds.length === 0 && workspace.isErr()) {
+      log.info("No sessions or workspace found for issue cleanup");
       return;
     }
 
@@ -65,9 +75,11 @@ export class IssueEventHandler {
       sessionCount: sessionIds.length,
     });
 
+    let canRemoveWorkspace = true;
+
     for (const linearSessionId of sessionIds) {
       const sessionLog = log.tag("sessionId", linearSessionId);
-      const state = await this.repository.get(linearSessionId);
+      const state = await this.agentState.session.get(linearSessionId);
       if (state.isErr()) {
         if (!KvNotFoundError.is(state.error)) {
           sessionLog.warn("Failed to load session state for cleanup", {
@@ -94,18 +106,8 @@ export class IssueEventHandler {
         });
       }
 
-      const removeResult = await this.opencode.removeWorktree(session.workdir);
-      if (removeResult.isErr()) {
-        sessionLog.warn("Failed to remove OpenCode worktree", {
-          branchName: session.branchName,
-          workdir: session.workdir,
-          error: removeResult.error.message,
-          errorType: removeResult.error._tag,
-        });
-        continue;
-      }
-
       if (!abortSucceeded) {
+        canRemoveWorkspace = false;
         sessionLog.warn("OpenCode abort failed; preserving session state for retry", {
           branchName: session.branchName,
           workdir: session.workdir,
@@ -113,7 +115,7 @@ export class IssueEventHandler {
         continue;
       }
 
-      const removed = await this.repository.delete(linearSessionId);
+      const removed = await deleteSessionState(this.agentState, linearSessionId);
       if (removed.isErr()) {
         sessionLog.warn("Failed to delete session state after cleanup", {
           error: removed.error.message,
@@ -126,6 +128,34 @@ export class IssueEventHandler {
         branchName: session.branchName,
         workdir: session.workdir,
       });
+    }
+
+    if (!canRemoveWorkspace || workspace.isErr()) {
+      log.info("Skipping workspace cleanup", {
+        hasWorkspace: workspace.isOk(),
+        canRemoveWorkspace,
+      });
+      return;
+    }
+
+    const removeResult = await this.opencode.removeWorkspace(workspace.value.workspaceId);
+    if (removeResult.isErr()) {
+      log.warn("Failed to remove OpenCode workspace", {
+        workspaceId: workspace.value.workspaceId,
+        error: removeResult.error.message,
+        errorType: removeResult.error._tag,
+      });
+      return;
+    }
+
+    const cleared = await this.agentState.issueWorkspace.delete(event.data.id);
+    if (cleared.isErr()) {
+      log.warn("Failed to delete issue workspace state after cleanup", {
+        workspaceId: workspace.value.workspaceId,
+        error: cleared.error.message,
+        errorType: cleared.error._tag,
+      });
+      throw cleared.error;
     }
 
     log.info("Issue cleanup complete");

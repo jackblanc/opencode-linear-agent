@@ -1,8 +1,8 @@
 import type {
   ApplicationConfig,
+  AgentStateNamespace,
   OAuthStateRepository,
   AuthRepository,
-  SessionRepository,
   OpencodeService,
 } from "@opencode-linear-agent/core";
 
@@ -14,15 +14,15 @@ import { createWebhookApp } from "./routes/webhook/app";
 
 export function createApp(
   config: ApplicationConfig,
+  agentState: AgentStateNamespace,
   oauthStateRepository: OAuthStateRepository,
   authRepository: AuthRepository,
-  sessionRepository: SessionRepository,
   opencode: OpencodeService,
 ) {
   const app = new Hono();
 
   const oauth = createOAuthApp(config, oauthStateRepository, authRepository);
-  const webhook = createWebhookApp(config, authRepository, sessionRepository, opencode);
+  const webhook = createWebhookApp(config, authRepository, agentState, opencode);
 
   app.use(logger());
 

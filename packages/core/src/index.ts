@@ -20,10 +20,15 @@ export { OAuthStateRepository } from "./state/OAuthStateRepository";
 export { AuthRepository } from "./state/AuthRepository";
 export type { AuthRepositoryError } from "./state/AuthRepository";
 export { AuthAccessTokenExpiredError } from "./state/AuthRepository";
-export { SessionRepository } from "./state/SessionRepository";
 /** @public */
-export type { SessionState, PendingRepoSelection, RepoSelectionOption } from "./state/schema";
+export type {
+  IssueWorkspace,
+  SessionState,
+  PendingRepoSelection,
+  RepoSelectionOption,
+} from "./state/schema";
 export { createFileAgentState } from "./state/root";
+export type { AgentStateNamespace } from "./state/root";
 export { KvNotFoundError } from "./kv/errors";
 
 // Util Module

@@ -41,6 +41,16 @@ export const sessionByOpencodeRecordSchema = z.object({
 
 export type SessionByOpencodeRecord = z.infer<typeof sessionByOpencodeRecordSchema>;
 
+export const issueWorkspaceSchema = z.object({
+  projectId: z.string(),
+  projectDirectory: z.string(),
+  workspaceId: z.string(),
+  workspaceDirectory: z.string(),
+  branchName: z.string(),
+});
+
+export type IssueWorkspace = z.infer<typeof issueWorkspaceSchema>;
+
 // Annotation is necessary to align with OpenCode's SDK type
 const questionInfoSchema: z.ZodType<QuestionInfo> = z.object({
   question: z.string(),

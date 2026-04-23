@@ -6,6 +6,7 @@ import { basename } from "node:path";
 
 import type { LinearService } from "../linear-service/LinearService";
 import type { OpencodeService } from "../opencode-service/OpencodeService";
+import type { AgentStateNamespace } from "../state/root";
 import type {
   PendingPermission,
   PendingQuestion,
@@ -13,7 +14,6 @@ import type {
   RepoSelectionOption,
   SessionState,
 } from "../state/schema";
-import type { SessionRepository } from "../state/SessionRepository";
 import type { AgentMode } from "../utils/determineAgentMode";
 import type { Logger } from "../utils/logger";
 
@@ -21,7 +21,7 @@ import { KvNotFoundError } from "../kv/errors";
 import { LinearForbiddenError } from "../linear-service/errors";
 import { findRepoLabel, parseRepoLabel } from "../linear-service/label-parser";
 import { buildCreatedPrompt } from "../session/PromptBuilder";
-import { SessionManager } from "../session/SessionManager";
+import { saveSessionState } from "../state/session-state";
 import { determineAgentMode } from "../utils/determineAgentMode";
 import { base64Encode } from "../utils/encode";
 import { Log } from "../utils/logger";
@@ -316,25 +316,22 @@ function toStartupEvent(
  * This class is platform-agnostic and receives all dependencies via constructor injection.
  * Uses OpenCode's native worktree and project APIs.
  *
- * Delegates to specialized managers:
- * - SessionManager: OpenCode session lifecycle
- * - PromptBuilder: Context injection and prompt construction
+ * Uses shared issue workspaces and direct state storage.
+ * PromptBuilder handles context injection and prompt construction.
  */
 export class LinearEventProcessor {
-  private readonly sessionManager: SessionManager;
   private readonly config: LinearEventProcessorConfig;
 
   constructor(
+    private readonly agentState: AgentStateNamespace,
     private readonly opencode: OpencodeService,
     private readonly linear: LinearService,
-    private readonly sessions: SessionRepository,
     config: LinearEventProcessorConfig,
   ) {
     this.config = {
       ...DEFAULT_CONFIG,
       ...config,
     };
-    this.sessionManager = new SessionManager(opencode, sessions);
   }
 
   /**
@@ -378,7 +375,7 @@ export class LinearEventProcessor {
           return Result.ok(undefined);
         }
 
-        const pendingSelection = await this.sessions.getPendingRepoSelection(linearSessionId);
+        const pendingSelection = await this.agentState.repoSelection.get(linearSessionId);
         if (pendingSelection.isOk()) {
           yield* Result.await(this.handleRepoSelectionPrompt(event, pendingSelection.value, log));
           return Result.ok(undefined);
@@ -387,7 +384,7 @@ export class LinearEventProcessor {
           return Result.err(pendingSelection.error);
         }
 
-        const sessionState = await this.sessions.get(linearSessionId);
+        const sessionState = await this.agentState.session.get(linearSessionId);
         if (sessionState.isOk() && action === "prompted") {
           log.info("Using existing session project", {
             projectId: sessionState.value.projectId,
@@ -508,16 +505,55 @@ export class LinearEventProcessor {
         }
 
         let workdir = sessionState?.workdir;
-        let branchName = sessionState?.branchName;
+        let branchName: string | null = sessionState?.branchName ?? null;
+        let opencodeSessionId = sessionState?.opencodeSessionId;
+        let isNewSession = false;
 
-        if (!workdir || !branchName || sessionState?.projectId !== project.id) {
-          yield* Result.await(this.linear.postStageActivity(linearSessionId, "git_setup"));
-          const worktreeName = this.buildWorktreeName(issue, linearSessionId);
-          const worktree = yield* Result.await(
-            this.opencode.createWorktree(project.worktree, worktreeName),
+        if (
+          !workdir ||
+          !branchName ||
+          !opencodeSessionId ||
+          sessionState?.projectId !== project.id
+        ) {
+          if (!issueId) {
+            return Result.err(new Error("Missing issue id"));
+          }
+
+          const workspace = yield* Result.await(
+            this.getOrCreateIssueWorkspace(
+              issueId,
+              project,
+              issue.branchName ?? null,
+              linearSessionId,
+              log,
+            ),
           );
-          workdir = worktree.directory;
-          branchName = worktree.branch;
+
+          branchName = workspace.branchName;
+          workdir = workspace.workspaceDirectory;
+
+          const session = yield* Result.await(
+            this.opencode.createSession(workdir, workspace.workspaceId),
+          );
+
+          opencodeSessionId = session.id;
+          isNewSession = true;
+
+          const saved: SessionState = {
+            linearSessionId,
+            opencodeSessionId,
+            organizationId: this.config.organizationId,
+            issueId,
+            projectId: workspace.projectId,
+            branchName,
+            workdir,
+            lastActivityTime: Date.now(),
+          };
+
+          yield* Result.await(saveSessionState(this.agentState, saved));
+        } else {
+          const session = yield* Result.await(this.opencode.getSession(opencodeSessionId, workdir));
+          opencodeSessionId = session.id;
         }
 
         let mode: AgentMode = "build";
@@ -556,29 +592,17 @@ export class LinearEventProcessor {
             `Branch: \`${branchName}\``,
           ),
         );
-
-        const session = yield* Result.await(
-          this.sessionManager.getOrCreateSession(
-            linearSessionId,
-            this.config.organizationId,
-            issueId ?? "unknown",
-            project.id,
-            branchName,
-            workdir,
-          ),
-        );
-        const opencodeSessionId = session.opencodeSessionId;
         const sessionLog = log
           .tag("opencodeSession", opencodeSessionId.slice(0, 8))
           .tag("opencodeSessionId", opencodeSessionId);
 
         sessionLog.info("OpenCode session ready", {
           workdir,
-          isNewSession: session.isNewSession,
+          isNewSession,
         });
 
-        const opencodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
         const encodedWorkdir = base64Encode(workdir);
+        const opencodeBaseUrl = this.config.opencodeUrl ?? "http://localhost:4096";
         const externalLink = `${opencodeBaseUrl}/${encodedWorkdir}/session/${opencodeSessionId}`;
         yield* Result.await(this.linear.setExternalLink(linearSessionId, externalLink));
 
@@ -605,6 +629,112 @@ export class LinearEventProcessor {
     );
   }
 
+  private async getOrCreateIssueWorkspace(
+    issueId: string,
+    project: ProjectRef,
+    branchName: string | null,
+    linearSessionId: string,
+    log: Logger,
+  ): Promise<
+    Result<
+      {
+        workspaceId: string;
+        workspaceDirectory: string;
+        branchName: string;
+        projectId: string;
+      },
+      Error
+    >
+  > {
+    return this.withIssueWorkspaceLock(issueId, async () =>
+      Result.gen(
+        async function* (this: LinearEventProcessor) {
+          const existing = await this.agentState.issueWorkspace.get(issueId);
+          if (existing.isOk()) {
+            if (existing.value.projectId !== project.id) {
+              return Result.err(
+                new Error(
+                  `Repo switch unsupported for issue ${issueId}: ${existing.value.projectId} -> ${project.id}`,
+                ),
+              );
+            }
+
+            return Result.ok({
+              workspaceId: existing.value.workspaceId,
+              workspaceDirectory: existing.value.workspaceDirectory,
+              branchName: existing.value.branchName,
+              projectId: existing.value.projectId,
+            });
+          }
+          if (!KvNotFoundError.is(existing.error)) {
+            return Result.err(existing.error);
+          }
+
+          yield* Result.await(this.linear.postStageActivity(linearSessionId, "git_setup"));
+          const created = yield* Result.await(
+            this.opencode.createWorkspace(project.worktree, branchName, issueId),
+          );
+
+          const createdBranch = created.branch ?? branchName;
+          if (!createdBranch) {
+            const removed = await this.opencode.removeWorkspace(created.id);
+            if (removed.isErr()) {
+              log.warn("Failed to rollback workspace after missing branch", {
+                issueId,
+                workspaceId: created.id,
+                error: removed.error.message,
+                errorType: removed.error._tag,
+              });
+            }
+            return Result.err(new Error(`Missing branch name for issue workspace ${issueId}`));
+          }
+
+          const stored = await this.agentState.issueWorkspace.put(issueId, {
+            projectId: project.id,
+            projectDirectory: project.worktree,
+            workspaceId: created.id,
+            workspaceDirectory: created.directory,
+            branchName: createdBranch,
+          });
+          if (stored.isErr()) {
+            const removed = await this.opencode.removeWorkspace(created.id);
+            if (removed.isErr()) {
+              log.warn("Failed to rollback workspace after state write error", {
+                issueId,
+                workspaceId: created.id,
+                error: removed.error.message,
+                errorType: removed.error._tag,
+              });
+            }
+            return Result.err(stored.error);
+          }
+
+          return Result.ok({
+            workspaceId: created.id,
+            workspaceDirectory: created.directory,
+            branchName: createdBranch,
+            projectId: project.id,
+          });
+        }.bind(this),
+      ),
+    );
+  }
+
+  private async withIssueWorkspaceLock<V>(
+    issueId: string,
+    fn: () => Promise<Result<V, Error>>,
+  ): Promise<Result<V, Error>> {
+    const locked = await this.agentState.issueWorkspace.withOperationLock(
+      `issue-workspace:${issueId}`,
+      async () => Result.ok(await fn()),
+    );
+    if (locked.isErr()) {
+      return Result.err(locked.error);
+    }
+
+    return locked.value;
+  }
+
   private async promptForRepoSelection(
     linearSessionId: string,
     issueId: string,
@@ -622,7 +752,7 @@ export class LinearEventProcessor {
           createdAt: Date.now(),
         };
 
-        yield* Result.await(this.sessions.savePendingRepoSelection(pendingSelection));
+        yield* Result.await(this.agentState.repoSelection.put(linearSessionId, pendingSelection));
         yield* Result.await(
           this.linear.postElicitation(
             linearSessionId,
@@ -738,7 +868,7 @@ export class LinearEventProcessor {
             log,
           ),
         );
-        yield* Result.await(this.sessions.deletePendingRepoSelection(linearSessionId));
+        yield* Result.await(this.agentState.repoSelection.delete(linearSessionId));
 
         return Result.ok(undefined);
       }.bind(this),
@@ -858,7 +988,7 @@ export class LinearEventProcessor {
     return Result.gen(
       async function* (this: LinearEventProcessor) {
         const userResponse = extractPromptedUserResponse(event);
-        const pendingPermission = await this.sessions.getPendingPermission(linearSessionId);
+        const pendingPermission = await this.agentState.permission.get(linearSessionId);
         if (pendingPermission.isOk()) {
           yield* Result.await(
             this.handlePermissionResponse(
@@ -877,7 +1007,7 @@ export class LinearEventProcessor {
           return Result.err(pendingPermission.error);
         }
 
-        const pendingQuestion = await this.sessions.getPendingQuestion(linearSessionId);
+        const pendingQuestion = await this.agentState.question.get(linearSessionId);
         if (pendingQuestion.isErr() && !KvNotFoundError.is(pendingQuestion.error)) {
           return Result.err(pendingQuestion.error);
         }
@@ -949,7 +1079,7 @@ export class LinearEventProcessor {
 
     if (answerIndex === -1) {
       log.warn("All questions already answered - clearing pending and treating as follow-up");
-      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      const removed = await this.agentState.question.delete(linearSessionId);
       if (removed.isErr()) {
         return Result.err(removed.error);
       }
@@ -966,7 +1096,7 @@ export class LinearEventProcessor {
     const currentQuestion = pending.questions[answerIndex];
     if (!currentQuestion) {
       log.warn("No current question found at index", { answerIndex });
-      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      const removed = await this.agentState.question.delete(linearSessionId);
       if (removed.isErr()) {
         return Result.err(removed.error);
       }
@@ -983,7 +1113,7 @@ export class LinearEventProcessor {
         response: userResponse.slice(0, 100),
         availableOptions: currentQuestion.options.map((o) => o.label),
       });
-      const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+      const removed = await this.agentState.question.delete(linearSessionId);
       if (removed.isErr()) {
         return Result.err(removed.error);
       }
@@ -1007,7 +1137,7 @@ export class LinearEventProcessor {
     const allAnswered = pending.answers.every((a) => a !== null);
 
     if (!allAnswered) {
-      const saved = await this.sessions.savePendingQuestion(pending);
+      const saved = await this.agentState.question.put(linearSessionId, pending);
       if (saved.isErr()) {
         return Result.err(saved.error);
       }
@@ -1024,7 +1154,7 @@ export class LinearEventProcessor {
 
     const answers = pending.answers.filter((a): a is string[] => a !== null);
     const replyResult = await this.opencode.replyQuestion(pending.requestId, answers, workdir);
-    const removed = await this.sessions.deletePendingQuestion(linearSessionId);
+    const removed = await this.agentState.question.delete(linearSessionId);
     if (removed.isErr()) {
       return Result.err(removed.error);
     }
@@ -1078,7 +1208,7 @@ export class LinearEventProcessor {
       if (rejected.isErr()) {
         return Result.err(rejected.error);
       }
-      const removed = await this.sessions.deletePendingPermission(linearSessionId);
+      const removed = await this.agentState.permission.delete(linearSessionId);
       if (removed.isErr()) {
         return Result.err(removed.error);
       }
@@ -1108,7 +1238,7 @@ export class LinearEventProcessor {
     });
 
     const replyResult = await this.opencode.replyPermission(pending.requestId, reply, workdir);
-    const removed = await this.sessions.deletePendingPermission(linearSessionId);
+    const removed = await this.agentState.permission.delete(linearSessionId);
     if (removed.isErr()) {
       return Result.err(removed.error);
     }
@@ -1143,15 +1273,5 @@ export class LinearEventProcessor {
     });
 
     return this.executePrompt(opencodeSessionId, linearSessionId, workdir, userResponse, mode, log);
-  }
-
-  private buildWorktreeName(issue: WorktreeIssue, linearSessionId: string): string {
-    const shortLinearSessionId = linearSessionId.slice(0, 8).toLowerCase();
-    if (issue.branchName) {
-      return `${shortLinearSessionId}-${issue.branchName}`;
-    }
-
-    const safeIssue = issue.identifier.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    return `${safeIssue}-${shortLinearSessionId}`;
   }
 }

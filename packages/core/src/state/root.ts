@@ -2,6 +2,7 @@ import type { KeyValueStore } from "../kv/types";
 import type {
   OAuthStateRecord,
   AuthRecord,
+  IssueWorkspace,
   SessionState,
   SessionByOpencodeRecord,
   PendingPermission,
@@ -13,6 +14,7 @@ import { FileKeyValueStore } from "../kv/file/FileKeyValueStore";
 import { getStateRootDirectoryPath } from "../utils/paths";
 import {
   authRecordSchema,
+  issueWorkspaceSchema,
   oauthStateRecordSchema,
   pendingPermissionSchema,
   pendingQuestionSchema,
@@ -24,6 +26,7 @@ import {
 export interface AgentStateNamespace {
   auth: KeyValueStore<AuthRecord>;
   oauthState: KeyValueStore<OAuthStateRecord>;
+  issueWorkspace: KeyValueStore<IssueWorkspace>;
   session: KeyValueStore<SessionState>;
   sessionByOpencode: KeyValueStore<SessionByOpencodeRecord>;
   question: KeyValueStore<PendingQuestion>;
@@ -37,6 +40,7 @@ export function createFileAgentState(
   return {
     auth: new FileKeyValueStore("auth", path, authRecordSchema),
     oauthState: new FileKeyValueStore("oauth-state", path, oauthStateRecordSchema),
+    issueWorkspace: new FileKeyValueStore("issue-workspace", path, issueWorkspaceSchema),
     session: new FileKeyValueStore("session", path, sessionStateSchema),
     sessionByOpencode: new FileKeyValueStore(
       "session-by-opencode",

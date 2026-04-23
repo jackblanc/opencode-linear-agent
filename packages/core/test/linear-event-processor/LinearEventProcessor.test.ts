@@ -6,10 +6,10 @@ import { describe, test, expect } from "bun:test";
 
 import type { PendingQuestion } from "../../src/state/schema";
 
-import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
+import { KvIoError } from "../../src/kv/errors";
 import { LinearEventProcessor } from "../../src/linear-event-processor/LinearEventProcessor";
 import { OpencodeService } from "../../src/opencode-service/OpencodeService";
-import { SessionRepository } from "../../src/state/SessionRepository";
+import { saveSessionState } from "../../src/state/session-state";
 import { TestLinearService } from "../linear-service/TestLinearService";
 import { createInMemoryAgentState } from "../state/InMemoryAgentNamespace";
 
@@ -28,6 +28,7 @@ type IssueLabel = { id: string; name: string };
 function createEvent(
   action: "created" | "prompted",
   promptContext = "Please help.",
+  sessionId = "linear-session-1",
 ): AgentSessionEventWebhookPayload {
   return {
     type: "AgentSessionEvent",
@@ -39,7 +40,7 @@ function createEvent(
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     webhookTimestamp: Date.now(),
     agentSession: {
-      id: "linear-session-1",
+      id: sessionId,
       type: "AgentSession",
       appUserId: "app-user-1",
       organizationId: "org-1",
@@ -90,7 +91,7 @@ function createProcessorHarness(options?: {
   projects?: typeof defaultProjects;
   labels?: IssueLabel[];
 }) {
-  const repository = new SessionRepository(createInMemoryAgentState());
+  const agentState = createInMemoryAgentState();
   const linearCalls: {
     elicitations: Array<{ body: string; metadata: unknown }>;
     repoLabels: Array<{ issueId: string; labelName: string }>;
@@ -145,19 +146,20 @@ function createProcessorHarness(options?: {
   const opencode = new OpencodeService(createOpencodeClient({ baseUrl: "http://localhost:4096" }));
   const opencodeCalls: {
     listProjects: number;
-    createWorktree: Array<{ directory: string; name: string }>;
-    createSession: string[];
+    createWorkspace: Array<{ directory: string; branchName: string | null; issueId?: string }>;
+    createSession: Array<{ directory: string; workspaceId?: string }>;
     getSession: Array<{ sessionID: string; directory: string }>;
     replyQuestion: Array<Array<Array<string>>>;
     prompt: Array<{ workdir: string; text: string }>;
   } = {
     listProjects: 0,
-    createWorktree: [],
+    createWorkspace: [],
     createSession: [],
     getSession: [],
     replyQuestion: [],
     prompt: [],
   };
+  let createdSessions = 0;
 
   Object.defineProperty(opencode, "listProjects", {
     value: () => {
@@ -165,21 +167,24 @@ function createProcessorHarness(options?: {
       return Result.ok({ projects });
     },
   });
-  Object.defineProperty(opencode, "createWorktree", {
-    value: async (directory: string, name: string) => {
-      opencodeCalls.createWorktree.push({ directory, name });
+  Object.defineProperty(opencode, "createWorkspace", {
+    value: async (directory: string, branchName: string | null, issueId?: string) => {
+      opencodeCalls.createWorkspace.push({ directory, branchName, issueId });
       return Promise.resolve(
         Result.ok({
-          directory: "/repos/opencode-linear-agent/.worktrees/code-1",
+          id: "workspace-1",
+          directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
           branch: "feature/code-1",
+          projectId: "project-1",
         }),
       );
     },
   });
   Object.defineProperty(opencode, "createSession", {
-    value: async (directory: string) => {
-      opencodeCalls.createSession.push(directory);
-      return Promise.resolve(Result.ok({ id: "opencode-1" }));
+    value: async (directory: string, workspaceId?: string) => {
+      createdSessions += 1;
+      opencodeCalls.createSession.push({ directory, workspaceId });
+      return Promise.resolve(Result.ok({ id: `opencode-${createdSessions}` }));
     },
   });
   Object.defineProperty(opencode, "getSession", {
@@ -205,17 +210,17 @@ function createProcessorHarness(options?: {
     },
   });
 
-  const processor = new LinearEventProcessor(opencode, linear, repository, {
+  const processor = new LinearEventProcessor(agentState, opencode, linear, {
     organizationId: "org-1",
   });
 
-  return { repository, processor, linearCalls, opencodeCalls };
+  return { agentState, processor, linear, linearCalls, opencodeCalls };
 }
 
 describe("LinearEventProcessor.process", () => {
   test("maps pending question replies to canonical option labels", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.save({
+    await saveSessionState(harness.agentState, {
       linearSessionId: "linear-session-1",
       opencodeSessionId: "opencode-1",
       organizationId: "org-1",
@@ -225,12 +230,12 @@ describe("LinearEventProcessor.process", () => {
       workdir: "/tmp/workdir",
       lastActivityTime: Date.now(),
     });
-    await harness.repository.savePendingQuestion(createPendingQuestion());
+    await harness.agentState.question.put("linear-session-1", createPendingQuestion());
 
     await harness.processor.process(createEvent("prompted", "Merge immediately"));
 
     expect(harness.opencodeCalls.replyQuestion).toEqual([[["Ship now"]]]);
-    expect((await harness.repository.getPendingQuestion("linear-session-1")).isErr()).toBe(true);
+    expect((await harness.agentState.question.get("linear-session-1")).isErr()).toBe(true);
   });
 
   test("prompts for project selection when repo label is missing", async () => {
@@ -238,7 +243,7 @@ describe("LinearEventProcessor.process", () => {
 
     await harness.processor.process(createEvent("created"));
 
-    const pending = await harness.repository.getPendingRepoSelection("linear-session-1");
+    const pending = await harness.agentState.repoSelection.get("linear-session-1");
     expect(Result.isOk(pending)).toBe(true);
     if (Result.isError(pending)) {
       return;
@@ -258,7 +263,7 @@ describe("LinearEventProcessor.process", () => {
 
   test("uses selected project and saves canonical project id", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.savePendingRepoSelection({
+    await harness.agentState.repoSelection.put("linear-session-1", {
       linearSessionId: "linear-session-1",
       issueId: "issue-1",
       options: [
@@ -279,17 +284,22 @@ describe("LinearEventProcessor.process", () => {
     expect(harness.linearCalls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
     ]);
-    expect(harness.opencodeCalls.createWorktree).toEqual([
+    expect(harness.opencodeCalls.createWorkspace).toEqual([
       {
         directory: "/repos/opencode-linear-agent",
-        name: "linear-s-jack/code-1-linear-branch",
+        branchName: "jack/code-1-linear-branch",
+        issueId: "issue-1",
+      },
+    ]);
+    expect(harness.opencodeCalls.createSession).toEqual([
+      {
+        directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
+        workspaceId: "workspace-1",
       },
     ]);
     expect(harness.opencodeCalls.listProjects).toBe(0);
-    expect((await harness.repository.getPendingRepoSelection("linear-session-1")).isErr()).toBe(
-      true,
-    );
-    const saved = await harness.repository.get("linear-session-1");
+    expect((await harness.agentState.repoSelection.get("linear-session-1")).isErr()).toBe(true);
+    const saved = await harness.agentState.session.get("linear-session-1");
     expect(Result.isOk(saved)).toBe(true);
     if (Result.isError(saved)) {
       return;
@@ -301,13 +311,13 @@ describe("LinearEventProcessor.process", () => {
     expect(saved.value.issueId).toBe("issue-1");
     expect(saved.value.projectId).toBe("project-1");
     expect(saved.value.branchName).toBe("feature/code-1");
-    expect(saved.value.workdir).toBe("/repos/opencode-linear-agent/.worktrees/code-1");
+    expect(saved.value.workdir).toBe("/repos/opencode-linear-agent/.workspaces/workspace-1");
     expect(typeof saved.value.lastActivityTime).toBe("number");
   });
 
   test("reuses stored project session for prompted follow-ups", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.save({
+    await saveSessionState(harness.agentState, {
       linearSessionId: "linear-session-1",
       opencodeSessionId: "opencode-1",
       organizationId: "org-1",
@@ -320,7 +330,7 @@ describe("LinearEventProcessor.process", () => {
 
     await harness.processor.process(createEvent("prompted", "continue"));
 
-    expect(harness.opencodeCalls.createWorktree).toEqual([]);
+    expect(harness.opencodeCalls.createWorkspace).toEqual([]);
     expect(harness.opencodeCalls.getSession).toEqual([
       { sessionID: "opencode-1", directory: "/tmp/existing-worktree" },
     ]);
@@ -332,7 +342,7 @@ describe("LinearEventProcessor.process", () => {
 
   test("matches exact repo label in pending selection", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.savePendingRepoSelection({
+    await harness.agentState.repoSelection.put("linear-session-1", {
       linearSessionId: "linear-session-1",
       issueId: "issue-1",
       options: [
@@ -357,7 +367,7 @@ describe("LinearEventProcessor.process", () => {
 
   test("matches org-qualified repo label in pending selection", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.savePendingRepoSelection({
+    await harness.agentState.repoSelection.put("linear-session-1", {
       linearSessionId: "linear-session-1",
       issueId: "issue-1",
       options: [
@@ -384,7 +394,7 @@ describe("LinearEventProcessor.process", () => {
 
   test("matches plain repository name in pending selection", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.savePendingRepoSelection({
+    await harness.agentState.repoSelection.put("linear-session-1", {
       linearSessionId: "linear-session-1",
       issueId: "issue-1",
       options: [
@@ -409,7 +419,7 @@ describe("LinearEventProcessor.process", () => {
 
   test("re-prompts on invalid pending selection reply", async () => {
     const harness = createProcessorHarness();
-    await harness.repository.savePendingRepoSelection({
+    await harness.agentState.repoSelection.put("linear-session-1", {
       linearSessionId: "linear-session-1",
       issueId: "issue-1",
       options: [
@@ -439,12 +449,71 @@ describe("LinearEventProcessor.process", () => {
 
     await harness.processor.process(createEvent("created"));
 
-    expect(harness.opencodeCalls.createWorktree).toEqual([
+    expect(harness.opencodeCalls.createWorkspace).toEqual([
       {
         directory: "/repos/opencode-linear-agent",
-        name: "linear-s-jack/code-1-linear-branch",
+        branchName: "jack/code-1-linear-branch",
+        issueId: "issue-1",
       },
     ]);
+  });
+
+  test("reuses issue workspace for a second Linear session on the same issue", async () => {
+    const harness = createProcessorHarness({
+      labels: [{ id: "label-1", name: "repo:opencode-linear-agent" }],
+    });
+
+    await harness.processor.process(createEvent("created", "Please help.", "linear-session-1"));
+    await harness.processor.process(createEvent("created", "Please help.", "linear-session-2"));
+
+    expect(harness.opencodeCalls.createWorkspace).toHaveLength(1);
+    expect(harness.opencodeCalls.createSession).toEqual([
+      {
+        directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
+        workspaceId: "workspace-1",
+      },
+      {
+        directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
+        workspaceId: "workspace-1",
+      },
+    ]);
+
+    const saved = await harness.agentState.session.get("linear-session-2");
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isOk(saved)) {
+      expect(saved.value.opencodeSessionId).toBe("opencode-2");
+      expect(saved.value.workdir).toBe("/repos/opencode-linear-agent/.workspaces/workspace-1");
+    }
+  });
+
+  test("reuses stored workspace branch when later issue fetch has no branch", async () => {
+    const harness = createProcessorHarness({
+      labels: [{ id: "label-1", name: "repo:opencode-linear-agent" }],
+    });
+
+    await harness.processor.process(createEvent("created", "Please help.", "linear-session-1"));
+
+    Object.defineProperty(harness.linear, "getIssue", {
+      value: async () =>
+        Promise.resolve(
+          Result.ok({
+            id: "issue-1",
+            identifier: "CODE-1",
+            branchName: undefined,
+            title: "x",
+            description: undefined,
+            url: "https://linear.app",
+          }),
+        ),
+    });
+
+    await harness.processor.process(createEvent("created", "Please help.", "linear-session-2"));
+
+    const saved = await harness.agentState.session.get("linear-session-2");
+    expect(Result.isOk(saved)).toBe(true);
+    if (Result.isOk(saved)) {
+      expect(saved.value.branchName).toBe("feature/code-1");
+    }
   });
 
   test("includes unmatched repo label in no-match prompt", async () => {
@@ -464,18 +533,11 @@ describe("LinearEventProcessor.process", () => {
     const harness = createProcessorHarness({
       labels: [{ id: "label-1", name: "repo:opencode-linear-agent" }],
     });
-    let reads = 0;
     const error = new KvIoError({ path: "session", operation: "read", reason: "disk full" });
 
-    Object.defineProperty(harness.repository, "get", {
+    Object.defineProperty(harness.agentState.session, "get", {
       value: async () => {
-        reads += 1;
-        const result = await Promise.resolve(
-          reads === 1
-            ? Result.err(new KvNotFoundError({ key: "linear-session-1" }))
-            : Result.err(error),
-        );
-        return result;
+        return Promise.resolve(Result.err(error));
       },
     });
 

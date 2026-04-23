@@ -5,8 +5,8 @@ import type {
 } from "@linear/sdk/webhooks";
 import type {
   ApplicationConfig,
+  AgentStateNamespace,
   AuthRepository,
-  SessionRepository,
   OpencodeService,
 } from "@opencode-linear-agent/core";
 
@@ -25,9 +25,9 @@ import { getLinearAccessToken } from "../../token";
 
 interface WebhookHandlerFactories {
   createProcessor?: (
+    agentState: AgentStateNamespace,
     opencode: OpencodeService,
     linear: LinearService,
-    sessions: SessionRepository,
     config: { organizationId: string; opencodeUrl?: string },
   ) => { process(event: AgentSessionEventWebhookPayload): Promise<void> };
 }
@@ -57,7 +57,7 @@ function isSupportedWebhook(
 export function createWebhookApp(
   config: ApplicationConfig,
   authRepository: AuthRepository,
-  sessionRepository: SessionRepository,
+  agentState: AgentStateNamespace,
   opencode: OpencodeService,
   factories?: WebhookHandlerFactories,
 ) {
@@ -131,8 +131,8 @@ export function createWebhookApp(
         opencodeUrl: config.opencodeServerUrl,
       };
       const handler =
-        factories?.createProcessor?.(opencode, linearService, sessionRepository, processorConfig) ??
-        new LinearEventProcessor(opencode, linearService, sessionRepository, processorConfig);
+        factories?.createProcessor?.(agentState, opencode, linearService, processorConfig) ??
+        new LinearEventProcessor(agentState, opencode, linearService, processorConfig);
       handler.process(webhookPayload).catch((error: unknown) => {
         log.error("Agent session dispatch failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -141,7 +141,7 @@ export function createWebhookApp(
     }
 
     if (isIssueWebhook(webhookPayload)) {
-      const issueHandler = new IssueEventHandler(linearService, opencode, sessionRepository);
+      const issueHandler = new IssueEventHandler(linearService, opencode, agentState);
       issueHandler.process(webhookPayload).catch((error: unknown) => {
         log.error("Issue event processing failed", {
           error: error instanceof Error ? error.message : String(error),

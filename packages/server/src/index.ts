@@ -6,7 +6,6 @@ import {
   createFileAgentState,
   Log,
   AuthRepository,
-  SessionRepository,
   OpencodeService,
   OAuthStateRepository,
   getOAuthAccessTokenFilePath,
@@ -83,7 +82,6 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
 
   const oauthStateRepository = new OAuthStateRepository(agentState);
   const authRepository = new AuthRepository(agentState, writeTokenToFile);
-  const sessionRepository = new SessionRepository(agentState);
 
   // Start proactive token refresh so the plugin always has a valid token
   startTokenRefreshTimer(config, authRepository);
@@ -93,7 +91,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
     baseUrl: config.opencodeServerUrl,
   });
   const opencode = new OpencodeService(opencodeClient);
-  const app = createApp(config, oauthStateRepository, authRepository, sessionRepository, opencode);
+  const app = createApp(config, agentState, oauthStateRepository, authRepository, opencode);
   const server = Bun.serve({
     port: config.webhookServerPort,
     fetch: app.fetch,
