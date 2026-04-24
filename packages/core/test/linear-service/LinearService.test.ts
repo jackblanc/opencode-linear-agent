@@ -1,5 +1,5 @@
 import { Result } from "better-result";
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 
 import { LinearService } from "../../src/linear-service/LinearService";
 

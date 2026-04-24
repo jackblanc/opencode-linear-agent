@@ -1,33 +1,52 @@
 import type { ApplicationConfig } from "@opencode-linear-agent/core";
 
+import { serve } from "@hono/node-server";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import {
-  loadApplicationConfig,
-  createFileAgentState,
-  Log,
   AuthRepository,
+  createFileAgentState,
+  getOAuthAccessTokenFilePath,
+  loadApplicationConfig,
+  Log,
   OpencodeService,
   OAuthStateRepository,
-  getOAuthAccessTokenFilePath,
 } from "@opencode-linear-agent/core";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { createApp } from "./app";
-import { initializeServerLogging, registerShutdownHandlers } from "./logging";
 import { refreshAccessToken } from "./token";
+
+type NodeServer = ReturnType<typeof serve>;
+
+export interface ServerRuntime {
+  server: NodeServer;
+  tokenRefreshTimer: NodeJS.Timeout | null;
+}
+
+function getBoundPort(server: NodeServer, fallback: number): number {
+  const address = server.address();
+  if (address && typeof address === "object") {
+    return address.port;
+  }
+
+  return fallback;
+}
 
 /**
  * Proactively refresh the access token on a timer so the plugin
  * always has a valid token in the shared store.
  * Token TTL is 23 hours; we refresh every 20 hours for a 3-hour buffer.
  */
-function startTokenRefreshTimer(config: ApplicationConfig, authRepository: AuthRepository): void {
+function startTokenRefreshTimer(
+  config: ApplicationConfig,
+  authRepository: AuthRepository,
+): NodeJS.Timeout | null {
   const log = Log.create({ service: "token-refresh" });
   const organizationId = config.linearOrganizationId;
   if (!organizationId) {
     log.info("Skipping proactive token refresh (LINEAR_ORGANIZATION_ID not set)");
-    return;
+    return null;
   }
   const oauthConfig = {
     clientId: config.linearClientId,
@@ -50,23 +69,30 @@ function startTokenRefreshTimer(config: ApplicationConfig, authRepository: AuthR
   };
 
   void refresh();
-  setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+  return setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
 }
 
-/**
- * Main entry point
- */
-async function main(): Promise<ReturnType<typeof Bun.serve>> {
-  const serverLoggingRuntime = await initializeServerLogging();
-  const log = serverLoggingRuntime.log;
+async function closeServer(server: NodeServer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
 
+      resolve();
+    });
+  });
+}
+
+export function startServer(config?: ApplicationConfig): ServerRuntime {
+  const log = Log.create({ service: "startup" });
   log.info("Starting Linear OpenCode Agent (Local)");
-  // Load configuration
-  const config = loadApplicationConfig();
+  const loadedConfig = config ?? loadApplicationConfig();
   log.info("Configuration loaded", {
-    port: config.webhookServerPort,
-    publicHostname: config.webhookServerPublicHostname,
-    opencodeUrl: config.opencodeServerUrl,
+    port: loadedConfig.webhookServerPort,
+    publicHostname: loadedConfig.webhookServerPublicHostname,
+    opencodeUrl: loadedConfig.opencodeServerUrl,
   });
 
   const agentState = createFileAgentState();
@@ -84,23 +110,23 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   const authRepository = new AuthRepository(agentState, writeTokenToFile);
 
   // Start proactive token refresh so the plugin always has a valid token
-  startTokenRefreshTimer(config, authRepository);
+  const tokenRefreshTimer = startTokenRefreshTimer(loadedConfig, authRepository);
 
   // Start server
   const opencodeClient = createOpencodeClient({
-    baseUrl: config.opencodeServerUrl,
+    baseUrl: loadedConfig.opencodeServerUrl,
   });
   const opencode = new OpencodeService(opencodeClient);
-  const app = createApp(config, agentState, oauthStateRepository, authRepository, opencode);
-  const server = Bun.serve({
-    port: config.webhookServerPort,
+  const app = createApp(loadedConfig, agentState, oauthStateRepository, authRepository, opencode);
+  const server = serve({
+    port: loadedConfig.webhookServerPort,
     fetch: app.fetch,
   });
-  registerShutdownHandlers(server, serverLoggingRuntime);
 
-  const webhookServerUrl = `https://${config.webhookServerPublicHostname}`;
+  const localPort = getBoundPort(server, loadedConfig.webhookServerPort);
+  const webhookServerUrl = `https://${loadedConfig.webhookServerPublicHostname}`;
   log.info("Server started", {
-    port: config.webhookServerPort,
+    port: localPort,
     webhookServerUrl,
     webhookUrl: `${webhookServerUrl}/api/webhook/linear`,
     oauthUrl: `${webhookServerUrl}/api/oauth/authorize`,
@@ -110,7 +136,7 @@ async function main(): Promise<ReturnType<typeof Bun.serve>> {
   process.stdout.write(`
 Linear OpenCode Agent (Local) running!
 
-  Local:    http://localhost:${config.webhookServerPort}
+  Local:    http://localhost:${localPort}
   Public:   ${webhookServerUrl}
 
   Webhook URL: ${webhookServerUrl}/api/webhook/linear
@@ -119,19 +145,16 @@ Linear OpenCode Agent (Local) running!
 Make sure OpenCode is running: opencode serve
 `);
 
-  return server;
+  return {
+    server,
+    tokenRefreshTimer,
+  };
 }
 
-if (import.meta.main) {
-  void main().catch(async (error: unknown) => {
-    const log = Log.create({ service: "startup" });
-    log.error("Failed to start server", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+export async function stopServer(runtime: ServerRuntime): Promise<void> {
+  if (runtime.tokenRefreshTimer) {
+    clearInterval(runtime.tokenRefreshTimer);
+  }
 
-    await Log.shutdown();
-
-    process.exit(1);
-  });
+  await closeServer(runtime.server);
 }

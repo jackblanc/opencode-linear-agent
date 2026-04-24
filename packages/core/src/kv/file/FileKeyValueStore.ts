@@ -1,7 +1,8 @@
 import type { z } from "zod";
 
 import { Result } from "better-result";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { KvError } from "../errors";
@@ -47,19 +48,19 @@ export class FileKeyValueStore<T extends object> implements KeyValueStore<T> {
       return Result.err(path.error);
     }
 
-    const file = Bun.file(path.value);
-    if (!(await file.exists())) {
-      return Result.err(new KvNotFoundError({ key }));
-    }
-
     const text = await Result.tryPromise({
       try: async () => readFile(path.value, "utf8"),
-      catch: (error) =>
-        new KvIoError({
+      catch: (error) => {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+          return new KvNotFoundError({ key });
+        }
+
+        return new KvIoError({
           path: path.value,
           operation: "read",
           reason: error instanceof Error ? error.message : String(error),
-        }),
+        });
+      },
     });
     if (Result.isError(text)) {
       return Result.err(text.error);
@@ -74,7 +75,32 @@ export class FileKeyValueStore<T extends object> implements KeyValueStore<T> {
       return Result.err(path.error);
     }
 
-    return Result.ok(await Bun.file(path.value).exists());
+    const exists = await Result.tryPromise({
+      try: async () => {
+        await access(path.value, constants.F_OK);
+        return true;
+      },
+      catch: (error): KvError | false => {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+          return false;
+        }
+
+        return new KvIoError({
+          path: path.value,
+          operation: "access",
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
+    if (Result.isError(exists)) {
+      if (exists.error === false) {
+        return Result.ok(false);
+      }
+
+      return Result.err(exists.error);
+    }
+
+    return Result.ok(exists.value);
   }
 
   async put(key: string, value: T): Promise<Result<void, KvError>> {

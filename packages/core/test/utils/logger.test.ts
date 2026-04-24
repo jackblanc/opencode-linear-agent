@@ -1,14 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { Log, createFileLogSink } from "../../src/utils/logger";
+import { Log } from "../../src/utils/logger";
 
-let dir = "";
 let lines: string[] = [];
 let stderrWrite: typeof process.stderr.write;
-let sink: Awaited<ReturnType<typeof createFileLogSink>> | null = null;
 
 beforeEach(() => {
   lines = [];
@@ -21,24 +17,17 @@ beforeEach(() => {
     },
     writable: true,
   });
-  Log.init({ level: "INFO", sink: null });
+  Log.configure({ level: "INFO" });
 });
 
-afterEach(async () => {
+afterEach(() => {
   Object.defineProperty(process.stderr, "write", {
     configurable: true,
     value: stderrWrite,
     writable: true,
   });
-  if (sink) {
-    await sink.close();
-    sink = null;
-  }
-  Log.init({ level: "INFO", sink: null });
-  if (dir) {
-    await rm(dir, { recursive: true, force: true });
-    dir = "";
-  }
+  Log.configure({ level: "INFO" });
+  vi.restoreAllMocks();
 });
 
 describe("Log", () => {
@@ -72,7 +61,7 @@ describe("Log", () => {
   test("time logs explicit operation timing", async () => {
     const stop = Log.create({ service: "timer" }).time("sync");
 
-    await Bun.sleep(10);
+    await sleep(10);
     stop({ status: "ok" });
 
     const out = lines.join("");
@@ -99,51 +88,15 @@ describe("Log", () => {
     expect(out).toContain("9n");
   });
 
-  test("server logging writes to file and stderr", async () => {
-    dir = await mkdtemp(join(tmpdir(), "opencode-linear-agent-logger-"));
-    const path = join(dir, "server.log");
-    sink = await createFileLogSink(path);
+  test("level config filters lower priority logs", () => {
+    Log.configure({ level: "WARN" });
+    const log = Log.create({ service: "level" });
 
-    Log.init({ level: "INFO", sink });
-    Log.create({ service: "server" }).info("hello", { count: 1 });
-    await sink.flush();
+    log.info("hidden");
+    log.warn("shown");
 
-    const text = await readFile(path, "utf8");
-
-    expect(lines.join("")).toContain("service=server count=1 hello");
-    expect(text).toContain("service=server count=1 hello");
-  });
-
-  test("Log.init closes replaced sink", async () => {
-    let closes = 0;
-    const a = {
-      write(): void {
-        return;
-      },
-      async flush(): Promise<void> {
-        return Promise.resolve();
-      },
-      async close(): Promise<void> {
-        closes += 1;
-        return Promise.resolve();
-      },
-    };
-    const b = {
-      write(): void {
-        return;
-      },
-      async flush(): Promise<void> {
-        return Promise.resolve();
-      },
-      async close(): Promise<void> {
-        return Promise.resolve();
-      },
-    };
-
-    Log.init({ sink: a });
-    Log.init({ sink: b });
-    await Bun.sleep(0);
-
-    expect(closes).toBe(1);
+    const out = lines.join("");
+    expect(out).not.toContain("hidden");
+    expect(out).toContain("shown");
   });
 });

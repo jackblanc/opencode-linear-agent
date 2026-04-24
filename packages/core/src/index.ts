@@ -32,6 +32,5 @@ export type { AgentStateNamespace } from "./state/root";
 export { KvNotFoundError } from "./kv/errors";
 
 // Util Module
-export { Log, createFileLogSink } from "./utils/logger";
-export type { LogSink } from "./utils/logger";
-export { getStateRootDirectoryPath, getOAuthAccessTokenFilePath } from "./utils/paths";
+export { Log } from "./utils/logger";
+export { getOAuthAccessTokenFilePath } from "./utils/paths";

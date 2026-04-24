@@ -1,54 +1,51 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import type { ApplicationConfig } from "@opencode-linear-agent/core";
+import type { AddressInfo } from "node:net";
 
-const ROOT = join(import.meta.dir, "..", "..", "..");
-const dirs: string[] = [];
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-async function createDataHome(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "opencode-linear-agent-data-"));
-  dirs.push(dir);
-  return dir;
+import type { ServerRuntime } from "../src/index";
+
+import { startServer, stopServer } from "../src/index";
+
+const config: ApplicationConfig = {
+  webhookServerPublicHostname: "example.com",
+  webhookServerPort: 0,
+  opencodeServerUrl: "http://localhost:4096",
+  linearClientId: "client-id",
+  linearClientSecret: "client-secret",
+  linearWebhookSecret: "test-secret",
+};
+
+let runtime: ServerRuntime | null = null;
+
+function port(address: string | AddressInfo | null): number {
+  if (address && typeof address === "object") {
+    return address.port;
+  }
+
+  throw new Error("server did not bind to an address");
 }
 
-afterEach(async () => {
-  await Promise.all(dirs.splice(0).map(async (dir) => rm(dir, { recursive: true, force: true })));
+beforeEach(() => {
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 });
 
-describe("server index", () => {
-  test("startup failure flushes fatal log to file", async () => {
-    const dataHome = await createDataHome();
-    const configHome = await createDataHome();
-    const proc = Bun.spawn({
-      cmd: ["bun", "packages/server/src/index.ts"],
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        XDG_CONFIG_HOME: configHome,
-        XDG_DATA_HOME: dataHome,
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+afterEach(async () => {
+  if (runtime) {
+    await stopServer(runtime);
+    runtime = null;
+  }
+  vi.restoreAllMocks();
+});
 
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+describe("server runtime", () => {
+  test("starts a Node HTTP server in process", async () => {
+    runtime = startServer(config);
 
-    expect(exitCode).toBe(1);
-    expect(stdout).toBe("");
-    expect(stderr).toContain("Failed to start server");
+    const response = await fetch(`http://127.0.0.1:${port(runtime.server.address())}/missing`);
 
-    const logDir = join(dataHome, "opencode-linear-agent", "log");
-    const files = await readdir(logDir);
-    expect(files).toHaveLength(1);
-
-    const text = await readFile(join(logDir, files[0] ?? ""), "utf8");
-    expect(text).toContain("Starting Linear OpenCode Agent (Local)");
-    expect(text).toContain("Failed to start server");
-    expect(text).toContain("Config file not found");
+    expect(response.status).toBe(404);
+    expect(runtime.tokenRefreshTimer).toBeNull();
   });
 });

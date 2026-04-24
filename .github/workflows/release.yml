@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Verify tag matches package versions
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -62,10 +65,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Build standalone server binary
-        run: mkdir -p dist && bun build ./packages/server/src/index.ts --compile --target=${{ matrix.target }} --outfile=dist/opencode-linear-agent-${{ matrix.suffix }}
+        run: mkdir -p dist && bun build ./packages/server/src/cli.ts --compile --target=${{ matrix.target }} --outfile=dist/opencode-linear-agent-${{ matrix.suffix }}
       - name: Upload server binary
         uses: actions/upload-artifact@v4
         with:
@@ -100,6 +106,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - uses: actions/download-artifact@v4
@@ -197,6 +206,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - uses: actions/download-artifact@v4

@@ -1,5 +1,5 @@
 import { Result } from "better-result";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { OAuthStateRepository } from "../../src/state/OAuthStateRepository";
 import { createInMemoryAgentState } from "./InMemoryAgentNamespace";

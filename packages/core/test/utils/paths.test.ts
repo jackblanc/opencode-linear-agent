@@ -1,6 +1,6 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test, vi } from "vitest";
 
-void mock.module("xdg-basedir", () => ({
+vi.mock("xdg-basedir", () => ({
   xdgConfig: "/tmp/config",
   xdgData: "/tmp/data",
 }));

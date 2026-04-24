@@ -3,8 +3,8 @@ import type { ApplicationConfig } from "@opencode-linear-agent/core";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { AuthRepository, OpencodeService } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
-import { beforeAll, describe, test, expect } from "bun:test";
 import { createHmac } from "node:crypto";
+import { beforeAll, describe, test, expect } from "vitest";
 
 import { createInMemoryAgentState } from "../../../../core/test/state/InMemoryAgentNamespace";
 import { createWebhookApp } from "../../../src/routes/webhook/app";

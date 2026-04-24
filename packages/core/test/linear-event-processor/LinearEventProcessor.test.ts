@@ -2,7 +2,7 @@ import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "vitest";
 
 import type { PendingQuestion } from "../../src/state/schema";
 

@@ -174,7 +174,7 @@ When an issue is completed or canceled, the agent attempts to abort the OpenCode
 - Config: `${XDG_CONFIG_HOME:-$HOME/.config}/opencode-linear-agent/config.json`
 - Shared state root: `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/state`
 - OAuth access token mirror: `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/oauth_access_token.txt`
-- Server logs: `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/server-*.log`
+- Server logs: stderr/stdout of the running process
 
 ## Running In Background
 
@@ -239,7 +239,7 @@ systemctl --user enable --now opencode-linear-agent.service
 journalctl --user -u opencode-linear-agent.service -f
 ```
 
-The agent still writes per-start server logs under `${XDG_DATA_HOME:-$HOME/.local/share}/opencode-linear-agent/log/`.
+The agent writes logs to stderr/stdout. Use launchd, systemd, journalctl, or shell redirection to persist them.
 
 ## References
 

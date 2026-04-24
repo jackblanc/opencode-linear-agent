@@ -17,16 +17,17 @@
     "access": "public"
   },
   "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun --watch run src/index.ts",
+    "start": "bun run build:server && node dist/cli.js",
+    "dev": "bun run start",
     "build": "rm -rf dist && bun run build:server",
-    "build:server": "mkdir -p dist && bun build ./src/index.ts --outdir=dist --target=bun --packages=bundle",
-    "build:bin": "mkdir -p dist && bun build ./src/index.ts --compile --outfile=dist/opencode-linear-agent",
+    "build:server": "mkdir -p dist && bun build ./src/cli.ts --outfile=dist/cli.js --target=node --packages=bundle",
+    "build:bin": "mkdir -p dist && bun build ./src/cli.ts --compile --outfile=dist/opencode-linear-agent",
     "generate:npm": "bun run ./script/generate-npm-packages.ts",
     "postinstall": "node ./postinstall.mjs || true",
     "prepublishOnly": "test -f bin/opencode-linear-agent && test -f postinstall.mjs"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.0",
     "@hono/zod-validator": "0.7.6",
     "hono": "4.12.14"
   },

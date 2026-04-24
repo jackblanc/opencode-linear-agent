@@ -1,6 +1,9 @@
-import { Result } from "better-result";
-import { describe, test, expect } from "bun:test";
+import type { Result as BetterResult } from "better-result";
 
+import { Result } from "better-result";
+import { describe, test, expect } from "vitest";
+
+import type { KvError } from "../../src/kv/errors";
 import type { SessionState } from "../../src/state/schema";
 
 import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
@@ -74,6 +77,15 @@ function createEvent(stateType: string) {
   };
 }
 
+function expectNotFound(result: BetterResult<unknown, KvError>, key: string): void {
+  expect(result.isOk()).toBe(false);
+  if (result.isOk()) {
+    return;
+  }
+
+  expect(result.error).toEqual(new KvNotFoundError({ key }));
+}
+
 describe("IssueEventHandler", () => {
   test("removes workspace and session state when cleanup succeeds", async () => {
     const state = createSessionState();
@@ -101,12 +113,8 @@ describe("IssueEventHandler", () => {
 
     expect(aborts).toEqual([{ sessionID: "opencode-1", directory: "/tmp/worktree-1" }]);
     expect(removes).toEqual(["workspace-1"]);
-    expect(await agentState.session.get("session-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "session-1" })),
-    );
-    expect(await agentState.issueWorkspace.get("issue-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "issue-1" })),
-    );
+    expectNotFound(await agentState.session.get("session-1"), "session-1");
+    expectNotFound(await agentState.issueWorkspace.get("issue-1"), "issue-1");
   });
 
   test("preserves workspace state when workspace removal fails", async () => {
@@ -126,9 +134,7 @@ describe("IssueEventHandler", () => {
 
     await handler.process(createEvent("completed"));
 
-    expect(await agentState.session.get("session-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "session-1" })),
-    );
+    expectNotFound(await agentState.session.get("session-1"), "session-1");
     expect(await agentState.issueWorkspace.get("issue-1")).toEqual(
       Result.ok({
         projectId: "project-1",

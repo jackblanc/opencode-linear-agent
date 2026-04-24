@@ -1,6 +1,9 @@
-import { Result } from "better-result";
-import { describe, expect, test } from "bun:test";
+import type { Result as ResultType } from "better-result";
 
+import { Result } from "better-result";
+import { describe, expect, test } from "vitest";
+
+import type { KvError } from "../../src/kv/errors";
 import type { PendingPermission, PendingQuestion, SessionState } from "../../src/state/schema";
 
 import { KvIoError, KvNotFoundError } from "../../src/kv/errors";
@@ -24,6 +27,15 @@ function createSessionState(overrides: Partial<SessionState> = {}): SessionState
   };
 }
 
+function expectNotFound(result: ResultType<unknown, KvError>, key: string): void {
+  expect(result.isOk()).toBe(false);
+  if (result.isOk()) {
+    return;
+  }
+
+  expect(result.error).toEqual(new KvNotFoundError({ key }));
+}
+
 describe("session-state helpers", () => {
   test("saves canonical session and opencode index", async () => {
     const agentState = createInMemoryAgentState();
@@ -43,9 +55,7 @@ describe("session-state helpers", () => {
     await saveSessionState(agentState, createSessionState());
     await saveSessionState(agentState, createSessionState({ opencodeSessionId: "opencode-2" }));
 
-    expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "opencode-1" })),
-    );
+    expectNotFound(await agentState.sessionByOpencode.get("opencode-1"), "opencode-1");
     expect(await agentState.sessionByOpencode.get("opencode-2")).toEqual(
       Result.ok({ linearSessionId: "linear-1" }),
     );
@@ -87,21 +97,11 @@ describe("session-state helpers", () => {
 
     await deleteSessionState(agentState, "linear-1");
 
-    expect(await agentState.session.get("linear-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "linear-1" })),
-    );
-    expect(await agentState.sessionByOpencode.get("opencode-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "opencode-1" })),
-    );
-    expect(await agentState.question.get("linear-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "linear-1" })),
-    );
-    expect(await agentState.permission.get("linear-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "linear-1" })),
-    );
-    expect(await agentState.repoSelection.get("linear-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "linear-1" })),
-    );
+    expectNotFound(await agentState.session.get("linear-1"), "linear-1");
+    expectNotFound(await agentState.sessionByOpencode.get("opencode-1"), "opencode-1");
+    expectNotFound(await agentState.question.get("linear-1"), "linear-1");
+    expectNotFound(await agentState.permission.get("linear-1"), "linear-1");
+    expectNotFound(await agentState.repoSelection.get("linear-1"), "linear-1");
   });
 
   test("rolls back fresh save when index put fails", async () => {
@@ -120,9 +120,7 @@ describe("session-state helpers", () => {
     );
 
     expect((await saveSessionState(state, createSessionState())).isErr()).toBe(true);
-    expect(await state.session.get("linear-1")).toEqual(
-      Result.err(new KvNotFoundError({ key: "linear-1" })),
-    );
+    expectNotFound(await state.session.get("linear-1"), "linear-1");
   });
 
   test("rolls back update when index put fails, restoring prior state", async () => {
@@ -149,8 +147,6 @@ describe("session-state helpers", () => {
     expect(await failingIndex.get("opencode-1")).toEqual(
       Result.ok({ linearSessionId: "linear-1" }),
     );
-    expect(await failingIndex.get("opencode-2")).toEqual(
-      Result.err(new KvNotFoundError({ key: "opencode-2" })),
-    );
+    expectNotFound(await failingIndex.get("opencode-2"), "opencode-2");
   });
 });

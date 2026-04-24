@@ -1,7 +1,8 @@
 import { Result } from "better-result";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { z } from "zod";
 
 import { writeFileAtomic } from "../../../src/kv/file/atomic";
@@ -10,7 +11,7 @@ import { withFileLock } from "../../../src/kv/file/lock";
 import { encodeKvKey } from "../../../src/kv/key";
 import { createFileAgentState } from "../../../src/state/root";
 
-const TEST_DIR = join(import.meta.dir, ".test-kv");
+let TEST_DIR = "";
 const schema = z.object({ value: z.string() });
 
 function createStore(namespace: string): FileKeyValueStore<{ value: string }> {
@@ -18,12 +19,15 @@ function createStore(namespace: string): FileKeyValueStore<{ value: string }> {
 }
 
 beforeEach(async () => {
-  await rm(TEST_DIR, { recursive: true, force: true });
+  TEST_DIR = await mkdtemp(join(tmpdir(), "opencode-linear-kv-"));
   await mkdir(TEST_DIR, { recursive: true });
 });
 
 afterEach(async () => {
-  await rm(TEST_DIR, { recursive: true, force: true });
+  if (TEST_DIR) {
+    await rm(TEST_DIR, { recursive: true, force: true });
+    TEST_DIR = "";
+  }
 });
 
 describe("KV key encoding", () => {

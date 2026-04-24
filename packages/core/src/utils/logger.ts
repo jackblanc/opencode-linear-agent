@@ -1,7 +1,3 @@
-import type { WriteStream } from "node:fs";
-
-import { createWriteStream } from "node:fs";
-
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
 const levelPriority: Record<LogLevel, number> = {
@@ -19,15 +15,8 @@ const UUID_KEYS = new Set([
   "opencodeSessionId",
 ]);
 
-export interface LogSink {
-  write(line: string): void;
-  flush(): Promise<void>;
-  close(): Promise<void>;
-}
-
 type Runtime = Readonly<{
   level: LogLevel;
-  sink: LogSink | null;
 }>;
 
 export interface Logger {
@@ -42,9 +31,8 @@ export interface Logger {
   ): (extra?: Record<string, unknown>) => void;
 }
 
-interface LogInitOptions {
+interface LogConfigureOptions {
   level?: LogLevel;
-  sink?: LogSink | null;
 }
 
 function parseLevel(value: string | undefined): LogLevel | undefined {
@@ -68,10 +56,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function createRuntime(options: LogInitOptions = {}): Runtime {
+function createRuntime(options: LogConfigureOptions = {}): Runtime {
   return {
     level: options.level ?? parseLevel(process.env["LOG_LEVEL"]) ?? "INFO",
-    sink: options.sink ?? null,
   };
 }
 
@@ -182,9 +169,7 @@ function buildPretty(
 }
 
 function write(line: string): void {
-  const text = `${line}\n`;
-  process.stderr.write(text);
-  runtime.sink?.write(text);
+  process.stderr.write(`${line}\n`);
 }
 
 function createLogger(tags: Record<string, unknown> = {}): Logger {
@@ -229,102 +214,16 @@ function createLogger(tags: Record<string, unknown> = {}): Logger {
   };
 }
 
-function initLogger(options: LogInitOptions = {}): void {
-  const sink = options.sink === undefined ? runtime.sink : options.sink;
-  const oldSink = sink !== runtime.sink ? runtime.sink : null;
-
+function configureLogger(options: LogConfigureOptions = {}): void {
   runtime = createRuntime({
     level: options.level ?? runtime.level,
-    sink,
   });
-
-  if (oldSink) {
-    void oldSink.close().then(
-      () => undefined,
-      () => undefined,
-    );
-  }
-}
-
-async function flushRuntime(): Promise<void> {
-  return runtime.sink?.flush() ?? Promise.resolve();
-}
-
-async function shutdownRuntime(): Promise<void> {
-  const sink = runtime.sink;
-
-  runtime = createRuntime({
-    level: runtime.level,
-    sink: null,
-  });
-
-  await sink?.flush();
-  await sink?.close();
-}
-
-async function waitForOpen(stream: WriteStream): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const open = (): void => {
-      stream.off("error", fail);
-      resolve();
-    };
-
-    const fail = (error: Error): void => {
-      stream.off("open", open);
-      reject(error);
-    };
-
-    stream.once("open", open);
-    stream.once("error", fail);
-  });
-}
-
-export async function createFileLogSink(path: string): Promise<LogSink> {
-  const stream = createWriteStream(path, { flags: "ax" });
-  await waitForOpen(stream);
-
-  let broken = false;
-  stream.on("error", () => {
-    broken = true;
-  });
-
-  return {
-    write(line: string): void {
-      if (!broken) {
-        stream.write(line);
-      }
-    },
-    async flush(): Promise<void> {
-      if (broken) {
-        return Promise.resolve();
-      }
-
-      return new Promise<void>((resolve) => {
-        stream.write("", () => {
-          resolve();
-        });
-      });
-    },
-    async close(): Promise<void> {
-      if (broken) {
-        return Promise.resolve();
-      }
-
-      return new Promise<void>((resolve) => {
-        stream.end(() => {
-          resolve();
-        });
-      });
-    },
-  };
 }
 
 const defaultLogger = createLogger({ service: "default" });
 
 export const Log = {
   create: createLogger,
-  init: initLogger,
-  flush: flushRuntime,
-  shutdown: shutdownRuntime,
+  configure: configureLogger,
   Default: defaultLogger,
 } as const;
