@@ -146,14 +146,14 @@ function createProcessorHarness(options?: {
   const opencode = new OpencodeService(createOpencodeClient({ baseUrl: "http://localhost:4096" }));
   const opencodeCalls: {
     listProjects: number;
-    createWorkspace: Array<{ directory: string; branchName: string | null; issueId?: string }>;
-    createSession: Array<{ directory: string; workspaceId?: string }>;
+    createWorktree: Array<{ directory: string; branchName: string | null; issueId?: string }>;
+    createSession: string[];
     getSession: Array<{ sessionID: string; directory: string }>;
     replyQuestion: Array<Array<Array<string>>>;
     prompt: Array<{ workdir: string; text: string }>;
   } = {
     listProjects: 0,
-    createWorkspace: [],
+    createWorktree: [],
     createSession: [],
     getSession: [],
     replyQuestion: [],
@@ -167,23 +167,21 @@ function createProcessorHarness(options?: {
       return Result.ok({ projects });
     },
   });
-  Object.defineProperty(opencode, "createWorkspace", {
+  Object.defineProperty(opencode, "createWorktree", {
     value: async (directory: string, branchName: string | null, issueId?: string) => {
-      opencodeCalls.createWorkspace.push({ directory, branchName, issueId });
+      opencodeCalls.createWorktree.push({ directory, branchName, issueId });
       return Promise.resolve(
         Result.ok({
-          id: "workspace-1",
           directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
-          branch: "feature/code-1",
-          projectId: "project-1",
+          branch: "opencode/jack-code-1-linear-branch",
         }),
       );
     },
   });
   Object.defineProperty(opencode, "createSession", {
-    value: async (directory: string, workspaceId?: string) => {
+    value: async (directory: string) => {
       createdSessions += 1;
-      opencodeCalls.createSession.push({ directory, workspaceId });
+      opencodeCalls.createSession.push(directory);
       return Promise.resolve(Result.ok({ id: `opencode-${createdSessions}` }));
     },
   });
@@ -284,7 +282,7 @@ describe("LinearEventProcessor.process", () => {
     expect(harness.linearCalls.repoLabels).toEqual([
       { issueId: "issue-1", labelName: "repo:opencode-linear-agent" },
     ]);
-    expect(harness.opencodeCalls.createWorkspace).toEqual([
+    expect(harness.opencodeCalls.createWorktree).toEqual([
       {
         directory: "/repos/opencode-linear-agent",
         branchName: "jack/code-1-linear-branch",
@@ -292,10 +290,7 @@ describe("LinearEventProcessor.process", () => {
       },
     ]);
     expect(harness.opencodeCalls.createSession).toEqual([
-      {
-        directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
-        workspaceId: "workspace-1",
-      },
+      "/repos/opencode-linear-agent/.workspaces/workspace-1",
     ]);
     expect(harness.opencodeCalls.listProjects).toBe(0);
     expect((await harness.agentState.repoSelection.get("linear-session-1")).isErr()).toBe(true);
@@ -310,7 +305,7 @@ describe("LinearEventProcessor.process", () => {
     expect(saved.value.organizationId).toBe("org-1");
     expect(saved.value.issueId).toBe("issue-1");
     expect(saved.value.projectId).toBe("project-1");
-    expect(saved.value.branchName).toBe("feature/code-1");
+    expect(saved.value.branchName).toBe("opencode/jack-code-1-linear-branch");
     expect(saved.value.workdir).toBe("/repos/opencode-linear-agent/.workspaces/workspace-1");
     expect(typeof saved.value.lastActivityTime).toBe("number");
   });
@@ -330,7 +325,7 @@ describe("LinearEventProcessor.process", () => {
 
     await harness.processor.process(createEvent("prompted", "continue"));
 
-    expect(harness.opencodeCalls.createWorkspace).toEqual([]);
+    expect(harness.opencodeCalls.createWorktree).toEqual([]);
     expect(harness.opencodeCalls.getSession).toEqual([
       { sessionID: "opencode-1", directory: "/tmp/existing-worktree" },
     ]);
@@ -449,7 +444,7 @@ describe("LinearEventProcessor.process", () => {
 
     await harness.processor.process(createEvent("created"));
 
-    expect(harness.opencodeCalls.createWorkspace).toEqual([
+    expect(harness.opencodeCalls.createWorktree).toEqual([
       {
         directory: "/repos/opencode-linear-agent",
         branchName: "jack/code-1-linear-branch",
@@ -466,16 +461,10 @@ describe("LinearEventProcessor.process", () => {
     await harness.processor.process(createEvent("created", "Please help.", "linear-session-1"));
     await harness.processor.process(createEvent("created", "Please help.", "linear-session-2"));
 
-    expect(harness.opencodeCalls.createWorkspace).toHaveLength(1);
+    expect(harness.opencodeCalls.createWorktree).toHaveLength(1);
     expect(harness.opencodeCalls.createSession).toEqual([
-      {
-        directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
-        workspaceId: "workspace-1",
-      },
-      {
-        directory: "/repos/opencode-linear-agent/.workspaces/workspace-1",
-        workspaceId: "workspace-1",
-      },
+      "/repos/opencode-linear-agent/.workspaces/workspace-1",
+      "/repos/opencode-linear-agent/.workspaces/workspace-1",
     ]);
 
     const saved = await harness.agentState.session.get("linear-session-2");
@@ -512,7 +501,7 @@ describe("LinearEventProcessor.process", () => {
     const saved = await harness.agentState.session.get("linear-session-2");
     expect(Result.isOk(saved)).toBe(true);
     if (Result.isOk(saved)) {
-      expect(saved.value.branchName).toBe("feature/code-1");
+      expect(saved.value.branchName).toBe("opencode/jack-code-1-linear-branch");
     }
   });
 

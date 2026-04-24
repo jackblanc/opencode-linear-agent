@@ -35,8 +35,7 @@ async function createAgentState(state?: SessionState) {
   await agentState.issueWorkspace.put("issue-1", {
     projectId: "project-1",
     projectDirectory: "/repos/opencode-linear-agent",
-    workspaceId: "workspace-1",
-    workspaceDirectory: "/tmp/workspace-1",
+    worktreeDirectory: "/tmp/workspace-1",
     branchName: "feature/code-1",
   });
   return agentState;
@@ -58,8 +57,7 @@ async function createFailingAgentState(state?: SessionState): Promise<{
   await failingState.issueWorkspace.put("issue-1", {
     projectId: "project-1",
     projectDirectory: "/repos/opencode-linear-agent",
-    workspaceId: "workspace-1",
-    workspaceDirectory: "/tmp/workspace-1",
+    worktreeDirectory: "/tmp/workspace-1",
     branchName: "feature/code-1",
   });
   return { agentState: failingState, sessionStore };
@@ -87,7 +85,7 @@ function expectNotFound(result: BetterResult<unknown, KvError>, key: string): vo
 }
 
 describe("IssueEventHandler", () => {
-  test("removes workspace and session state when cleanup succeeds", async () => {
+  test("removes worktree and session state when cleanup succeeds", async () => {
     const state = createSessionState();
     const agentState = await createAgentState(state);
     const aborts: Array<{ sessionID: string; directory: string }> = [];
@@ -101,8 +99,8 @@ describe("IssueEventHandler", () => {
           aborts.push({ sessionID, directory });
           return Promise.resolve(Result.ok(undefined));
         },
-        removeWorkspace: async (workspaceId: string) => {
-          removes.push(workspaceId);
+        removeWorktree: async (_projectDirectory: string, worktreeDirectory: string) => {
+          removes.push(worktreeDirectory);
           return Promise.resolve(Result.ok(undefined));
         },
       },
@@ -112,12 +110,12 @@ describe("IssueEventHandler", () => {
     await handler.process(createEvent("completed"));
 
     expect(aborts).toEqual([{ sessionID: "opencode-1", directory: "/tmp/worktree-1" }]);
-    expect(removes).toEqual(["workspace-1"]);
+    expect(removes).toEqual(["/tmp/workspace-1"]);
     expectNotFound(await agentState.session.get("session-1"), "session-1");
     expectNotFound(await agentState.issueWorkspace.get("issue-1"), "issue-1");
   });
 
-  test("preserves workspace state when workspace removal fails", async () => {
+  test("preserves worktree state when worktree removal fails", async () => {
     const state = createSessionState();
     const agentState = await createAgentState(state);
     const handler = new IssueEventHandler(
@@ -126,7 +124,7 @@ describe("IssueEventHandler", () => {
       }),
       {
         abortSession: async () => Promise.resolve(Result.ok(undefined)),
-        removeWorkspace: async () =>
+        removeWorktree: async () =>
           Promise.resolve(Result.err(new OpencodeUnknownError({ reason: "busy" }))),
       },
       agentState,
@@ -139,8 +137,7 @@ describe("IssueEventHandler", () => {
       Result.ok({
         projectId: "project-1",
         projectDirectory: "/repos/opencode-linear-agent",
-        workspaceId: "workspace-1",
-        workspaceDirectory: "/tmp/workspace-1",
+        worktreeDirectory: "/tmp/workspace-1",
         branchName: "feature/code-1",
       }),
     );
@@ -158,7 +155,7 @@ describe("IssueEventHandler", () => {
       }),
       {
         abortSession: async () => Promise.resolve(Result.ok(undefined)),
-        removeWorkspace: async () => Promise.resolve(Result.ok(undefined)),
+        removeWorktree: async () => Promise.resolve(Result.ok(undefined)),
       },
       agentState,
     );
@@ -183,7 +180,7 @@ describe("IssueEventHandler", () => {
       }),
       {
         abortSession: async () => Promise.resolve(Result.ok(undefined)),
-        removeWorkspace: async () => Promise.resolve(Result.ok(undefined)),
+        removeWorktree: async () => Promise.resolve(Result.ok(undefined)),
       },
       agentState,
     );
@@ -196,7 +193,7 @@ describe("IssueEventHandler", () => {
     expect(await agentState.session.get("session-1")).toEqual(Result.ok(state));
   });
 
-  test("removes shared workspace once after cleaning multiple sessions", async () => {
+  test("removes shared worktree once after cleaning multiple sessions", async () => {
     const agentState = await createAgentState(createSessionState());
     await saveSessionState(agentState, {
       ...createSessionState(),
@@ -212,8 +209,8 @@ describe("IssueEventHandler", () => {
       }),
       {
         abortSession: async () => Promise.resolve(Result.ok(undefined)),
-        removeWorkspace: async (workspaceId: string) => {
-          removes.push(workspaceId);
+        removeWorktree: async (_projectDirectory: string, worktreeDirectory: string) => {
+          removes.push(worktreeDirectory);
           return Promise.resolve(Result.ok(undefined));
         },
       },
@@ -222,7 +219,7 @@ describe("IssueEventHandler", () => {
 
     await handler.process(createEvent("completed"));
 
-    expect(removes).toEqual(["workspace-1"]);
+    expect(removes).toEqual(["/tmp/workspace-1"]);
   });
 
   test("ignores issue states outside completed and canceled", async () => {
@@ -237,7 +234,7 @@ describe("IssueEventHandler", () => {
           calls.push("abort");
           return Promise.resolve(Result.ok(undefined));
         },
-        removeWorkspace: async () => {
+        removeWorktree: async () => {
           calls.push("remove");
           return Promise.resolve(Result.ok(undefined));
         },

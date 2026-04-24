@@ -44,8 +44,7 @@ export type SessionByOpencodeRecord = z.infer<typeof sessionByOpencodeRecordSche
 export const issueWorkspaceSchema = z.object({
   projectId: z.string(),
   projectDirectory: z.string(),
-  workspaceId: z.string(),
-  workspaceDirectory: z.string(),
+  worktreeDirectory: z.string(),
   branchName: z.string(),
 });
 

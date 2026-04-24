@@ -28,7 +28,7 @@ interface IssueCleanupWebhookPayload {
 export class IssueEventHandler {
   constructor(
     private readonly linear: LinearService,
-    private readonly opencode: Pick<OpencodeService, "abortSession" | "removeWorkspace">,
+    private readonly opencode: Pick<OpencodeService, "abortSession" | "removeWorktree">,
     private readonly agentState: AgentStateNamespace,
   ) {}
 
@@ -138,10 +138,14 @@ export class IssueEventHandler {
       return;
     }
 
-    const removeResult = await this.opencode.removeWorkspace(workspace.value.workspaceId);
+    const removeResult = await this.opencode.removeWorktree(
+      workspace.value.projectDirectory,
+      workspace.value.worktreeDirectory,
+    );
     if (removeResult.isErr()) {
-      log.warn("Failed to remove OpenCode workspace", {
-        workspaceId: workspace.value.workspaceId,
+      log.warn("Failed to remove OpenCode worktree", {
+        projectId: workspace.value.projectId,
+        worktreeDirectory: workspace.value.worktreeDirectory,
         error: removeResult.error.message,
         errorType: removeResult.error._tag,
       });
@@ -150,8 +154,9 @@ export class IssueEventHandler {
 
     const cleared = await this.agentState.issueWorkspace.delete(event.data.id);
     if (cleared.isErr()) {
-      log.warn("Failed to delete issue workspace state after cleanup", {
-        workspaceId: workspace.value.workspaceId,
+      log.warn("Failed to delete issue worktree state after cleanup", {
+        projectId: workspace.value.projectId,
+        worktreeDirectory: workspace.value.worktreeDirectory,
         error: cleared.error.message,
         errorType: cleared.error._tag,
       });

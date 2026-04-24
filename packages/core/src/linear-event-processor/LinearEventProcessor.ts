@@ -519,7 +519,7 @@ export class LinearEventProcessor {
             return Result.err(new Error("Missing issue id"));
           }
 
-          const workspace = yield* Result.await(
+          const worktree = yield* Result.await(
             this.getOrCreateIssueWorkspace(
               issueId,
               project,
@@ -529,12 +529,10 @@ export class LinearEventProcessor {
             ),
           );
 
-          branchName = workspace.branchName;
-          workdir = workspace.workspaceDirectory;
+          branchName = worktree.branchName;
+          workdir = worktree.worktreeDirectory;
 
-          const session = yield* Result.await(
-            this.opencode.createSession(workdir, workspace.workspaceId),
-          );
+          const session = yield* Result.await(this.opencode.createSession(workdir));
 
           opencodeSessionId = session.id;
           isNewSession = true;
@@ -544,7 +542,7 @@ export class LinearEventProcessor {
             opencodeSessionId,
             organizationId: this.config.organizationId,
             issueId,
-            projectId: workspace.projectId,
+            projectId: worktree.projectId,
             branchName,
             workdir,
             lastActivityTime: Date.now(),
@@ -638,8 +636,7 @@ export class LinearEventProcessor {
   ): Promise<
     Result<
       {
-        workspaceId: string;
-        workspaceDirectory: string;
+        worktreeDirectory: string;
         branchName: string;
         projectId: string;
       },
@@ -660,8 +657,7 @@ export class LinearEventProcessor {
             }
 
             return Result.ok({
-              workspaceId: existing.value.workspaceId,
-              workspaceDirectory: existing.value.workspaceDirectory,
+              worktreeDirectory: existing.value.worktreeDirectory,
               branchName: existing.value.branchName,
               projectId: existing.value.projectId,
             });
@@ -672,36 +668,35 @@ export class LinearEventProcessor {
 
           yield* Result.await(this.linear.postStageActivity(linearSessionId, "git_setup"));
           const created = yield* Result.await(
-            this.opencode.createWorkspace(project.worktree, branchName, issueId),
+            this.opencode.createWorktree(project.worktree, branchName, issueId),
           );
 
           const createdBranch = created.branch ?? branchName;
           if (!createdBranch) {
-            const removed = await this.opencode.removeWorkspace(created.id);
+            const removed = await this.opencode.removeWorktree(project.worktree, created.directory);
             if (removed.isErr()) {
-              log.warn("Failed to rollback workspace after missing branch", {
+              log.warn("Failed to rollback worktree after missing branch", {
                 issueId,
-                workspaceId: created.id,
+                worktreeDirectory: created.directory,
                 error: removed.error.message,
                 errorType: removed.error._tag,
               });
             }
-            return Result.err(new Error(`Missing branch name for issue workspace ${issueId}`));
+            return Result.err(new Error(`Missing branch name for issue worktree ${issueId}`));
           }
 
           const stored = await this.agentState.issueWorkspace.put(issueId, {
             projectId: project.id,
             projectDirectory: project.worktree,
-            workspaceId: created.id,
-            workspaceDirectory: created.directory,
+            worktreeDirectory: created.directory,
             branchName: createdBranch,
           });
           if (stored.isErr()) {
-            const removed = await this.opencode.removeWorkspace(created.id);
+            const removed = await this.opencode.removeWorktree(project.worktree, created.directory);
             if (removed.isErr()) {
-              log.warn("Failed to rollback workspace after state write error", {
+              log.warn("Failed to rollback worktree after state write error", {
                 issueId,
-                workspaceId: created.id,
+                worktreeDirectory: created.directory,
                 error: removed.error.message,
                 errorType: removed.error._tag,
               });
@@ -710,8 +705,7 @@ export class LinearEventProcessor {
           }
 
           return Result.ok({
-            workspaceId: created.id,
-            workspaceDirectory: created.directory,
+            worktreeDirectory: created.directory,
             branchName: createdBranch,
             projectId: project.id,
           });
