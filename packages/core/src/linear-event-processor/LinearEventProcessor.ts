@@ -1,5 +1,5 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
-import type { Project } from "@opencode-ai/sdk/v2";
+import type { Project, QuestionRequest } from "@opencode-ai/sdk/v2";
 
 import { Result } from "better-result";
 import { basename } from "node:path";
@@ -69,18 +69,6 @@ function readPromptContextText(promptContext: unknown): string | null {
     return trimmed.length > 0 ? promptContext : null;
   }
 
-  const body = readStringField(promptContext, "body");
-  if (body) {
-    return body;
-  }
-
-  if (isRecord(promptContext)) {
-    const contentBody = readStringField(promptContext["content"], "body");
-    if (contentBody) {
-      return contentBody;
-    }
-  }
-
   return null;
 }
 
@@ -88,11 +76,6 @@ function extractPromptedUserResponse(event: {
   agentActivity?: unknown;
   promptContext?: unknown;
 }): string {
-  const agentBody = readStringField(event.agentActivity, "body");
-  if (agentBody) {
-    return agentBody;
-  }
-
   if (isRecord(event.agentActivity)) {
     const contentBody = readStringField(event.agentActivity["content"], "body");
     if (contentBody) {
@@ -308,6 +291,62 @@ function toStartupEvent(
     action: "created",
     promptContext: promptContext ?? event.promptContext,
   };
+}
+
+function findPendingQuestion(
+  questions: QuestionRequest[],
+  opencodeSessionId: string,
+): QuestionRequest | null {
+  return questions.find((question) => question.sessionID === opencodeSessionId) ?? null;
+}
+
+function createPendingQuestionState(
+  pending: QuestionRequest,
+  linearSessionId: string,
+  workdir: string,
+  issueId: string,
+): PendingQuestion {
+  return {
+    requestId: pending.id,
+    opencodeSessionId: pending.sessionID,
+    linearSessionId,
+    workdir,
+    issueId,
+    questions: pending.questions,
+    answers: pending.questions.map(() => null),
+    createdAt: Date.now(),
+  };
+}
+
+function applyQuestionAnswer(
+  pending: PendingQuestion,
+  userResponse: string,
+): PendingQuestion | null {
+  const index = pending.answers.findIndex((answer) => answer === null);
+  const question = pending.questions[index];
+  if (!question) {
+    return null;
+  }
+
+  const matched = matchOption(userResponse, question.options, {
+    getLabel: (option) => option.label,
+    getAliases: (option) => [option.description],
+  });
+
+  return {
+    ...pending,
+    answers: pending.answers.map((answer, answerIndex) =>
+      answerIndex === index ? [matched ?? userResponse] : answer,
+    ),
+  };
+}
+
+function isQuestionComplete(pending: PendingQuestion): boolean {
+  return pending.answers.every((answer) => answer !== null);
+}
+
+function toQuestionAnswers(pending: PendingQuestion): Array<Array<string>> {
+  return pending.answers.map((answer) => answer ?? []);
 }
 
 /**
@@ -1001,24 +1040,22 @@ export class LinearEventProcessor {
           return Result.err(pendingPermission.error);
         }
 
-        const pendingQuestion = await this.agentState.question.get(linearSessionId);
-        if (pendingQuestion.isErr() && !KvNotFoundError.is(pendingQuestion.error)) {
-          return Result.err(pendingQuestion.error);
-        }
-        log.info("Checking for pending question", {
-          hasPendingQuestion: pendingQuestion.isOk(),
-          pendingRequestId: pendingQuestion.isOk() ? pendingQuestion.value.requestId : undefined,
+        const pendingQuestions = yield* Result.await(this.opencode.listPendingQuestions(workdir));
+        const pendingQuestion = findPendingQuestion(pendingQuestions, opencodeSessionId);
+        log.info("Checked OpenCode pending questions", {
+          hasPendingQuestion: Boolean(pendingQuestion),
+          pendingRequestId: pendingQuestion?.id,
         });
 
-        if (pendingQuestion.isOk()) {
+        if (pendingQuestion) {
+          const questionIssueId = event.agentSession.issue?.id ?? event.agentSession.issueId ?? "";
           yield* Result.await(
             this.handleQuestionResponse(
-              pendingQuestion.value,
+              pendingQuestion,
               userResponse,
-              opencodeSessionId,
               linearSessionId,
               workdir,
-              mode,
+              questionIssueId,
               log,
             ),
           );
@@ -1046,115 +1083,75 @@ export class LinearEventProcessor {
   /**
    * Handle a user response to a pending question
    *
-   * The user can either:
-   * 1. Select an option from the elicitation - we forward it to OpenCode
-   * 2. Send a different message - we clear the pending question and send it as a prompt
-   *
-   * For multi-question scenarios, we collect all answers before replying.
+   * Any user prompt while OpenCode has a pending question is a free-form answer.
+   * OpenCode accepts one reply per request, so bundled extra questions are collected locally.
    */
   private async handleQuestionResponse(
-    pending: PendingQuestion,
+    pending: QuestionRequest,
     userResponse: string,
-    opencodeSessionId: string,
     linearSessionId: string,
     workdir: string,
-    mode: AgentMode,
+    issueId: string,
     log: Logger,
   ): Promise<Result<void, Error>> {
     log.info("Received response while question pending", {
-      requestId: pending.requestId,
+      requestId: pending.id,
       responseLength: userResponse.length,
       questionCount: pending.questions.length,
-      answeredCount: pending.answers.filter((a) => a !== null).length,
     });
 
-    // Find the first unanswered question
-    const answerIndex = pending.answers.findIndex((a) => a === null);
-
-    if (answerIndex === -1) {
-      log.warn("All questions already answered - clearing pending and treating as follow-up");
-      const removed = await this.agentState.question.delete(linearSessionId);
-      if (removed.isErr()) {
-        return Result.err(removed.error);
-      }
-      return this.sendFollowUpPrompt(
-        userResponse,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        log,
-      );
-    }
-
-    const currentQuestion = pending.questions[answerIndex];
-    if (!currentQuestion) {
-      log.warn("No current question found at index", { answerIndex });
-      const removed = await this.agentState.question.delete(linearSessionId);
-      if (removed.isErr()) {
-        return Result.err(removed.error);
-      }
+    if (userResponse.length === 0) {
+      log.info("Empty question response, skipping reply");
       return Result.ok(undefined);
     }
 
-    const matchedLabel = matchOption(userResponse, currentQuestion.options, {
-      getLabel: (option) => option.label,
-      getAliases: (option) => [option.description],
-    });
-
-    if (!matchedLabel) {
-      log.info("User response doesn't match any option - treating as new prompt", {
-        response: userResponse.slice(0, 100),
-        availableOptions: currentQuestion.options.map((o) => o.label),
-      });
-      const removed = await this.agentState.question.delete(linearSessionId);
-      if (removed.isErr()) {
-        return Result.err(removed.error);
-      }
-      return this.sendFollowUpPrompt(
-        userResponse,
-        opencodeSessionId,
-        linearSessionId,
-        workdir,
-        mode,
-        log,
-      );
+    const stored = await this.agentState.question.get(linearSessionId);
+    const initial =
+      stored.isOk() && stored.value.requestId === pending.id
+        ? stored.value
+        : createPendingQuestionState(pending, linearSessionId, workdir, issueId);
+    if (stored.isErr() && !KvNotFoundError.is(stored.error)) {
+      return Result.err(stored.error);
     }
 
-    pending.answers[answerIndex] = [matchedLabel];
+    const answered = applyQuestionAnswer(initial, userResponse);
+    if (!answered) {
+      return Result.err(new Error(`Pending question ${pending.id} has no unanswered prompts`));
+    }
 
-    log.info("Matched user response to option", {
-      userResponse: userResponse.slice(0, 50),
-      matchedLabel,
-    });
-
-    const allAnswered = pending.answers.every((a) => a !== null);
-
-    if (!allAnswered) {
-      const saved = await this.agentState.question.put(linearSessionId, pending);
+    if (!isQuestionComplete(answered)) {
+      const saved = await this.agentState.question.put(linearSessionId, answered);
       if (saved.isErr()) {
         return Result.err(saved.error);
       }
-      log.info("Waiting for more question responses", {
-        answered: pending.answers.filter((a) => a !== null).length,
-        total: pending.questions.length,
+      log.info("Stored partial question answer", {
+        answered: answered.answers.filter((answer) => answer !== null).length,
+        total: answered.answers.length,
       });
       return Result.ok(undefined);
     }
 
-    log.info("All questions answered - replying to OpenCode", {
-      answerCount: pending.answers.length,
+    log.info("Replying to OpenCode question", {
+      answerCount: answered.answers.length,
     });
 
-    const answers = pending.answers.filter((a): a is string[] => a !== null);
-    const replyResult = await this.opencode.replyQuestion(pending.requestId, answers, workdir);
-    const removed = await this.agentState.question.delete(linearSessionId);
-    if (removed.isErr()) {
-      return Result.err(removed.error);
+    const saved = await this.agentState.question.put(linearSessionId, answered);
+    if (saved.isErr()) {
+      return Result.err(saved.error);
     }
 
+    const replyResult = await this.opencode.replyQuestion(
+      pending.id,
+      toQuestionAnswers(answered),
+      workdir,
+    );
     if (replyResult.isErr()) {
       return Result.err(replyResult.error);
+    }
+
+    const removed = await this.agentState.question.delete(linearSessionId);
+    if (removed.isErr() && !KvNotFoundError.is(removed.error)) {
+      return Result.err(removed.error);
     }
 
     log.info("Question reply sent, plugin will handle events");

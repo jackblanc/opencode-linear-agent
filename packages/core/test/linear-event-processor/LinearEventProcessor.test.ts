@@ -1,10 +1,9 @@
 import type { AgentSessionEventWebhookPayload } from "@linear/sdk/webhooks";
+import type { QuestionRequest } from "@opencode-ai/sdk/v2";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { Result } from "better-result";
 import { describe, test, expect } from "vitest";
-
-import type { PendingQuestion } from "../../src/state/schema";
 
 import { KvIoError } from "../../src/kv/errors";
 import { LinearEventProcessor } from "../../src/linear-event-processor/LinearEventProcessor";
@@ -30,7 +29,7 @@ function createEvent(
   promptContext = "Please help.",
   sessionId = "linear-session-1",
 ): AgentSessionEventWebhookPayload {
-  return {
+  const event: AgentSessionEventWebhookPayload = {
     type: "AgentSessionEvent",
     action,
     appUserId: "app-user-1",
@@ -63,16 +62,39 @@ function createEvent(
     },
     promptContext,
   };
+
+  if (action === "prompted") {
+    event.agentActivity = {
+      id: "activity-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      archivedAt: null,
+      agentSessionId: sessionId,
+      sourceCommentId: "comment-1",
+      userId: "user-1",
+      signal: null,
+      signalMetadata: null,
+      content: {
+        type: "prompt",
+        body: promptContext,
+      },
+      user: {
+        id: "user-1",
+        name: "Test User",
+        email: "test@example.com",
+        url: "https://linear.app/test",
+      },
+    };
+  }
+
+  return event;
 }
 
-function createPendingQuestion(): PendingQuestion {
+function createPendingQuestion(questions?: QuestionRequest["questions"]): QuestionRequest {
   return {
-    requestId: "qst-1",
-    opencodeSessionId: "opencode-1",
-    linearSessionId: "linear-session-1",
-    workdir: "/tmp/workdir",
-    issueId: "issue-1",
-    questions: [
+    id: "que-1",
+    sessionID: "opencode-1",
+    questions: questions ?? [
       {
         question: "What next?",
         header: "Choice",
@@ -82,14 +104,14 @@ function createPendingQuestion(): PendingQuestion {
         ],
       },
     ],
-    answers: [null],
-    createdAt: Date.now(),
   };
 }
 
 function createProcessorHarness(options?: {
   projects?: typeof defaultProjects;
   labels?: IssueLabel[];
+  pendingQuestions?: QuestionRequest[];
+  questionReplyError?: Error;
 }) {
   const agentState = createInMemoryAgentState();
   const linearCalls: {
@@ -146,6 +168,7 @@ function createProcessorHarness(options?: {
   const opencode = new OpencodeService(createOpencodeClient({ baseUrl: "http://localhost:4096" }));
   const opencodeCalls: {
     listProjects: number;
+    listPendingQuestions: string[];
     createWorktree: Array<{ directory: string; branchName: string | null; issueId?: string }>;
     createSession: string[];
     getSession: Array<{ sessionID: string; directory: string }>;
@@ -153,6 +176,7 @@ function createProcessorHarness(options?: {
     prompt: Array<{ workdir: string; text: string }>;
   } = {
     listProjects: 0,
+    listPendingQuestions: [],
     createWorktree: [],
     createSession: [],
     getSession: [],
@@ -191,9 +215,18 @@ function createProcessorHarness(options?: {
       return Promise.resolve(Result.ok({ id: sessionID }));
     },
   });
+  Object.defineProperty(opencode, "listPendingQuestions", {
+    value: async (directory?: string) => {
+      opencodeCalls.listPendingQuestions.push(directory ?? "");
+      return Promise.resolve(Result.ok(options?.pendingQuestions ?? []));
+    },
+  });
   Object.defineProperty(opencode, "replyQuestion", {
     value: async (_requestId: string, answers: Array<Array<string>>) => {
       opencodeCalls.replyQuestion.push(answers);
+      if (options?.questionReplyError) {
+        return Promise.resolve(Result.err(options.questionReplyError));
+      }
       return Promise.resolve(Result.ok(undefined));
     },
   });
@@ -216,8 +249,8 @@ function createProcessorHarness(options?: {
 }
 
 describe("LinearEventProcessor.process", () => {
-  test("maps pending question replies to canonical option labels", async () => {
-    const harness = createProcessorHarness();
+  test("treats prompts as free-form replies when OpenCode has a pending question", async () => {
+    const harness = createProcessorHarness({ pendingQuestions: [createPendingQuestion()] });
     await saveSessionState(harness.agentState, {
       linearSessionId: "linear-session-1",
       opencodeSessionId: "opencode-1",
@@ -228,12 +261,88 @@ describe("LinearEventProcessor.process", () => {
       workdir: "/tmp/workdir",
       lastActivityTime: Date.now(),
     });
-    await harness.agentState.question.put("linear-session-1", createPendingQuestion());
+    await harness.processor.process(createEvent("prompted", "Please choose whichever is safer"));
 
+    expect(harness.opencodeCalls.replyQuestion).toEqual([[["Please choose whichever is safer"]]]);
+    expect((await harness.agentState.question.get("linear-session-1")).isErr()).toBe(true);
+  });
+
+  test("maps selected pending question options using OpenCode question state", async () => {
+    const harness = createProcessorHarness({ pendingQuestions: [createPendingQuestion()] });
+    await saveSessionState(harness.agentState, {
+      linearSessionId: "linear-session-1",
+      opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
+      issueId: "issue-1",
+      projectId: "project-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/workdir",
+      lastActivityTime: Date.now(),
+    });
     await harness.processor.process(createEvent("prompted", "Merge immediately"));
 
     expect(harness.opencodeCalls.replyQuestion).toEqual([[["Ship now"]]]);
-    expect((await harness.agentState.question.get("linear-session-1")).isErr()).toBe(true);
+  });
+
+  test("collects multi-question replies before replying to OpenCode", async () => {
+    const question = createPendingQuestion([
+      {
+        question: "First?",
+        header: "First",
+        options: [
+          { label: "Alpha", description: "Option A" },
+          { label: "Beta", description: "Option B" },
+        ],
+      },
+      {
+        question: "Second?",
+        header: "Second",
+        options: [
+          { label: "One", description: "Option 1" },
+          { label: "Two", description: "Option 2" },
+        ],
+      },
+    ]);
+    const harness = createProcessorHarness({ pendingQuestions: [question] });
+    await saveSessionState(harness.agentState, {
+      linearSessionId: "linear-session-1",
+      opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
+      issueId: "issue-1",
+      projectId: "project-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/workdir",
+      lastActivityTime: Date.now(),
+    });
+
+    await harness.processor.process(createEvent("prompted", "Option A"));
+    expect(harness.opencodeCalls.replyQuestion).toEqual([]);
+
+    await harness.processor.process(createEvent("prompted", "custom second answer"));
+    expect(harness.opencodeCalls.replyQuestion).toEqual([[["Alpha"], ["custom second answer"]]]);
+  });
+
+  test("does not clear partial question state when OpenCode reply fails", async () => {
+    const harness = createProcessorHarness({
+      pendingQuestions: [createPendingQuestion()],
+      questionReplyError: new Error("reply failed"),
+    });
+    await saveSessionState(harness.agentState, {
+      linearSessionId: "linear-session-1",
+      opencodeSessionId: "opencode-1",
+      organizationId: "org-1",
+      issueId: "issue-1",
+      projectId: "project-1",
+      branchName: "feature/code-1",
+      workdir: "/tmp/workdir",
+      lastActivityTime: Date.now(),
+    });
+
+    await harness.processor.process(createEvent("prompted", "Merge immediately"));
+
+    const pending = await harness.agentState.question.get("linear-session-1");
+    expect(pending.isOk()).toBe(true);
+    expect(harness.linearCalls.errors).toEqual(["reply failed"]);
   });
 
   test("prompts for project selection when repo label is missing", async () => {

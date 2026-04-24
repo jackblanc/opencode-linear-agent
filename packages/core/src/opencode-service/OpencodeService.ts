@@ -2,6 +2,7 @@ import type {
   OpencodeClient,
   Message,
   Part,
+  QuestionRequest,
   Session,
   Event as OpencodeEvent,
   Project,
@@ -260,6 +261,18 @@ export class OpencodeService {
     }
 
     return Result.ok(undefined);
+  }
+
+  async listPendingQuestions(
+    directory?: string,
+  ): Promise<Result<QuestionRequest[], OpencodeServiceError>> {
+    const result = await this.client.question.list({ directory });
+
+    if (!result.data) {
+      return Result.err(mapOpencodeError(result.error));
+    }
+
+    return Result.ok(result.data);
   }
 
   /**
