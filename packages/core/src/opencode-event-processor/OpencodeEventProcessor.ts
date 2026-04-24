@@ -38,6 +38,8 @@ export class OpencodeEventProcessor {
   }
 
   async processEvent(event: Event) {
+    if (event.type === "message.updated") return this.processEventMessageUpdated(event);
+
     return Result.gen(
       async function* (this: OpencodeEventProcessor) {
         const opencodeSessionId = yield* this.resolveOpencodeSessionIdFromEvent(event);
@@ -53,8 +55,6 @@ export class OpencodeEventProcessor {
         const linearClient = this.getLinearService(linearAuthRecord.accessToken);
 
         switch (event.type) {
-          case "message.updated":
-            return this.processEventMessageUpdated(event);
           case "message.part.updated":
             return this.processEventMessagePartUpdated(event, linearSessionState, linearClient);
           case "session.error":
