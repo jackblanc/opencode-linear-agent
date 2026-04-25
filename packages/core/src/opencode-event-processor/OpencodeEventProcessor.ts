@@ -54,22 +54,29 @@ export class OpencodeEventProcessor {
         );
         const linearClient = this.getLinearService(linearAuthRecord.accessToken);
 
+        /* oxlint-disable typescript/return-await */
+        // Result.gen async bodies must return a resolved Result, not Promise<Result>.
         switch (event.type) {
           case "message.part.updated":
-            return this.processEventMessagePartUpdated(event, linearSessionState, linearClient);
+            return await this.processEventMessagePartUpdated(
+              event,
+              linearSessionState,
+              linearClient,
+            );
           case "session.error":
-            return this.processEventSessionError(event, linearSessionState, linearClient);
+            return await this.processEventSessionError(event, linearSessionState, linearClient);
           case "question.asked":
-            return this.processEventQuestionAsked(event, linearSessionState, linearClient);
+            return await this.processEventQuestionAsked(event, linearSessionState, linearClient);
           case "permission.asked":
-            return this.processEventPermissionAsked(event, linearSessionState, linearClient);
+            return await this.processEventPermissionAsked(event, linearSessionState, linearClient);
           case "todo.updated":
-            return this.processEventTodoUpdated(event, linearSessionState, linearClient);
+            return await this.processEventTodoUpdated(event, linearSessionState, linearClient);
           case "session.idle":
             return this.processEventSessionIdle(event, linearSessionState, linearClient);
           default:
             return Result.ok();
         }
+        /* oxlint-enable typescript/return-await */
       }.bind(this),
     );
   }
