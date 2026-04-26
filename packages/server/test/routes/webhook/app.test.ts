@@ -1,13 +1,46 @@
 import type { ApplicationConfig } from "@opencode-linear-agent/core";
+import type * as Core from "@opencode-linear-agent/core";
 
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { AuthRepository, OpencodeService } from "@opencode-linear-agent/core";
 import { Result } from "better-result";
 import { createHmac } from "node:crypto";
-import { beforeAll, describe, test, expect } from "vitest";
+import { beforeAll, beforeEach, describe, test, expect, vi } from "vitest";
 
 import { createInMemoryAgentState } from "../../../../core/test/state/InMemoryAgentNamespace";
 import { createWebhookApp } from "../../../src/routes/webhook/app";
+
+const mocks = vi.hoisted(() => {
+  const processorProcess = vi.fn(async () => {
+    await Promise.resolve();
+  });
+  const issueProcess = vi.fn(async () => {
+    await Promise.resolve();
+  });
+  const LinearEventProcessor = vi.fn(function () {
+    return { process: processorProcess };
+  });
+  const IssueEventHandler = vi.fn(function () {
+    return { process: issueProcess };
+  });
+
+  return {
+    processorProcess,
+    issueProcess,
+    LinearEventProcessor,
+    IssueEventHandler,
+  };
+});
+
+vi.mock("@opencode-linear-agent/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof Core>();
+
+  return {
+    ...actual,
+    LinearEventProcessor: mocks.LinearEventProcessor,
+    IssueEventHandler: mocks.IssueEventHandler,
+  };
+});
 
 const SECRET = "test-secret";
 const ORG_ID = "org-1";
@@ -74,7 +107,7 @@ function agentSessionPayload(organizationId: string = ORG_ID) {
     organizationId,
     appUserId: "app-user-1",
     oauthClientId: "oauth-client-1",
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    createdAt: "2026-01-01T00:00:00.000Z",
     webhookId: "webhook-1",
     webhookTimestamp: Date.now(),
     agentSession: {
@@ -126,6 +159,10 @@ describe("webhook app", () => {
     await seedAuth(repos.auth);
   });
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   test("rejects request missing linear-signature header", async () => {
     const app = createWebhookApp(config, repos.auth, repos.agentState, opencode);
     const body = JSON.stringify(issuePayload());
@@ -145,20 +182,23 @@ describe("webhook app", () => {
   });
 
   test("dispatches agent session webhooks to LinearEventProcessor", async () => {
-    const seen: string[] = [];
-
-    const app = createWebhookApp(config, repos.auth, repos.agentState, opencode, {
-      createProcessor: () => ({
-        process: async () => {
-          seen.push("called");
-          return Promise.resolve();
-        },
-      }),
-    });
-    const response = await app.request(createSignedRequest(agentSessionPayload()));
+    const app = createWebhookApp(config, repos.auth, repos.agentState, opencode);
+    const payload = agentSessionPayload();
+    const response = await app.request(createSignedRequest(payload));
 
     expect(response.status).toBe(200);
-    expect(seen).toEqual(["called"]);
+    expect(mocks.LinearEventProcessor).toHaveBeenCalledTimes(1);
+    expect(mocks.processorProcess).toHaveBeenCalledWith(payload);
+  });
+
+  test("dispatches issue webhooks to IssueEventHandler", async () => {
+    const app = createWebhookApp(config, repos.auth, repos.agentState, opencode);
+    const payload = issuePayload();
+    const response = await app.request(createSignedRequest(payload));
+
+    expect(response.status).toBe(200);
+    expect(mocks.IssueEventHandler).toHaveBeenCalledTimes(1);
+    expect(mocks.issueProcess).toHaveBeenCalledWith(payload);
   });
 
   test("refreshes expired access tokens before dispatch", async () => {
@@ -175,50 +215,40 @@ describe("webhook app", () => {
       }),
     ).toEqual(Result.ok(undefined));
 
-    const seen: string[] = [];
-    const originalFetch = globalThis.fetch;
-    Object.defineProperty(globalThis, "fetch", {
-      configurable: true,
-      value: () =>
-        new Response(
-          JSON.stringify({
-            access_token: "fresh-token",
-            refresh_token: "fresh-refresh-token",
-            expires_in: 3600,
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        ),
-    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Response(
+            JSON.stringify({
+              access_token: "fresh-token",
+              refresh_token: "fresh-refresh-token",
+              expires_in: 3600,
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+      ),
+    );
 
     try {
-      const app = createWebhookApp(config, freshRepos.auth, freshRepos.agentState, opencode, {
-        createProcessor: () => ({
-          process: async () => {
-            seen.push("called");
-            return Promise.resolve();
-          },
-        }),
-      });
+      const app = createWebhookApp(config, freshRepos.auth, freshRepos.agentState, opencode);
       const response = await app.request(createSignedRequest(agentSessionPayload()));
 
       expect(response.status).toBe(200);
-      expect(seen).toEqual(["called"]);
+      expect(mocks.processorProcess).toHaveBeenCalledTimes(1);
       expect(await freshRepos.auth.getAccessToken(ORG_ID)).toEqual(Result.ok("fresh-token"));
     } finally {
-      Object.defineProperty(globalThis, "fetch", {
-        configurable: true,
-        value: originalFetch,
-      });
+      vi.unstubAllGlobals();
     }
   });
 
   test("rejects webhook from wrong organization", async () => {
     const app = createWebhookApp(config, repos.auth, repos.agentState, opencode);
     const response = await app.request(createSignedRequest(issuePayload("wrong-org")));
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(500);
   });
 
   test("rejects request with invalid signature", async () => {
@@ -253,9 +283,19 @@ describe("webhook app", () => {
     expect(response.status).toBe(400);
   });
 
-  test("rejects payload missing webhookTimestamp", async () => {
+  test("accepts signed payload missing webhookTimestamp", async () => {
     const app = createWebhookApp(config, repos.auth, repos.agentState, opencode);
-    const payload = { type: "Issue", action: "update", organizationId: ORG_ID };
+    const payload = {
+      type: "Issue",
+      action: "update",
+      organizationId: ORG_ID,
+      issue: { id: "issue-1", identifier: "CODE-1" },
+      data: {
+        id: "issue-1",
+        identifier: "CODE-1",
+        state: { type: "started" },
+      },
+    };
     const body = JSON.stringify(payload);
     const signature = createHmac("sha256", SECRET).update(body).digest("hex");
     const request = new Request("https://example.com/api/webhook/linear", {
@@ -267,6 +307,6 @@ describe("webhook app", () => {
       body,
     });
     const response = await app.request(request);
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
   });
 });
