@@ -11,7 +11,7 @@ import { TaggedError } from "better-result";
 /**
  * OpenCode provider authentication error
  */
-export class OpencodeProviderAuthError extends TaggedError("OpencodeProviderAuthError")<{
+class OpencodeProviderAuthError extends TaggedError("OpencodeProviderAuthError")<{
   providerID: string;
   reason: string;
   message: string;
@@ -27,7 +27,7 @@ export class OpencodeProviderAuthError extends TaggedError("OpencodeProviderAuth
 /**
  * OpenCode API error
  */
-export class OpencodeApiError extends TaggedError("OpencodeApiError")<{
+class OpencodeApiError extends TaggedError("OpencodeApiError")<{
   statusCode: number | undefined;
   reason: string;
   isRetryable: boolean;
@@ -44,7 +44,7 @@ export class OpencodeApiError extends TaggedError("OpencodeApiError")<{
 /**
  * Message was aborted
  */
-export class OpencodeMessageAbortedError extends TaggedError("OpencodeMessageAbortedError")<{
+class OpencodeMessageAbortedError extends TaggedError("OpencodeMessageAbortedError")<{
   reason: string;
   message: string;
 }>() {
@@ -56,7 +56,7 @@ export class OpencodeMessageAbortedError extends TaggedError("OpencodeMessageAbo
 /**
  * Message output exceeded length limit
  */
-export class OpencodeOutputLengthError extends TaggedError("OpencodeOutputLengthError")<{
+class OpencodeOutputLengthError extends TaggedError("OpencodeOutputLengthError")<{
   message: string;
 }>() {
   constructor() {

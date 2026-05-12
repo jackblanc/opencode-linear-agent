@@ -81,7 +81,11 @@ function expectNotFound(result: BetterResult<unknown, KvError>, key: string): vo
     return;
   }
 
-  expect(result.error).toEqual(new KvNotFoundError({ key }));
+  expect(KvNotFoundError.is(result.error)).toBe(true);
+  if (!KvNotFoundError.is(result.error)) {
+    return;
+  }
+  expect(result.error.key).toBe(key);
 }
 
 describe("IssueEventHandler", () => {
@@ -164,7 +168,7 @@ describe("IssueEventHandler", () => {
       () => null,
       (error: unknown) => error,
     );
-    expect(caught).toEqual(err);
+    expect(caught).toBe(err);
     expect(await agentState.session.get("session-1")).toEqual(Result.ok(state));
   });
 
@@ -189,7 +193,7 @@ describe("IssueEventHandler", () => {
       () => null,
       (error: unknown) => error,
     );
-    expect(caught).toEqual(err);
+    expect(caught).toBe(err);
     expect(await agentState.session.get("session-1")).toEqual(Result.ok(state));
   });
 

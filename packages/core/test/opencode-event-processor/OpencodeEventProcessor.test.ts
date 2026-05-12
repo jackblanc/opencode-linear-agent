@@ -57,6 +57,7 @@ describe("OpencodeEventProcessor.processEvent", () => {
 
     const event: EventQuestionAsked = {
       type: "question.asked",
+      id: "event-id",
       properties: {
         id: "question-1",
         sessionID: "opencode-1",

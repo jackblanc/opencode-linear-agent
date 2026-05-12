@@ -33,7 +33,11 @@ function expectNotFound(result: ResultType<unknown, KvError>, key: string): void
     return;
   }
 
-  expect(result.error).toEqual(new KvNotFoundError({ key }));
+  expect(KvNotFoundError.is(result.error)).toBe(true);
+  if (!KvNotFoundError.is(result.error)) {
+    return;
+  }
+  expect(result.error.key).toBe(key);
 }
 
 describe("session-state helpers", () => {

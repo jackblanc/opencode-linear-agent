@@ -10,12 +10,12 @@
       "packages/*"
     ],
     "catalog": {
-      "@linear/sdk": "82.1.0",
-      "@opencode-ai/sdk": "1.14.19",
-      "@opencode-ai/plugin": "1.14.19",
-      "better-result": "2.8.2",
+      "@linear/sdk": "84.0.0",
+      "@opencode-ai/sdk": "1.14.48",
+      "@opencode-ai/plugin": "1.14.48",
+      "better-result": "2.9.2",
       "xdg-basedir": "5.1.0",
-      "zod": "4.3.6"
+      "zod": "4.4.3"
     }
   },
   "type": "module",
@@ -36,13 +36,13 @@
     "fix": "bun run lint:fix && bun run format:fix"
   },
   "devDependencies": {
-    "@types/node": "24",
-    "knip": "6.5.0",
+    "@types/node": "24.12.4",
+    "knip": "6.13.1",
     "lefthook": "2.1.6",
-    "oxfmt": "^0.46.0",
-    "oxlint": "1.61.0",
-    "oxlint-tsgolint": "0.21.1",
+    "oxfmt": "^0.49.0",
+    "oxlint": "1.64.0",
+    "oxlint-tsgolint": "0.22.1",
     "typescript": "6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }
