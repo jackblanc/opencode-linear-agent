@@ -29,7 +29,7 @@
   "dependencies": {
     "@hono/node-server": "^2.0.2",
     "@hono/zod-validator": "0.8.0",
-    "hono": "4.12.18"
+    "hono": "4.12.21"
   },
   "devDependencies": {
     "@linear/sdk": "catalog:",
