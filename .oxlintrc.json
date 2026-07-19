@@ -15,7 +15,7 @@
   // References:
   // - @typescript-eslint's strict-type-checked.ts: https://github.com/typescript-eslint/typescript-eslint/blob/main/packages/eslint-plugin/src/configs/eslintrc/strict-type-checked.ts
   // - Oxlint's "projects using oxlint" examples: https://oxc.rs/docs/guide/usage/linter.html#projects-using-oxlint
-  // - Effect's rules: https://github.com/Effect-TS/effect-smol/blob/main/packages/tools/oxc/oxlintrc.json and https://github.com/Effect-TS/effect-smol/blob/main/.oxlintrc.json
+  // - Effect's rules: https://github.com/Effect-TS/effect/blob/main/packages/tools/oxc/oxlintrc.json and https://github.com/Effect-TS/effect/blob/main/.oxlintrc.json
   "rules": {
     // Custom Rules
     "eslint/no-await-in-loop": "off",
